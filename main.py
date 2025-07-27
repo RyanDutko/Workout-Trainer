@@ -157,6 +157,7 @@ def update_baseline_if_exceeded(exercise_name, actual_sets, actual_reps, actual_
     return False
 
 # Update exercise progression tracking
+def update_progression_data(exercise_name, sets, reps, weight):
     weight_num = extract_weight_number(weight)
     reps_num = int(reps.split('-')[0]) if '-' in str(reps) else int(reps)
 
@@ -338,9 +339,69 @@ def insert_log(entry, date_logged):
 
     conn.commit()
 
+# Bulk upload weekly plan
+def bulk_upload_plan():
+    print("\n📋 Bulk Weekly Plan Upload")
+    print("Enter your full weekly plan. For each day, format as:")
+    print("DAY: exercise1 3x12@180lbs, exercise2 4x8@200lbs, ...")
+    print("Example: monday: leg press 3x12@180lbs, squats 4x8@225lbs")
+    print("Type 'done' when finished, 'cancel' to abort\n")
+    
+    days_data = {}
+    
+    while True:
+        line = input("Enter day plan: ").strip()
+        if line.lower() == 'done':
+            break
+        if line.lower() == 'cancel':
+            return "Upload cancelled."
+        
+        # Parse format: "monday: exercise1 3x12@180lbs, exercise2 4x8@200lbs"
+        if ':' not in line:
+            print("⚠️ Format should be 'day: exercise 3x12@180lbs, exercise2 4x8@200lbs'")
+            continue
+            
+        day_part, exercises_part = line.split(':', 1)
+        day = day_part.strip().lower()
+        
+        if day not in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+            print("⚠️ Please use valid day names (monday, tuesday, etc.)")
+            continue
+        
+        # Clear existing plan for this day
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ?', (day,))
+        
+        exercises = [ex.strip() for ex in exercises_part.split(',')]
+        order = 1
+        
+        for exercise_text in exercises:
+            # Parse each exercise: "leg press 3x12@180lbs"
+            pattern = r'(.+?)\s+(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
+            match = re.search(pattern, exercise_text.strip())
+            
+            if match:
+                exercise_name, sets, reps, weight, unit = match.groups()
+                if not unit:
+                    unit = "lbs"
+                weight_with_unit = f"{weight}{unit}"
+                
+                set_weekly_plan(day, exercise_name.strip(), int(sets), reps, weight_with_unit, order)
+                order += 1
+            else:
+                print(f"⚠️ Couldn't parse: {exercise_text}")
+        
+        print(f"✅ Added {order-1} exercises for {day.title()}")
+    
+    conn.commit()
+    return f"✅ Bulk upload complete! Use 'show weekly plan' to review."
+
 # Manage weekly workout plan
 def manage_weekly_plan(user_input):
     text = user_input.lower()
+    
+    # Check for bulk upload request
+    if "bulk upload" in text or "upload plan" in text or "full plan" in text:
+        return bulk_upload_plan()
     
     # Parse plan setting commands like "set monday leg press 3x12@180lbs"
     plan_pattern = r'set (\w+) (.+?) (\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
@@ -555,6 +616,7 @@ print("\n💪 Enhanced Personal Trainer: Log workouts, manage weekly plan, view 
 print("Examples:")
 print("• Log: '3x10@200 bench press'")
 print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
+print("• Bulk Upload: 'bulk upload plan' (for full 5-day schedule)")
 print("• History: 'show last 7 days'")
 print("• Tips: 'suggest progression for squats'\n")
 
