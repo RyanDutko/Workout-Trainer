@@ -338,6 +338,21 @@ def history():
     
     return render_template('history.html', workouts=workouts)
 
+@app.route('/get_plan/<date>')
+def get_plan_for_date(date):
+    """API endpoint to get plan for specific date"""
+    try:
+        selected_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+        day_name = selected_date.strftime('%A').lower()
+        plan = get_weekly_plan(day_name)
+        
+        return jsonify({
+            'day_name': day_name.title(),
+            'plan': plan
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
     """Chat with AI trainer"""

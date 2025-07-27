@@ -16,8 +16,10 @@
                     <div class="mb-3">
                         <label for="workout_text" class="form-label">Workout Description</label>
                         <textarea class="form-control" id="workout_text" name="workout_text" rows="4" 
-                                placeholder="Examples:&#10;3x10@200lbs bench press&#10;4x8@225lbs squats&#10;bench press 3x12@185lbs" required></textarea>
-                        <div class="form-text">Use format: Sets x Reps @ Weight Exercise Name (e.g., "3x10@200lbs bench press")</div>
+                                placeholder="Type naturally - I understand many formats:&#10;• 3x10@200lbs bench press&#10;• bench press 3 sets of 10 at 200 pounds&#10;• did 4x8@225 squats, felt easy&#10;• deadlift 1x5@315lbs, barely got it" required></textarea>
+                        <div class="form-text">
+                            <strong>💡 Tip:</strong> I understand natural language! Include notes like "felt easy" or "struggled with last rep" - this helps with progression suggestions.
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -37,56 +39,57 @@
             </div>
         </div>
 
-        <!-- Today's Plan -->
+        <!-- Selected Date's Plan -->
         <div class="card mt-4">
             <div class="card-header">
-                <h6><i class="fas fa-calendar-day me-2"></i>{{ today_name }}'s Plan</h6>
+                <h6><i class="fas fa-calendar-day me-2"></i><span id="plan-day-name">{{ today_name }}</span>'s Plan</h6>
             </div>
-            <div class="card-body">
-                <!-- Debug: Show what we received -->
-                <p class="small text-muted">Debug: Plan length: {{ today_plan|length if today_plan else 'None' }}</p>
-                {% if today_plan %}
-                    <div class="row">
-                        {% for exercise in today_plan %}
-                            {% set day, exercise_name, sets, reps, weight, order, notes = exercise %}
-                            <div class="col-md-6 mb-2">
-                                <button class="btn btn-outline-success btn-sm w-100" onclick="fillPlanExercise('{{ sets }}x{{ reps }}@{{ weight }} {{ exercise_name }}')">
-                                    <strong>{{ exercise_name.title() }}</strong><br>
-                                    <small>{{ sets }}x{{ reps }} @ {{ weight }}</small>
-                                </button>
-                            </div>
-                        {% endfor %}
+            <div class="card-body" id="plan-container">
+                <!-- Plan will be loaded here via JavaScript -->
+                <div class="text-center">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
-                    <small class="text-muted">Click any exercise above to fill it in the log form</small>
-                {% else %}
-                    <p class="text-muted">No plan set for today. <a href="{{ url_for('weekly_plan') }}">Set up your weekly plan</a></p>
-                {% endif %}
+                    <span class="ms-2">Loading plan...</span>
+                </div>
             </div>
+        </div></div>
         </div>
 
-        <!-- Quick Log Examples -->
+        <!-- Natural Language Examples -->
         <div class="card mt-4">
             <div class="card-header">
-                <h6><i class="fas fa-lightbulb me-2"></i>Quick Examples</h6>
+                <h6><i class="fas fa-lightbulb me-2"></i>Example Formats (All Work!)</h6>
             </div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
                         <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x10@200lbs bench press')">
-                            Bench Press Example
+                            Standard: 3x10@200lbs bench press
                         </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('4x8@225lbs squats')">
-                            Squats Example
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('bench press 3 sets of 10 at 200 pounds')">
+                            Natural: bench press 3 sets of 10 at 200 pounds
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('did 4x8@225 squats, felt easy')">
+                            With Notes: did 4x8@225 squats, felt easy
                         </button>
                     </div>
                     <div class="col-md-6">
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x12@35lbs dumbbell press')">
-                            Dumbbell Example
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('deadlift 1x5@315lbs, barely got the last rep')">
+                            Struggle: deadlift 1x5@315lbs, barely got the last rep
                         </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x15@bodyweight pull ups')">
-                            Bodyweight Example
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x15@bodyweight pull ups, could do more')">
+                            Bodyweight: 3x15@bodyweight pull ups, could do more
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('overhead press 3x8@135, form was solid')">
+                            Good Form: overhead press 3x8@135, form was solid
                         </button>
                     </div>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <strong>🎯 Pro tip:</strong> Notes like "easy", "struggled", "perfect form" help the AI give better progression advice!
+                    </small>
                 </div>
             </div>
         </div>
@@ -103,5 +106,61 @@ function fillExample(example) {
 function fillPlanExercise(exercise) {
     document.getElementById('workout_text').value = exercise;
 }
+
+function loadPlanForDate(dateStr) {
+    const planContainer = document.getElementById('plan-container');
+    const planDayName = document.getElementById('plan-day-name');
+    
+    // Show loading spinner
+    planContainer.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border spinner-border-sm" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="ms-2">Loading plan...</span>
+        </div>
+    `;
+    
+    fetch(`/get_plan/${dateStr}`)
+        .then(response => response.json())
+        .then(data => {
+            planDayName.textContent = data.day_name;
+            
+            if (data.plan && data.plan.length > 0) {
+                let planHtml = '<div class="row">';
+                data.plan.forEach(exercise => {
+                    const [day, exercise_name, sets, reps, weight, order, notes] = exercise;
+                    planHtml += `
+                        <div class="col-md-6 mb-2">
+                            <button class="btn btn-outline-success btn-sm w-100" onclick="fillPlanExercise('${sets}x${reps}@${weight} ${exercise_name}')">
+                                <strong>${exercise_name.charAt(0).toUpperCase() + exercise_name.slice(1)}</strong><br>
+                                <small>${sets}x${reps} @ ${weight}</small>
+                            </button>
+                        </div>
+                    `;
+                });
+                planHtml += '</div><small class="text-muted">Click any exercise above to fill it in the log form</small>';
+                planContainer.innerHTML = planHtml;
+            } else {
+                planContainer.innerHTML = `<p class="text-muted">No plan set for ${data.day_name}. <a href="{{ url_for('weekly_plan') }}">Set up your weekly plan</a></p>`;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading plan:', error);
+            planContainer.innerHTML = '<p class="text-danger">Error loading plan</p>';
+        });
+}
+
+// Load plan when date changes
+document.getElementById('date').addEventListener('change', function() {
+    loadPlanForDate(this.value);
+});
+
+// Load initial plan on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById('date');
+    loadPlanForDate(dateInput.value);
+});
 </script>
-{% endblock %}
+{% endblock %}</div>
+        </div>
