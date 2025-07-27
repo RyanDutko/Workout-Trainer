@@ -1,0 +1,139 @@
+
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-home me-2"></i>Dashboard</h1>
+</div>
+
+{% if needs_onboarding %}
+    <div class="alert alert-info" role="alert">
+        <h4 class="alert-heading">Welcome! 🎯</h4>
+        <p>Complete your profile to get personalized workout recommendations and AI-powered progression tips.</p>
+        <hr>
+        <a href="{{ url_for('profile') }}" class="btn btn-primary">Complete Profile Setup</a>
+    </div>
+{% endif %}
+
+<div class="row">
+    <!-- Today's Plan -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5><i class="fas fa-calendar-day me-2"></i>{{ today }}'s Plan</h5>
+            </div>
+            <div class="card-body">
+                {% if today_plan %}
+                    {% for row in today_plan %}
+                        {% set day, exercise, sets, reps, weight, order, notes = row %}
+                        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                            <div>
+                                <strong>{{ exercise.title() }}</strong><br>
+                                <small class="text-muted">{{ sets }}x{{ reps }} @ {{ weight }}</small>
+                            </div>
+                            <button class="btn btn-sm btn-outline-success" onclick="quickLog('{{ exercise }}', {{ sets }}, '{{ reps }}', '{{ weight }}')">
+                                <i class="fas fa-check"></i>
+                            </button>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No plan set for today. <a href="{{ url_for('weekly_plan') }}">Set up your weekly plan</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Workouts -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5><i class="fas fa-history me-2"></i>Recent Workouts</h5>
+            </div>
+            <div class="card-body">
+                {% if recent_workouts %}
+                    {% for workout in recent_workouts[:5] %}
+                        {% set exercise, sets, reps, weight, date = workout %}
+                        <div class="border-bottom py-2">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ exercise.title() }}</strong>
+                                <small class="text-muted">{{ date }}</small>
+                            </div>
+                            <small>{{ sets }}x{{ reps }} @ {{ weight }}</small>
+                        </div>
+                    {% endfor %}
+                    <div class="mt-3">
+                        <a href="{{ url_for('history') }}" class="btn btn-sm btn-outline-primary">View All</a>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No workouts logged yet. <a href="{{ url_for('log_workout') }}">Log your first workout!</a></p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt me-2"></i>Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('log_workout') }}" class="btn btn-primary w-100">
+                            <i class="fas fa-plus me-2"></i>Log Workout
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('progression') }}" class="btn btn-info w-100">
+                            <i class="fas fa-chart-line me-2"></i>Get Progression Tips
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('weekly_plan') }}" class="btn btn-warning w-100">
+                            <i class="fas fa-calendar me-2"></i>View Weekly Plan
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('chat') }}" class="btn btn-success w-100">
+                            <i class="fas fa-comments me-2"></i>Chat with AI
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function quickLog(exercise, sets, reps, weight) {
+    const workoutText = `${sets}x${reps}@${weight} ${exercise}`;
+    
+    // Create a form and submit it
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{{ url_for("log_workout") }}';
+    
+    const workoutInput = document.createElement('input');
+    workoutInput.type = 'hidden';
+    workoutInput.name = 'workout_text';
+    workoutInput.value = workoutText;
+    
+    const dateInput = document.createElement('input');
+    dateInput.type = 'hidden';
+    dateInput.name = 'date';
+    dateInput.value = new Date().toISOString().split('T')[0];
+    
+    form.appendChild(workoutInput);
+    form.appendChild(dateInput);
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+{% endblock %}

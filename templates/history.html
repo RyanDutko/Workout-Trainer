@@ -1,0 +1,50 @@
+
+{% extends "base.html" %}
+
+{% block title %}History - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-history me-2"></i>Workout History</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if workouts %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Exercise</th>
+                            <th>Sets</th>
+                            <th>Reps</th>
+                            <th>Weight</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for workout in workouts %}
+                            {% set exercise, sets, reps, weight, date, notes = workout %}
+                            <tr>
+                                <td>{{ date }}</td>
+                                <td><strong>{{ exercise.title() }}</strong></td>
+                                <td>{{ sets }}</td>
+                                <td>{{ reps }}</td>
+                                <td>{{ weight }}</td>
+                                <td>{{ notes or '-' }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-dumbbell fa-3x text-muted mb-3"></i>
+                <h5>No workouts logged yet</h5>
+                <p class="text-muted">Start by <a href="{{ url_for('log_workout') }}">logging your first workout</a>!</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

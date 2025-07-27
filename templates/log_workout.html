@@ -1,0 +1,76 @@
+
+{% extends "base.html" %}
+
+{% block title %}Log Workout - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-plus me-2"></i>Log Workout</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="workout_text" class="form-label">Workout Description</label>
+                        <textarea class="form-control" id="workout_text" name="workout_text" rows="4" 
+                                placeholder="Examples:&#10;3x10@200lbs bench press&#10;4x8@225lbs squats&#10;bench press 3x12@185lbs" required></textarea>
+                        <div class="form-text">Use format: Sets x Reps @ Weight Exercise Name (e.g., "3x10@200lbs bench press")</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="date" class="form-label">Date</label>
+                        <input type="date" class="form-control" id="date" name="date" value="{{ datetime.date.today().isoformat() }}">
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Log Workout
+                        </button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Quick Log Examples -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-lightbulb me-2"></i>Quick Examples</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x10@200lbs bench press')">
+                            Bench Press Example
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('4x8@225lbs squats')">
+                            Squats Example
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x12@35lbs dumbbell press')">
+                            Dumbbell Example
+                        </button>
+                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x15@bodyweight pull ups')">
+                            Bodyweight Example
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fillExample(example) {
+    document.getElementById('workout_text').value = example;
+}
+</script>
+{% endblock %}

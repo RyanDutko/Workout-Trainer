@@ -1,0 +1,129 @@
+
+{% extends "base.html" %}
+
+{% block title %}Profile - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-user me-2"></i>Your Profile</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-user-circle me-2"></i>Personal Information</h6>
+            </div>
+            <div class="card-body">
+                {% if background %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <strong>Age:</strong> {{ background.age or 'Not set' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Gender:</strong> {{ background.gender or 'Not set' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Height:</strong> {{ background.height or 'Not set' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Weight:</strong> {{ background.current_weight or 'Not set' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Fitness Level:</strong> {{ background.fitness_level or 'Not set' }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Years Training:</strong> {{ background.years_training or 'Not set' }}
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="mb-3">
+                        <strong>Primary Goal:</strong><br>
+                        <span class="text-muted">{{ background.primary_goal or 'Not set' }}</span>
+                    </div>
+                    
+                    {% if background.injuries_history and background.injuries_history != 'None' %}
+                    <div class="mb-3">
+                        <strong>Injury History:</strong><br>
+                        <span class="text-warning">{{ background.injuries_history }}</span>
+                    </div>
+                    {% endif %}
+                    
+                    {% if background.current_limitations and background.current_limitations != 'None' %}
+                    <div class="mb-3">
+                        <strong>Current Limitations:</strong><br>
+                        <span class="text-warning">{{ background.current_limitations }}</span>
+                    </div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted">No profile information available. Complete your onboarding to get started.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-cogs me-2"></i>AI Preferences</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <strong>Tone:</strong> {{ preferences.tone }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Detail Level:</strong> {{ preferences.detail_level }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Format:</strong> {{ preferences.format }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Units:</strong> {{ preferences.units }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Communication:</strong> {{ preferences.communication_style }}
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Technical Level:</strong> {{ preferences.technical_level }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-edit me-2"></i>Quick Update</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('update_profile') }}">
+                    <div class="mb-3">
+                        <label for="field_name" class="form-label">Field to Update</label>
+                        <select class="form-select" id="field_name" name="field_name" required>
+                            <option value="">Select field...</option>
+                            <option value="current_weight">Current Weight</option>
+                            <option value="injuries_history">Injury History</option>
+                            <option value="current_limitations">Current Limitations</option>
+                            <option value="primary_goal">Primary Goal</option>
+                            <option value="fitness_level">Fitness Level</option>
+                            <option value="training_frequency">Training Frequency</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="value" class="form-label">New Value</label>
+                        <input type="text" class="form-control" id="value" name="value" 
+                               placeholder="Enter new value..." required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Update
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

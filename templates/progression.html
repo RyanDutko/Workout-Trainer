@@ -1,0 +1,109 @@
+
+{% extends "base.html" %}
+
+{% block title %}Progression - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-chart-line me-2"></i>AI Progression Suggestions</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <div class="card">
+            <div class="card-body">
+                <p class="lead">Get personalized progression suggestions based on your weekly plan and workout history.</p>
+                
+                <button id="getProgressionBtn" class="btn btn-primary btn-lg w-100">
+                    <i class="fas fa-robot me-2"></i>Get AI Progression Tips
+                </button>
+                
+                <div id="loadingSpinner" class="text-center mt-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Getting personalized suggestions from AI...</p>
+                </div>
+                
+                <div id="progressionResults" class="mt-4" style="display: none;">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Your Progression Suggestions</h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="suggestions" class="suggestions-content"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="errorMessage" class="alert alert-danger mt-4" style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span id="errorText"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tips Card -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-info-circle me-2"></i>How Progression Works</h6>
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li>AI analyzes your current weekly plan and workout history</li>
+                    <li>Considers your injuries, fitness level, and training experience</li>
+                    <li>Provides specific weight/rep increases for each exercise</li>
+                    <li>Suggests when to add sets or change rep ranges</li>
+                    <li>Takes into account your personal goals and limitations</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('getProgressionBtn').addEventListener('click', function() {
+    const btn = this;
+    const spinner = document.getElementById('loadingSpinner');
+    const results = document.getElementById('progressionResults');
+    const error = document.getElementById('errorMessage');
+    
+    // Show loading state
+    btn.disabled = true;
+    spinner.style.display = 'block';
+    results.style.display = 'none';
+    error.style.display = 'none';
+    
+    fetch('/get_progression', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        spinner.style.display = 'none';
+        btn.disabled = false;
+        
+        if (data.error) {
+            error.style.display = 'block';
+            document.getElementById('errorText').textContent = data.error;
+        } else {
+            results.style.display = 'block';
+            // Format the suggestions with proper line breaks
+            const formattedSuggestions = data.suggestions.replace(/\n/g, '<br>');
+            document.getElementById('suggestions').innerHTML = formattedSuggestions;
+        }
+    })
+    .catch(err => {
+        spinner.style.display = 'none';
+        btn.disabled = false;
+        error.style.display = 'block';
+        document.getElementById('errorText').textContent = 'Failed to get progression suggestions. Please try again.';
+        console.error('Error:', err);
+    });
+});
+</script>
+{% endblock %}
