@@ -608,9 +608,9 @@ def get_grok_response(prompt, include_context=True):
         print(f"⚠️ API error: {str(e)}")
         return "I'm here to help! Log a workout, ask for history, or request progression tips."
 
-# Enhanced progression tips with local calculations
+# Enhanced progression tips using Grok AI
 def get_progression_tips(user_input):
-    # Get all exercises from weekly plan for progression suggestions
+    # Get weekly plan for context
     cursor.execute('''
         SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
         FROM weekly_plan 
@@ -622,24 +622,26 @@ def get_progression_tips(user_input):
         print("⚠️ No weekly plan found. Set up your plan first!")
         return
 
-    print("\n🤖 Progression Tips for Your Weekly Plan:")
+    # Format weekly plan for Grok
+    plan_text = ""
     for exercise_name, sets, reps, weight in planned_exercises:
-        # Extract numeric weight for progression
-        weight_num = extract_weight_number(weight)
-        reps_num = int(reps.split('-')[0]) if '-' in str(reps) else int(reps)
-        
-        # Simple progression logic based on current plan
-        if reps_num >= 12:  # If high reps, suggest weight increase
-            new_weight = weight_num + 2.5
-            new_reps = max(8, reps_num - 2)
-            suggestion = f"Try {new_weight}lbs for {sets}x{new_reps}"
-        elif reps_num <= 8:  # If low reps, add more reps first
-            suggestion = f"Try adding reps: {weight} for {sets}x{reps_num + 2}"
-        else:  # Medium reps, small weight bump
-            new_weight = weight_num + 2.5
-            suggestion = f"Try {new_weight}lbs for {sets}x{reps}"
-        
-        print(f"• {exercise_name}: {suggestion}")
+        plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+
+    # Create progression prompt for Grok
+    progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
+
+{plan_text}
+
+Please provide progression suggestions in this exact format:
+• exercise name: specific suggestion
+
+Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
+
+    print("\n🤖 Getting AI-powered progression suggestions...")
+    
+    # Get Grok's response
+    response = get_grok_response(progression_prompt, include_context=True)
+    print(f"\n{response}")
 
 # Store last 3 interactions for context
 conversation_history = []
