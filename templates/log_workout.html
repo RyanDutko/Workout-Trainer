@@ -133,7 +133,59 @@
                     <!-- Exercise details will be populated here -->
                 </div>
 
+                <!-- Workout Status Options -->
                 <div class="mb-3">
+                    <label class="form-label"><strong>Workout Status</strong></label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="workoutStatus" id="statusCompleted" value="completed" checked>
+                        <label class="btn btn-outline-success" for="statusCompleted">Completed</label>
+                        
+                        <input type="radio" class="btn-check" name="workoutStatus" id="statusSkipped" value="skipped">
+                        <label class="btn btn-outline-warning" for="statusSkipped">Skipped</label>
+                        
+                        <input type="radio" class="btn-check" name="workoutStatus" id="statusSubstituted" value="substituted">
+                        <label class="btn btn-outline-info" for="statusSubstituted">Substituted</label>
+                    </div>
+                </div>
+
+                <!-- Skip Reason (shown when skipped is selected) -->
+                <div id="skipReasonContainer" class="mb-3" style="display: none;">
+                    <label for="skipReason" class="form-label">Why was this skipped?</label>
+                    <select class="form-control" id="skipReason">
+                        <option value="">Select reason...</option>
+                        <option value="ran_out_of_time">Ran out of time</option>
+                        <option value="too_tired">Too tired/fatigued</option>
+                        <option value="machine_taken">Machine was taken</option>
+                        <option value="different_gym">At different gym</option>
+                        <option value="injury_concern">Injury concern</option>
+                        <option value="equipment_broken">Equipment broken</option>
+                        <option value="other">Other reason</option>
+                    </select>
+                </div>
+
+                <!-- Substitution Exercise (shown when substituted is selected) -->
+                <div id="substitutionContainer" class="mb-3" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="substitutedExercise" class="form-label">What did you do instead?</label>
+                            <input type="text" class="form-control" id="substitutedExercise" placeholder="e.g., leg press, goblet squats">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="substitutionReason" class="form-label">Why substitute?</label>
+                            <select class="form-control" id="substitutionReason">
+                                <option value="">Select reason...</option>
+                                <option value="machine_taken">Machine was taken</option>
+                                <option value="different_gym">At different gym</option>
+                                <option value="equipment_broken">Equipment broken</option>
+                                <option value="felt_better">Felt better for my body</option>
+                                <option value="injury_prevention">Injury prevention</option>
+                                <option value="other">Other reason</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="setsSection" class="mb-3">
                     <label class="form-label"><strong>How did each set go?</strong></label>
                     <div id="setsContainer">
                         <!-- Sets will be populated here -->
@@ -279,8 +331,35 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
         `;
     }
 
-    // Clear notes
+    // Clear notes and reset form
     document.getElementById('workoutNotes').value = '';
+    document.getElementById('statusCompleted').checked = true;
+    document.getElementById('skipReasonContainer').style.display = 'none';
+    document.getElementById('substitutionContainer').style.display = 'none';
+    document.getElementById('setsSection').style.display = 'block';
+
+    // Add event listeners for workout status changes
+    document.querySelectorAll('input[name="workoutStatus"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const skipContainer = document.getElementById('skipReasonContainer');
+            const substitutionContainer = document.getElementById('substitutionContainer');
+            const setsSection = document.getElementById('setsSection');
+            
+            if (this.value === 'skipped') {
+                skipContainer.style.display = 'block';
+                substitutionContainer.style.display = 'none';
+                setsSection.style.display = 'none';
+            } else if (this.value === 'substituted') {
+                skipContainer.style.display = 'none';
+                substitutionContainer.style.display = 'block';
+                setsSection.style.display = 'block';
+            } else {
+                skipContainer.style.display = 'none';
+                substitutionContainer.style.display = 'none';
+                setsSection.style.display = 'block';
+            }
+        });
+    });
 
     // Show modal
     new bootstrap.Modal(document.getElementById('detailedLogModal')).show();
@@ -312,44 +391,117 @@ function quickFillAllSets(type) {
 }
 
 function submitDetailedLog() {
-    // Collect reps for each set
-    const setReps = [];
-    let allSetsHaveReps = true;
+    // Get workout status
+    const workoutStatus = document.querySelector('input[name="workoutStatus"]:checked').value;
+    let notes = document.getElementById('workoutNotes').value;
+    let workoutText = '';
+    let exercise = {};
 
-    for (let i = 1; i <= currentExercise.sets; i++) {
-        const reps = document.getElementById(`set${i}Reps`).value;
-        if (!reps || reps === '') {
-            allSetsHaveReps = false;
-            break;
+    if (workoutStatus === 'skipped') {
+        // Handle skipped workout
+        const skipReason = document.getElementById('skipReason').value;
+        if (!skipReason) {
+            alert('Please select a reason for skipping this exercise');
+            return;
         }
-        setReps.push(parseInt(reps));
+
+        const reasonText = document.getElementById('skipReason').options[document.getElementById('skipReason').selectedIndex].text;
+        notes = `SKIPPED: ${reasonText}${notes ? ' - ' + notes : ''}`;
+        
+        workoutText = `0x0@0 ${currentExercise.name} - SKIPPED: ${reasonText}`;
+        
+        exercise = {
+            exercise_name: currentExercise.name,
+            sets: 0,
+            reps: 0,
+            weight: 0,
+            notes: notes,
+            status: 'skipped',
+            skip_reason: skipReason
+        };
+
+    } else if (workoutStatus === 'substituted') {
+        // Handle substituted workout
+        const substitutedExercise = document.getElementById('substitutedExercise').value;
+        const substitutionReason = document.getElementById('substitutionReason').value;
+        
+        if (!substitutedExercise || !substitutionReason) {
+            alert('Please fill in what exercise you substituted and why');
+            return;
+        }
+
+        // Still need to collect reps for the substituted exercise
+        const setReps = [];
+        let allSetsHaveReps = true;
+
+        for (let i = 1; i <= currentExercise.sets; i++) {
+            const reps = document.getElementById(`set${i}Reps`).value;
+            if (!reps || reps === '') {
+                allSetsHaveReps = false;
+                break;
+            }
+            setReps.push(parseInt(reps));
+        }
+
+        if (!allSetsHaveReps) {
+            alert('Please fill in reps for all sets of the substituted exercise');
+            return;
+        }
+
+        const reasonText = document.getElementById('substitutionReason').options[document.getElementById('substitutionReason').selectedIndex].text;
+        const repsString = setReps.join('-');
+        
+        notes = `SUBSTITUTED: ${substitutedExercise} (${reasonText})${notes ? ' - ' + notes : ''}`;
+        workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${substitutedExercise} - SUBSTITUTED for ${currentExercise.name} (${reasonText})`;
+        
+        exercise = {
+            exercise_name: substitutedExercise, // Log the actual exercise done
+            sets: currentExercise.sets,
+            reps: currentExercise.reps,
+            weight: currentExercise.weight,
+            notes: notes,
+            status: 'substituted',
+            original_exercise: currentExercise.name,
+            substitution_reason: substitutionReason,
+            reps_performed: setReps
+        };
+
+    } else {
+        // Handle completed workout (original logic)
+        const setReps = [];
+        let allSetsHaveReps = true;
+
+        for (let i = 1; i <= currentExercise.sets; i++) {
+            const reps = document.getElementById(`set${i}Reps`).value;
+            if (!reps || reps === '') {
+                allSetsHaveReps = false;
+                break;
+            }
+            setReps.push(parseInt(reps));
+        }
+
+        if (!allSetsHaveReps) {
+            alert('Please fill in reps for all sets');
+            return;
+        }
+
+        const repsString = setReps.join('-');
+        workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${currentExercise.name}`;
+
+        if (notes.trim()) {
+            workoutText += `, ${notes.trim()}`;
+        }
+
+        exercise = {
+            exercise_name: currentExercise.name,
+            sets: currentExercise.sets,
+            reps: currentExercise.reps,
+            weight: currentExercise.weight,
+            notes: notes,
+            status: 'completed',
+            reps_performed: setReps
+        };
     }
-
-    if (!allSetsHaveReps) {
-        alert('Please fill in reps for all sets');
-        return;
-    }
-
-    // Get notes
-    const notes = document.getElementById('workoutNotes').value;
-
-    // Format the workout text
-    const repsString = setReps.join('-');
-    let workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${currentExercise.name}`;
-
-    if (notes.trim()) {
-        workoutText += `, ${notes.trim()}`;
-    }
-
-    // Create the exercise object
-    const exercise = {
-        exercise_name: currentExercise.name,
-        sets: currentExercise.sets,
-        reps: currentExercise.reps,
-        weight: currentExercise.weight,
-        notes: notes,
-        reps_performed: setReps
-    };
 
     // If in multi-exercise mode, add to session; otherwise fill the form
     if (document.getElementById('multi-exercise-mode').style.display === 'block') {
@@ -399,10 +551,21 @@ function updateSessionDisplay() {
 
     let html = '<h6>Exercises in this session:</h6>';
     sessionExercises.forEach((exercise, index) => {
+        let alertClass = 'alert-light';
+        let statusBadge = '';
+        
+        if (exercise.status === 'skipped') {
+            alertClass = 'alert-warning';
+            statusBadge = '<span class="badge bg-warning text-dark">SKIPPED</span> ';
+        } else if (exercise.status === 'substituted') {
+            alertClass = 'alert-info';
+            statusBadge = '<span class="badge bg-info">SUBSTITUTED</span> ';
+        }
+        
         html += `
-            <div class="alert alert-light d-flex justify-content-between align-items-center">
+            <div class="alert ${alertClass} d-flex justify-content-between align-items-center">
                 <div>
-                    <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
+                    ${statusBadge}<strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
                     <small>${exercise.sets}x${exercise.reps} @ ${exercise.weight}</small>
                     ${exercise.notes ? `<br><small class="text-muted">${exercise.notes}</small>` : ''}
                 </div>
