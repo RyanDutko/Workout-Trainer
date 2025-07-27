@@ -3,6 +3,12 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 import sqlite3
 import datetime
 import json
+import sys
+import os
+
+# Prevent main.py from running its console loop when imported
+sys.argv = ['app.py']  # Override sys.argv to prevent main.py console execution
+
 from main import (
     get_user_profile, get_weekly_plan, get_user_background, get_grok_preferences,
     manage_weekly_plan, manage_background, manage_preferences, call_grok_parse,
@@ -187,4 +193,6 @@ def chat():
     return render_template('chat.html')
 
 if __name__ == '__main__':
+    print("🌐 Starting Flask web server...")
+    print("🔗 Access your web app at: http://localhost:5000")
     app.run(host='0.0.0.0', port=5000, debug=True)
