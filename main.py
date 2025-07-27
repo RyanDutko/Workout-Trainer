@@ -66,6 +66,38 @@ CREATE TABLE IF NOT EXISTS weekly_plan (
 ''')
 
 cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
+
+# Add missing Grok preference columns if they don't exist
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN grok_tone TEXT DEFAULT "motivational"')
+except sqlite3.OperationalError:
+    pass  # Column already exists
+
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN grok_detail_level TEXT DEFAULT "concise"')
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN grok_format TEXT DEFAULT "bullet_points"')
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN preferred_units TEXT DEFAULT "lbs"')
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN communication_style TEXT DEFAULT "encouraging"')
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute('ALTER TABLE users ADD COLUMN technical_level TEXT DEFAULT "beginner"')
+except sqlite3.OperationalError:
+    pass
+
 conn.commit()
 
 # Fuzzy match for typo tolerance
