@@ -610,72 +610,36 @@ def get_grok_response(prompt, include_context=True):
 
 # Enhanced progression tips with local calculations
 def get_progression_tips(user_input):
-    goal, weekly_split, preferences = get_user_profile()
-
-    # Extract specific exercise from user input
-    text = user_input.lower()
-    exercise_name = None
-
-    # Try to find exercise name in input
-    words = text.split()
-    for i, word in enumerate(words):
-        if word in ["for", "progression", "suggest"]:
-            if i + 1 < len(words):
-                exercise_name = " ".join(words[i + 1:]).strip()
-                break
-
-    if not exercise_name:
-        # Look for common exercise names
-        common_exercises = ["squat", "bench", "deadlift", "press", "row", "curl", "pullup", "pull up"]
-        for exercise in common_exercises:
-            if exercise in text:
-                exercise_name = exercise
-                break
-
-    if exercise_name:
-        # Try local progression first
-        local_suggestion = calculate_local_progression(exercise_name)
-        if local_suggestion:
-            print(f"\n🤖 Local Progression Suggestion for {exercise_name}:")
-            print(local_suggestion)
-            return
-
-        # Fall back to database lookup for similar exercises
-        cursor.execute('''
-            SELECT exercise_name, sets, reps, weight, date_logged 
-            FROM workouts 
-            WHERE LOWER(exercise_name) LIKE ? 
-            ORDER BY date_logged DESC LIMIT 5
-        ''', (f'%{exercise_name}%',))
-
-        matching_exercises = cursor.fetchall()
-        if matching_exercises:
-            print(f"\n🤖 Progression Tips for exercises containing '{exercise_name}':")
-            for ex in matching_exercises:
-                name, sets, reps, weight, date = ex
-                local_suggestion = calculate_local_progression(name)
-                if local_suggestion:
-                    print(f"• {name}: {local_suggestion}")
-                else:
-                    print(f"• {name}: Try increasing weight by 2.5-5lbs or adding 1-2 reps")
-            return
-
-    # If no specific exercise found, show general progression for all recent exercises
+    # Get all exercises from weekly plan for progression suggestions
     cursor.execute('''
-        SELECT DISTINCT exercise_name 
-        FROM workouts 
-        WHERE date_logged >= date('now', '-30 days')
+        SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
+        FROM weekly_plan 
+        ORDER BY exercise_name
     ''')
-    recent_exercises = [row[0] for row in cursor.fetchall()]
+    planned_exercises = cursor.fetchall()
 
-    if recent_exercises:
-        print("\n🤖 Progression Tips for Recent Exercises:")
-        for exercise in recent_exercises[:5]:  # Limit to avoid too many API calls
-            local_suggestion = calculate_local_progression(exercise)
-            if local_suggestion:
-                print(f"• {exercise}: {local_suggestion}")
-    else:
-        print("⚠️ No recent workout data found for progression analysis.")
+    if not planned_exercises:
+        print("⚠️ No weekly plan found. Set up your plan first!")
+        return
+
+    print("\n🤖 Progression Tips for Your Weekly Plan:")
+    for exercise_name, sets, reps, weight in planned_exercises:
+        # Extract numeric weight for progression
+        weight_num = extract_weight_number(weight)
+        reps_num = int(reps.split('-')[0]) if '-' in str(reps) else int(reps)
+        
+        # Simple progression logic based on current plan
+        if reps_num >= 12:  # If high reps, suggest weight increase
+            new_weight = weight_num + 2.5
+            new_reps = max(8, reps_num - 2)
+            suggestion = f"Try {new_weight}lbs for {sets}x{new_reps}"
+        elif reps_num <= 8:  # If low reps, add more reps first
+            suggestion = f"Try adding reps: {weight} for {sets}x{reps_num + 2}"
+        else:  # Medium reps, small weight bump
+            new_weight = weight_num + 2.5
+            suggestion = f"Try {new_weight}lbs for {sets}x{reps}"
+        
+        print(f"• {exercise_name}: {suggestion}")
 
 # Store last 3 interactions for context
 conversation_history = []
