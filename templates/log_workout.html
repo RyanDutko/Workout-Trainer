@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Log Workout - Personal Trainer{% endblock %}
@@ -12,7 +11,29 @@
     <div class="col-md-8 mx-auto">
         <div class="card">
             <div class="card-body">
-                <form method="POST">
+                <!-- Multi-Exercise Session -->
+                <div id="multi-exercise-mode" style="display: none;">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-list me-2"></i>Multi-Exercise Session for <span id="session-date"></span></h6>
+                        <p class="mb-0">Add multiple exercises to this session, then submit all at once.</p>
+                    </div>
+
+                    <div id="session-exercises" class="mb-3">
+                        <!-- Session exercises will be added here -->
+                    </div>
+
+                    <div class="d-flex gap-2 mb-3">
+                        <button type="button" class="btn btn-success" onclick="submitMultiSession()">
+                            <i class="fas fa-check me-2"></i>Submit All Exercises
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="exitMultiMode()">
+                            <i class="fas fa-times me-2"></i>Exit Multi-Exercise Mode
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Single Exercise Mode -->
+                <form method="POST" id="single-exercise-form">
                     <div class="mb-3">
                         <label for="workout_text" class="form-label">Workout Description</label>
                         <textarea class="form-control" id="workout_text" name="workout_text" rows="4" 
@@ -21,15 +42,18 @@
                             <strong>💡 Tip:</strong> I understand natural language! Include notes like "felt easy" or "struggled with last rep" - this helps with progression suggestions.
                         </div>
                     </div>
-                    
+
                     <div class="mb-3">
                         <label for="date" class="form-label">Date</label>
                         <input type="date" class="form-control" id="date" name="date" value="{{ today }}">
                     </div>
-                    
+
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Log Workout
+                            <i class="fas fa-save me-2"></i>Log Single Exercise
+                        </button>
+                        <button type="button" class="btn btn-outline-success" onclick="startMultiMode()">
+                            <i class="fas fa-plus me-2"></i>Start Multi-Exercise Session
                         </button>
                         <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
@@ -108,14 +132,14 @@
                 <div id="exerciseDetails" class="mb-3">
                     <!-- Exercise details will be populated here -->
                 </div>
-                
+
                 <div class="mb-3">
                     <label class="form-label"><strong>How did each set go?</strong></label>
                     <div id="setsContainer">
                         <!-- Sets will be populated here -->
                     </div>
                 </div>
-                
+
                 <div class="mb-3">
                     <label for="quickFillReps" class="form-label">Quick Fill Options</label>
                     <div class="btn-group w-100" role="group">
@@ -124,7 +148,7 @@
                         <button type="button" class="btn btn-outline-warning" onclick="quickFillAllSets('minus1')">Planned -1</button>
                     </div>
                 </div>
-                
+
                 <div class="mb-3">
                     <label for="workoutNotes" class="form-label">Notes (Optional)</label>
                     <textarea class="form-control" id="workoutNotes" rows="3" placeholder="How did it feel? Easy, challenging, perfect form, etc."></textarea>
@@ -152,7 +176,7 @@ function fillPlanExercise(exercise) {
 function loadPlanForDate(dateStr) {
     const planContainer = document.getElementById('plan-container');
     const planDayName = document.getElementById('plan-day-name');
-    
+
     // Show loading spinner
     planContainer.innerHTML = `
         <div class="text-center">
@@ -162,12 +186,12 @@ function loadPlanForDate(dateStr) {
             <span class="ms-2">Loading plan...</span>
         </div>
     `;
-    
+
     fetch(`/get_plan/${dateStr}`)
         .then(response => response.json())
         .then(data => {
             planDayName.textContent = data.day_name;
-            
+
             if (data.plan && data.plan.length > 0) {
                 let planHtml = '<div class="row">';
                 data.plan.forEach(exercise => {
@@ -206,6 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Global variables for detailed logging
 let currentExercise = null;
+let sessionExercises = [];
 
 function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) {
     currentExercise = {
@@ -214,7 +239,7 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
         reps: plannedReps,
         weight: plannedWeight
     };
-    
+
     // Populate exercise details
     document.getElementById('exerciseDetails').innerHTML = `
         <div class="alert alert-info">
@@ -222,11 +247,11 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
             <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
         </div>
     `;
-    
+
     // Create set inputs
     const setsContainer = document.getElementById('setsContainer');
     setsContainer.innerHTML = '';
-    
+
     for (let i = 1; i <= plannedSets; i++) {
         setsContainer.innerHTML += `
             <div class="row mb-2 align-items-center">
@@ -253,10 +278,10 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
             </div>
         `;
     }
-    
+
     // Clear notes
     document.getElementById('workoutNotes').value = '';
-    
+
     // Show modal
     new bootstrap.Modal(document.getElementById('detailedLogModal')).show();
 }
@@ -268,7 +293,7 @@ function setReps(setNumber, reps) {
 function quickFillAllSets(type) {
     const plannedReps = parseInt(currentExercise.reps);
     let repsValue;
-    
+
     switch(type) {
         case 'planned':
             repsValue = plannedReps;
@@ -280,7 +305,7 @@ function quickFillAllSets(type) {
             repsValue = Math.max(1, plannedReps - 1);
             break;
     }
-    
+
     for (let i = 1; i <= currentExercise.sets; i++) {
         document.getElementById(`set${i}Reps`).value = repsValue;
     }
@@ -290,7 +315,7 @@ function submitDetailedLog() {
     // Collect reps for each set
     const setReps = [];
     let allSetsHaveReps = true;
-    
+
     for (let i = 1; i <= currentExercise.sets; i++) {
         const reps = document.getElementById(`set${i}Reps`).value;
         if (!reps || reps === '') {
@@ -299,30 +324,129 @@ function submitDetailedLog() {
         }
         setReps.push(parseInt(reps));
     }
-    
+
     if (!allSetsHaveReps) {
         alert('Please fill in reps for all sets');
         return;
     }
-    
+
     // Get notes
     const notes = document.getElementById('workoutNotes').value;
-    
+
     // Format the workout text
     const repsString = setReps.join('-');
     let workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${currentExercise.name}`;
-    
+
     if (notes.trim()) {
         workoutText += `, ${notes.trim()}`;
     }
-    
-    // Fill the main form and close modal
-    document.getElementById('workout_text').value = workoutText;
+
+    // Create the exercise object
+    const exercise = {
+        exercise_name: currentExercise.name,
+        sets: currentExercise.sets,
+        reps: currentExercise.reps,
+        weight: currentExercise.weight,
+        notes: notes,
+        reps_performed: setReps
+    };
+
+    // If in multi-exercise mode, add to session; otherwise fill the form
+    if (document.getElementById('multi-exercise-mode').style.display === 'block') {
+        addToSession(exercise);
+    } else {
+        document.getElementById('workout_text').value = workoutText;
+    }
+
     bootstrap.Modal.getInstance(document.getElementById('detailedLogModal')).hide();
-    
+
     // Focus on the main form
     document.getElementById('workout_text').focus();
 }
+
+// Multi-exercise session functions
+function startMultiMode() {
+    const selectedDate = document.getElementById('date').value;
+    document.getElementById('session-date').textContent = new Date(selectedDate).toLocaleDateString();
+    document.getElementById('multi-exercise-mode').style.display = 'block';
+    document.getElementById('single-exercise-form').style.display = 'none';
+    sessionExercises = [];
+    updateSessionDisplay();
+}
+
+function exitMultiMode() {
+    document.getElementById('multi-exercise-mode').style.display = 'none';
+    document.getElementById('single-exercise-form').style.display = 'block';
+    sessionExercises = [];
+}
+
+function addToSession(exercise) {
+    sessionExercises.push(exercise);
+    updateSessionDisplay();
+}
+
+function removeFromSession(index) {
+    sessionExercises.splice(index, 1);
+    updateSessionDisplay();
+}
+
+function updateSessionDisplay() {
+    const container = document.getElementById('session-exercises');
+    if (sessionExercises.length === 0) {
+        container.innerHTML = '<p class="text-muted">No exercises added yet. Click exercises from your plan below or use the detailed logging modal.</p>';
+        return;
+    }
+
+    let html = '<h6>Exercises in this session:</h6>';
+    sessionExercises.forEach((exercise, index) => {
+        html += `
+            <div class="alert alert-light d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
+                    <small>${exercise.sets}x${exercise.reps} @ ${exercise.weight}</small>
+                    ${exercise.notes ? `<br><small class="text-muted">${exercise.notes}</small>` : ''}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFromSession(${index})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+}
+
+function submitMultiSession() {
+    if (sessionExercises.length === 0) {
+        alert('Please add at least one exercise to the session');
+        return;
+    }
+
+    const selectedDate = document.getElementById('date').value;
+
+    // Submit all exercises
+    fetch('/log_multi_workout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            exercises: sessionExercises,
+            date: selectedDate
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Successfully logged ${sessionExercises.length} exercises!`);
+            window.location.href = '/';  // Redirect to dashboard
+        } else {
+            alert('❌ Error logging exercises: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('❌ Error submitting session');
+    });
+}
 </script>
-{% endblock %}</div>
-        </div>
+{% endblock %}

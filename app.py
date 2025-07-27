@@ -353,6 +353,27 @@ def get_plan_for_date(date):
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+@app.route('/log_multi_workout', methods=['POST'])
+def log_multi_workout():
+    """Log multiple exercises in one session"""
+    try:
+        data = request.get_json()
+        exercises = data.get('exercises', [])
+        date_str = data.get('date', datetime.date.today().isoformat())
+        date_logged = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        if not exercises:
+            return jsonify({'success': False, 'error': 'No exercises provided'})
+        
+        # Log each exercise
+        for exercise in exercises:
+            insert_log(exercise, date_logged)
+        
+        return jsonify({'success': True, 'message': f'Logged {len(exercises)} exercises'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
     """Chat with AI trainer"""
