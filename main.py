@@ -221,14 +221,20 @@ def extract_date(user_input):
 # Detect intent of user input
 def detect_intent(user_input):
     text = user_input.lower()
-    if any(x in text for x in ["did", "sets", "reps", "lbs", "kg", "press", "squat", "kettlebell"]) and re.search(r'\d+', text):
+    
+    # Check for bulk upload or weekly plan commands first (before general workout logging)
+    if any(x in text for x in ["bulk upload", "upload plan", "full plan"]) or (("monday:" in text or "tuesday:" in text or "wednesday:" in text or "thursday:" in text or "friday:" in text or "saturday:" in text or "sunday:" in text) and "," in text):
+        return "weekly_plan"
+    if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan", "set monday", "set tuesday", "set wednesday", "set thursday", "set friday", "set saturday", "set sunday"]) or is_similar(text, "show my split", 0.8):
+        return "weekly_plan"
+    
+    # Then check for regular workout logging
+    if any(x in text for x in ["did", "sets", "reps", "lbs", "kg", "press", "squat", "kettlebell"]) and re.search(r'\d+', text) and not any(day in text for day in ["monday:", "tuesday:", "wednesday:", "thursday:", "friday:", "saturday:", "sunday:"]):
         return "log"
     if any(x in text for x in ["ready to log", "here is my log", "full log"]):
         return "log-prep"
     if any(x in text for x in ["set my goal", "what's my goal", "show my goal"]):
         return "profile"
-    if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan"]) or is_similar(text, "show my split", 0.8):
-        return "weekly_plan"
     if any(x in text for x in ["why", "don't want", "dont want", "replace", "instead", "swap", "another workout"]) and conversation_history:
         return "follow-up"
     if any(x in text for x in ["progression", "suggest", "tips", "next"]) and not any(x in text for x in ["replace", "another workout"]):
@@ -402,6 +408,39 @@ def manage_weekly_plan(user_input):
     # Check for bulk upload request
     if "bulk upload" in text or "upload plan" in text or "full plan" in text:
         return bulk_upload_plan()
+    
+    # Check for direct day format like "monday: exercise1 3x12@180lbs, exercise2 4x8@200lbs"
+    day_direct_pattern = r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday):\s*(.+)'
+    day_match = re.search(day_direct_pattern, text)
+    if day_match:
+        day, exercises_part = day_match.groups()
+        
+        # Clear existing plan for this day
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ?', (day,))
+        
+        exercises = [ex.strip() for ex in exercises_part.split(',')]
+        order = 1
+        added_count = 0
+        
+        for exercise_text in exercises:
+            # Parse each exercise: "leg press 3x12@180lbs"
+            pattern = r'(.+?)\s+(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)\s*(lbs|kg)?'
+            match = re.search(pattern, exercise_text.strip())
+            
+            if match:
+                exercise_name, sets, reps, weight, unit = match.groups()
+                if not unit:
+                    unit = "lbs"
+                weight_with_unit = f"{weight}{unit}"
+                
+                set_weekly_plan(day, exercise_name.strip(), int(sets), reps, weight_with_unit, order)
+                order += 1
+                added_count += 1
+            else:
+                print(f"⚠️ Couldn't parse: {exercise_text}")
+        
+        conn.commit()
+        return f"✅ Added {added_count} exercises to {day.title()}!"
     
     # Parse plan setting commands like "set monday leg press 3x12@180lbs"
     plan_pattern = r'set (\w+) (.+?) (\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
