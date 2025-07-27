@@ -611,11 +611,13 @@ Be flexible with natural language but always return valid JSON.
         print(f"⚠️ Grok parsing failed: {str(e)}")
         
         # Fallback to local regex parsing
-        pattern = r'(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.+)'
-        match = re.search(pattern, text.lower())
         
-        if match:
-            sets, reps, weight, unit, exercise = match.groups()
+        # Pattern 1: Standard weight format (3x10@200lbs bench press)
+        weight_pattern = r'(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.+)'
+        weight_match = re.search(weight_pattern, text.lower())
+        
+        if weight_match:
+            sets, reps, weight, unit, exercise = weight_match.groups()
             if not unit:
                 unit = "lbs"
             
@@ -627,17 +629,45 @@ Be flexible with natural language but always return valid JSON.
                 "notes": ""
             }
         
-        # Try bodyweight exercise pattern
-        bodyweight_pattern = r'(\d+)x(\d+|\d+-\d+)\s*(.+)'
-        bodyweight_match = re.search(bodyweight_pattern, text.lower())
+        # Pattern 2: Explicit bodyweight (3x15 bodyweight pushups, 4x12@bodyweight squats)
+        bodyweight_explicit_pattern = r'(\d+)x(\d+|\d+-\d+)@?bodyweight\s*(.+)'
+        bodyweight_explicit_match = re.search(bodyweight_explicit_pattern, text.lower())
         
-        if bodyweight_match:
-            sets, reps, exercise = bodyweight_match.groups()
+        if bodyweight_explicit_match:
+            sets, reps, exercise = bodyweight_explicit_match.groups()
             return {
                 "exercise_name": exercise.strip(),
                 "sets": int(sets),
                 "reps": reps,
                 "weight": "bodyweight",
+                "notes": ""
+            }
+        
+        # Pattern 3: Common bodyweight exercises (no weight specified)
+        bodyweight_exercises = [
+            'pushups', 'push ups', 'pullups', 'pull ups', 'chin ups', 'chinups',
+            'dips', 'hanging leg lifts', 'leg lifts', 'sit ups', 'situps',
+            'burpees', 'mountain climbers', 'jumping jacks', 'planks',
+            'squats', 'lunges', 'calf raises', 'pike pushups', 'elevated pushups',
+            'wall sits', 'handstand pushups', 'pistol squats', 'jump squats'
+        ]
+        
+        # Pattern 4: Standard format but likely bodyweight exercise
+        standard_pattern = r'(\d+)x(\d+|\d+-\d+)\s*(.+)'
+        standard_match = re.search(standard_pattern, text.lower())
+        
+        if standard_match:
+            sets, reps, exercise = standard_match.groups()
+            exercise_name = exercise.strip()
+            
+            # Check if it's a common bodyweight exercise
+            is_bodyweight = any(bw_ex in exercise_name for bw_ex in bodyweight_exercises)
+            
+            return {
+                "exercise_name": exercise_name,
+                "sets": int(sets),
+                "reps": reps,
+                "weight": "bodyweight" if is_bodyweight else "0lbs",
                 "notes": ""
             }
         
