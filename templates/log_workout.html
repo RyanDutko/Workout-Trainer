@@ -95,6 +95,48 @@
         </div>
     </div>
 </div>
+
+<!-- Detailed Logging Modal -->
+<div class="modal fade" id="detailedLogModal" tabindex="-1" aria-labelledby="detailedLogModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="detailedLogModalLabel">Log Exercise Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="exerciseDetails" class="mb-3">
+                    <!-- Exercise details will be populated here -->
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><strong>How did each set go?</strong></label>
+                    <div id="setsContainer">
+                        <!-- Sets will be populated here -->
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="quickFillReps" class="form-label">Quick Fill Options</label>
+                    <div class="btn-group w-100" role="group">
+                        <button type="button" class="btn btn-outline-primary" onclick="quickFillAllSets('planned')">As Planned</button>
+                        <button type="button" class="btn btn-outline-success" onclick="quickFillAllSets('plus1')">Planned +1</button>
+                        <button type="button" class="btn btn-outline-warning" onclick="quickFillAllSets('minus1')">Planned -1</button>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="workoutNotes" class="form-label">Notes (Optional)</label>
+                    <textarea class="form-control" id="workoutNotes" rows="3" placeholder="How did it feel? Easy, challenging, perfect form, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitDetailedLog()">Log Workout</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -132,7 +174,7 @@ function loadPlanForDate(dateStr) {
                     const [day, exercise_name, sets, reps, weight, order, notes] = exercise;
                     planHtml += `
                         <div class="col-md-6 mb-2">
-                            <button class="btn btn-outline-success btn-sm w-100" onclick="fillPlanExercise('${sets}x${reps}@${weight} ${exercise_name}')">
+                            <button class="btn btn-outline-success btn-sm w-100" onclick="openDetailedLog('${exercise_name}', ${sets}, '${reps}', '${weight}')">
                                 <strong>${exercise_name.charAt(0).toUpperCase() + exercise_name.slice(1)}</strong><br>
                                 <small>${sets}x${reps} @ ${weight}</small>
                             </button>
@@ -161,6 +203,126 @@ document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('date');
     loadPlanForDate(dateInput.value);
 });
+
+// Global variables for detailed logging
+let currentExercise = null;
+
+function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) {
+    currentExercise = {
+        name: exerciseName,
+        sets: plannedSets,
+        reps: plannedReps,
+        weight: plannedWeight
+    };
+    
+    // Populate exercise details
+    document.getElementById('exerciseDetails').innerHTML = `
+        <div class="alert alert-info">
+            <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
+            <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
+        </div>
+    `;
+    
+    // Create set inputs
+    const setsContainer = document.getElementById('setsContainer');
+    setsContainer.innerHTML = '';
+    
+    for (let i = 1; i <= plannedSets; i++) {
+        setsContainer.innerHTML += `
+            <div class="row mb-2 align-items-center">
+                <div class="col-2">
+                    <label class="form-label mb-0">Set ${i}:</label>
+                </div>
+                <div class="col-4">
+                    <input type="number" class="form-control form-control-sm" id="set${i}Reps" 
+                           placeholder="${plannedReps}" min="0" max="50">
+                </div>
+                <div class="col-6">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${plannedReps}')">
+                            ${plannedReps}
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${parseInt(plannedReps) + 1})">
+                            ${parseInt(plannedReps) + 1}
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="setReps(${i}, ${Math.max(1, parseInt(plannedReps) - 1)})">
+                            ${Math.max(1, parseInt(plannedReps) - 1)}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Clear notes
+    document.getElementById('workoutNotes').value = '';
+    
+    // Show modal
+    new bootstrap.Modal(document.getElementById('detailedLogModal')).show();
+}
+
+function setReps(setNumber, reps) {
+    document.getElementById(`set${setNumber}Reps`).value = reps;
+}
+
+function quickFillAllSets(type) {
+    const plannedReps = parseInt(currentExercise.reps);
+    let repsValue;
+    
+    switch(type) {
+        case 'planned':
+            repsValue = plannedReps;
+            break;
+        case 'plus1':
+            repsValue = plannedReps + 1;
+            break;
+        case 'minus1':
+            repsValue = Math.max(1, plannedReps - 1);
+            break;
+    }
+    
+    for (let i = 1; i <= currentExercise.sets; i++) {
+        document.getElementById(`set${i}Reps`).value = repsValue;
+    }
+}
+
+function submitDetailedLog() {
+    // Collect reps for each set
+    const setReps = [];
+    let allSetsHaveReps = true;
+    
+    for (let i = 1; i <= currentExercise.sets; i++) {
+        const reps = document.getElementById(`set${i}Reps`).value;
+        if (!reps || reps === '') {
+            allSetsHaveReps = false;
+            break;
+        }
+        setReps.push(parseInt(reps));
+    }
+    
+    if (!allSetsHaveReps) {
+        alert('Please fill in reps for all sets');
+        return;
+    }
+    
+    // Get notes
+    const notes = document.getElementById('workoutNotes').value;
+    
+    // Format the workout text
+    const repsString = setReps.join('-');
+    let workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${currentExercise.name}`;
+    
+    if (notes.trim()) {
+        workoutText += `, ${notes.trim()}`;
+    }
+    
+    // Fill the main form and close modal
+    document.getElementById('workout_text').value = workoutText;
+    bootstrap.Modal.getInstance(document.getElementById('detailedLogModal')).hide();
+    
+    // Focus on the main form
+    document.getElementById('workout_text').focus();
+}
 </script>
 {% endblock %}</div>
         </div>

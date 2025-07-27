@@ -530,11 +530,18 @@ def detect_intent(user_input):
 
 # Enhanced regex parser for workouts
 def call_grok_parse(user_input, date_logged):
+    # Extract notes first (everything after the first comma)
+    notes = ""
+    if "," in user_input:
+        parts = user_input.split(",", 1)
+        user_input = parts[0].strip()
+        notes = parts[1].strip()
+    
     # Try multiple patterns
     patterns = [
-        r'(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3x10@200lbs bench press
-        r'(\d+)\s*sets?\s*of\s*(\d+|\d+-\d+)\s*(?:reps?\s*)?(?:at|@)\s*(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3 sets of 10 at 200lbs bench press
-        r'(.*?)\s*(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?',  # bench press 3x10@200lbs
+        r'(\d+)x(\d+(?:-\d+)*|\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3x10-8-6@200lbs bench press or 3x10@200lbs bench press
+        r'(\d+)\s*sets?\s*of\s*(\d+(?:-\d+)*|\d+)\s*(?:reps?\s*)?(?:at|@)\s*(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3 sets of 10-8-6 at 200lbs bench press
+        r'(.*?)\s*(\d+)x(\d+(?:-\d+)*|\d+)@(\d+\.?\d*)(lbs|kg)?',  # bench press 3x10-8-6@200lbs
     ]
 
     for pattern in patterns:
@@ -555,9 +562,9 @@ def call_grok_parse(user_input, date_logged):
             return {
                 "exercise_name": exercise_name,
                 "sets": int(sets),
-                "reps": reps,
+                "reps": reps,  # This can now be "10" or "10-8-6"
                 "weight": f"{weight}{unit}",
-                "notes": ""
+                "notes": notes
             }
     return None
 
