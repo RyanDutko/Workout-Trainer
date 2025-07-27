@@ -1005,82 +1005,84 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
 # Store last 3 interactions for context
 conversation_history = []
 
-# Check if user needs onboarding
-if not is_onboarding_complete():
-    print("\n🆕 First time setup detected!")
-    choice = input("Would you like to complete your profile for personalized recommendations? (y/n): ").lower().strip()
-    if choice in ['y', 'yes']:
-        run_onboarding()
-    else:
-        print("You can run onboarding later with 'restart onboarding'\n")
+# Only run console version if this file is executed directly, not when imported
+if __name__ == "__main__":
+    # Check if user needs onboarding
+    if not is_onboarding_complete():
+        print("\n🆕 First time setup detected!")
+        choice = input("Would you like to complete your profile for personalized recommendations? (y/n): ").lower().strip()
+        if choice in ['y', 'yes']:
+            run_onboarding()
+        else:
+            print("You can run onboarding later with 'restart onboarding'\n")
 
-print("\n💪 Enhanced Personal Trainer: Log workouts, manage weekly plan, view history, or ask for tips. Type 'done' to exit.")
-print("Examples:")
-print("• Log: '3x10@200 bench press'")
-print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
-print("• Bulk Upload: 'bulk upload plan' (for full 5-day schedule)")
-print("• History: 'show last 7 days'")
-print("• Tips: 'suggest progression for squats'")
-print("• Preferences: 'show preferences' or 'set tone to casual'")
-print("• Profile: 'show profile' or 'update injuries: new info'\n")
+    print("\n💪 Enhanced Personal Trainer: Log workouts, manage weekly plan, view history, or ask for tips. Type 'done' to exit.")
+    print("Examples:")
+    print("• Log: '3x10@200 bench press'")
+    print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
+    print("• Bulk Upload: 'bulk upload plan' (for full 5-day schedule)")
+    print("• History: 'show last 7 days'")
+    print("• Tips: 'suggest progression for squats'")
+    print("• Preferences: 'show preferences' or 'set tone to casual'")
+    print("• Profile: 'show profile' or 'update injuries: new info'\n")
 
-while True:
-    try:
-        user_input = input("🗣️ You: ").strip()
-        if user_input.lower() == "done":
-            break
+    while True:
+        try:
+            user_input = input("🗣️ You: ").strip()
+            if user_input.lower() == "done":
+                break
 
-        intent = detect_intent(user_input)
-        print(f"Detected intent: {intent}")
-        date_logged = extract_date(user_input)
+            intent = detect_intent(user_input)
+            print(f"Detected intent: {intent}")
+            date_logged = extract_date(user_input)
 
-        # Prepare context for Grok (only recent conversation)
-        context = "\n".join([f"User: {h['input']}\nApp: {h['response']}" for h in conversation_history[-2:]])
-        if context:
-            context = f"Previous conversation:\n{context}\n\n"
+            # Prepare context for Grok (only recent conversation)
+            context = "\n".join([f"User: {h['input']}\nApp: {h['response']}" for h in conversation_history[-2:]])
+            if context:
+                context = f"Previous conversation:\n{context}\n\n"
 
-        if intent == "log":
-            entry = call_grok_parse(user_input, date_logged)
-            if entry:
-                insert_log(entry, date_logged)
-                response = f"Logged your {entry['exercise_name']} workout!"
-            else:
-                # Only use API if local parsing fails
-                prompt = f"{context}Parse this workout log into JSON format with keys: exercise_name, sets (int), reps (string), weight (string with units), notes (string). Input: {user_input}"
-                api_response = get_grok_response(prompt, include_context=False)
-                try:
-                    # Try to extract JSON from response
-                    import json
-                    entry = json.loads(api_response.strip())
+            if intent == "log":
+                entry = call_grok_parse(user_input, date_logged)
+                if entry:
                     insert_log(entry, date_logged)
-                    response = f"Logged your workout via API parsing!"
-                except:
-                    response = "⚠️ Couldn't parse workout. Try format like '3x10@200lbs bench press'"
+                    response = f"Logged your {entry['exercise_name']} workout!"
+                else:
+                    # Only use API if local parsing fails
+                    prompt = f"{context}Parse this workout log into JSON format with keys: exercise_name, sets (int), reps (string), weight (string with units), notes (string). Input: {user_input}"
+                    api_response = get_grok_response(prompt, include_context=False)
+                    try:
+                        # Try to extract JSON from response
+                        import json
+                        entry = json.loads(api_response.strip())
+                        insert_log(entry, date_logged)
+                        response = f"Logged your workout via API parsing!"
+                    except:
+                        response = "⚠️ Couldn't parse workout. Try format like '3x10@200lbs bench press'"
 
-        elif intent == "query":
-            show_logs(user_input)
-            response = "Displayed your logs."
+            elif intent == "query":
+                show_logs(user_input)
+                response = "Displayed your logs."
 
-        elif intent == "progression":
-            # Capture the actual Grok response for follow-up context
-            cursor.execute('''
-                SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
-                FROM weekly_plan 
-                ORDER BY exercise_name
-            ''')
-            planned_exercises = cursor.fetchall()
+            elif intent == "progression":
+                # Capture the actual Grok response for follow-up context
+                cursor.execute('''
+                    SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
+                    FROM weekly_plan 
+                    ORDER BY exercise_name
+                ''')
+                planned_exercises = cursor.fetchall()
 
-            if not planned_exercises:
-                print("⚠️ No weekly plan found. Set up your plan first!")
-                response = "No weekly plan found."
-            else:
-                # Format weekly plan for Grok
-                plan_text = ""
-                for exercise_name, sets, reps, weight in planned_exercises:
-                    plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+                if not planned_exercises:
+                    print("⚠️ No weekly plan found. Set up your plan first!")
+                    response = "No weekly plan found."
+                else:
+                    # Format weekly plan for Grok
+                    plan_text = ""
+                    for exercise_name, sets, reps, weight in planned_exercises:
+                        plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
 
-                # Create progression prompt for Grok
-                progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
+                    # Create progression prompt for Grok
+                    progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
 
 {plan_text}
 
@@ -1089,45 +1091,45 @@ Please provide progression suggestions in this exact format:
 
 Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
 
-                print("\n🤖 Getting AI-powered progression suggestions...")
+                    print("\n🤖 Getting AI-powered progression suggestions...")
+                    
+                    # Get Grok's response and store it
+                    grok_response = get_grok_response(progression_prompt, include_context=True)
+                    print(f"\n{grok_response}")
+                    response = grok_response  # Store full response for follow-up context
+
+            elif intent == "profile":
+                response = update_profile(user_input)
+                print(f"🤖 Profile: {response}")
                 
-                # Get Grok's response and store it
-                grok_response = get_grok_response(progression_prompt, include_context=True)
-                print(f"\n{grok_response}")
-                response = grok_response  # Store full response for follow-up context
+            elif intent == "preferences":
+                response = manage_preferences(user_input)
+                print(f"🤖 Preferences: {response}")
+                
+            elif intent == "background":
+                response = manage_background(user_input)
+                print(f"🤖 Profile: {response}")
+                
+            elif intent == "weekly_plan":
+                response = manage_weekly_plan(user_input)
+                print(f"🤖 Plan: {response}")
 
-        elif intent == "profile":
-            response = update_profile(user_input)
-            print(f"🤖 Profile: {response}")
-            
-        elif intent == "preferences":
-            response = manage_preferences(user_input)
-            print(f"🤖 Preferences: {response}")
-            
-        elif intent == "background":
-            response = manage_background(user_input)
-            print(f"🤖 Profile: {response}")
-            
-        elif intent == "weekly_plan":
-            response = manage_weekly_plan(user_input)
-            print(f"🤖 Plan: {response}")
+            elif intent == "follow-up":
+                prompt = f"{context}Respond as a personal trainer to this follow-up question: {user_input}"
+                response = get_grok_response(prompt)
+                print(f"🤖 Trainer: {response}")
 
-        elif intent == "follow-up":
-            prompt = f"{context}Respond as a personal trainer to this follow-up question: {user_input}"
-            response = get_grok_response(prompt)
-            print(f"🤖 Trainer: {response}")
+            else:
+                prompt = f"{context}Respond naturally as a personal trainer to: {user_input}"
+                response = get_grok_response(prompt)
+                print(f"🤖 Trainer: {response}")
 
-        else:
-            prompt = f"{context}Respond naturally as a personal trainer to: {user_input}"
-            response = get_grok_response(prompt)
-            print(f"🤖 Trainer: {response}")
+            # Store conversation for context
+            conversation_history.append({"input": user_input, "response": response[:100]})  # Truncate long responses
+            if len(conversation_history) > 3:
+                conversation_history.pop(0)
 
-        # Store conversation for context
-        conversation_history.append({"input": user_input, "response": response[:100]})  # Truncate long responses
-        if len(conversation_history) > 3:
-            conversation_history.pop(0)
+        except Exception as e:
+            print(f"⚠️ Error: {str(e)}")
 
-    except Exception as e:
-        print(f"⚠️ Error: {str(e)}")
-
-conn.close()
+    conn.close()
