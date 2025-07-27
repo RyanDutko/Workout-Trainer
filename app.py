@@ -68,7 +68,8 @@ def get_user_background():
                past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
                available_equipment, time_per_session, preferred_training_style,
                motivation_factors, biggest_challenges, past_program_experience,
-               nutrition_approach, sleep_quality, stress_level, additional_notes
+               nutrition_approach, sleep_quality, stress_level, additional_notes,
+               chat_response_style, chat_progression_detail
         FROM user_background WHERE user_id = 1
     """)
     result = cursor.fetchone()
@@ -86,7 +87,8 @@ def get_user_background():
             'motivation_factors': result[17], 'biggest_challenges': result[18],
             'past_program_experience': result[19], 'nutrition_approach': result[20],
             'sleep_quality': result[21], 'stress_level': result[22],
-            'additional_notes': result[23]
+            'additional_notes': result[23], 'chat_response_style': result[24],
+            'chat_progression_detail': result[25]
         }
     return None
 
@@ -272,33 +274,83 @@ def progression():
 
 @app.route('/get_progression', methods=['POST'])
 def get_progression():
-    """API endpoint for progression suggestions"""
+    """API endpoint for detailed progression analysis"""
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Get weekly plan organized by day
     cursor.execute('''
-        SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
+        SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
         FROM weekly_plan 
-        ORDER BY exercise_name
+        ORDER BY 
+            CASE day_of_week 
+                WHEN 'monday' THEN 1 
+                WHEN 'tuesday' THEN 2 
+                WHEN 'wednesday' THEN 3 
+                WHEN 'thursday' THEN 4 
+                WHEN 'friday' THEN 5 
+                WHEN 'saturday' THEN 6 
+                WHEN 'sunday' THEN 7 
+            END, exercise_order
     ''')
-    planned_exercises = cursor.fetchall()
+    weekly_plan = cursor.fetchall()
+    
+    # Get recent performance data
+    cursor.execute('''
+        SELECT exercise_name, sets, reps, weight, date_logged, notes
+        FROM workouts 
+        WHERE date_logged >= date('now', '-30 days')
+        ORDER BY date_logged DESC
+    ''')
+    recent_workouts = cursor.fetchall()
+    
     conn.close()
 
-    if not planned_exercises:
+    if not weekly_plan:
         return jsonify({'error': 'No weekly plan found. Set up your plan first!'})
 
-    # Format weekly plan for Grok
+    # Build comprehensive context for analysis
+    plan_by_day = {}
+    for day, exercise, sets, reps, weight, order in weekly_plan:
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+        plan_by_day[day].append(f"{exercise}: {sets}x{reps}@{weight}")
+    
     plan_text = ""
-    for exercise_name, sets, reps, weight in planned_exercises:
-        plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+    for day, exercises in plan_by_day.items():
+        plan_text += f"\n{day.title()}:\n"
+        for exercise in exercises:
+            plan_text += f"  • {exercise}\n"
+    
+    # Build recent performance summary
+    performance_text = "\nRecent Performance (last 30 days):\n"
+    exercise_performance = {}
+    for exercise, sets, reps, weight, date, notes in recent_workouts:
+        if exercise not in exercise_performance:
+            exercise_performance[exercise] = []
+        exercise_performance[exercise].append(f"{sets}x{reps}@{weight} ({date}) {notes}")
+    
+    for exercise, performances in exercise_performance.items():
+        performance_text += f"\n{exercise}:\n"
+        for perf in performances[:3]:  # Show last 3 sessions
+            performance_text += f"  - {perf}\n"
 
-    progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
+    progression_prompt = f"""You are reviewing a user's workout program during their rest day. Take a thoughtful, analytical approach as if you're a coach reviewing their progress.
 
-{plan_text}
+CURRENT WEEKLY PLAN:{plan_text}
 
-Please provide progression suggestions in this exact format:
-• exercise name: specific suggestion
+{performance_text}
 
-Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
+Provide a comprehensive progression analysis that includes:
+
+1. **PROGRAM OVERVIEW**: Brief summary of what's working well in their current split
+2. **OBSERVATIONS**: Patterns you notice from recent performance data
+3. **READY FOR PROGRESSION**: Exercises where they should increase weight/reps next week
+4. **MONITOR CLOSELY**: Exercises to keep same weight but watch for readiness signs
+5. **TECHNIQUE FOCUS**: Exercises where form/consistency should be priority
+6. **UPCOMING CHANGES**: Longer-term adjustments to consider
+
+Be conversational but analytical. Show that you've reviewed their data thoroughly. Include specific numbers and reasoning. Format with clear sections using markdown headers."""
 
     response = get_grok_response(progression_prompt, include_context=True)
     return jsonify({'suggestions': response})
@@ -465,7 +517,54 @@ def chat():
     """Chat with AI trainer"""
     if request.method == 'POST':
         user_message = request.form['message']
-        response = get_grok_response(f"Respond as a personal trainer to: {user_message}")
+        
+        # Build enhanced context for chat
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get user's chat preferences
+        cursor.execute("""
+            SELECT chat_response_style, chat_progression_detail 
+            FROM user_background WHERE user_id = 1
+        """)
+        chat_prefs = cursor.fetchone()
+        if chat_prefs:
+            response_style, progression_detail = chat_prefs
+        else:
+            response_style = "exercise_by_exercise_breakdown"
+            progression_detail = "include_specific_progression_notes_per_exercise"
+        
+        # Enhanced prompt for better responses
+        chat_prompt = f"""You are a personal trainer having a conversation with your client. 
+
+IMPORTANT RESPONSE GUIDELINES:
+- Response Style: {response_style}
+- Progression Detail: {progression_detail}
+- When showing workout plans, break down each exercise individually with progression notes
+- Be conversational but detailed
+- If asked about specific days, show exercise-by-exercise breakdown with progression suggestions for each
+- Always consider their recent performance when giving progression advice
+
+User Question: {user_message}
+
+RESPONSE FORMAT for workout plan questions:
+If they ask about a specific day's plan, format like this:
+
+**Monday Workout Plan:**
+
+**Exercise 1: [Exercise Name]**
+- Current: [sets]x[reps]@[weight] 
+- Progression Note: [specific advice for this exercise based on recent performance]
+
+**Exercise 2: [Exercise Name]**
+- Current: [sets]x[reps]@[weight]
+- Progression Note: [specific advice for this exercise based on recent performance]
+
+Continue this format for all exercises in that day."""
+
+        conn.close()
+        
+        response = get_grok_response(chat_prompt, include_context=True)
         return jsonify({'response': response})
     
     return render_template('chat.html')

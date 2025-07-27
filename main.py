@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS user_background (
     sleep_quality TEXT,
     stress_level TEXT,
     additional_notes TEXT,
+    chat_response_style TEXT DEFAULT 'exercise_by_exercise_breakdown',
+    chat_progression_detail TEXT DEFAULT 'include_specific_progression_notes_per_exercise',
     onboarding_completed BOOLEAN DEFAULT FALSE,
     created_date TEXT,
     updated_date TEXT
@@ -132,6 +134,17 @@ try:
 except sqlite3.OperationalError:
     pass
 
+# Add chat-specific preference columns
+try:
+    cursor.execute('ALTER TABLE user_background ADD COLUMN chat_response_style TEXT DEFAULT "exercise_by_exercise_breakdown"')
+except sqlite3.OperationalError:
+    pass
+
+try:
+    cursor.execute('ALTER TABLE user_background ADD COLUMN chat_progression_detail TEXT DEFAULT "include_specific_progression_notes_per_exercise"')
+except sqlite3.OperationalError:
+    pass
+
 conn.commit()
 
 # Fuzzy match for typo tolerance
@@ -158,7 +171,8 @@ def get_user_background():
                past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
                available_equipment, time_per_session, preferred_training_style,
                motivation_factors, biggest_challenges, past_program_experience,
-               nutrition_approach, sleep_quality, stress_level, additional_notes
+               nutrition_approach, sleep_quality, stress_level, additional_notes,
+               chat_response_style, chat_progression_detail
         FROM user_background WHERE user_id = 1
     """)
     result = cursor.fetchone()
@@ -175,7 +189,8 @@ def get_user_background():
             'motivation_factors': result[17], 'biggest_challenges': result[18],
             'past_program_experience': result[19], 'nutrition_approach': result[20],
             'sleep_quality': result[21], 'stress_level': result[22],
-            'additional_notes': result[23]
+            'additional_notes': result[23], 'chat_response_style': result[24],
+            'chat_progression_detail': result[25]
         }
     return None
 
@@ -188,7 +203,8 @@ def update_background_field(field_name, value):
         'medical_conditions', 'training_frequency', 'available_equipment',
         'time_per_session', 'preferred_training_style', 'motivation_factors',
         'biggest_challenges', 'past_program_experience', 'nutrition_approach',
-        'sleep_quality', 'stress_level', 'additional_notes'
+        'sleep_quality', 'stress_level', 'additional_notes', 'chat_response_style',
+        'chat_progression_detail'
     ]
 
     if field_name in valid_fields:
