@@ -328,15 +328,40 @@ def history():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT exercise_name, sets, reps, weight, date_logged, notes 
+        SELECT exercise_name, sets, reps, weight, date_logged, notes, id 
         FROM workouts 
         ORDER BY date_logged DESC 
-        LIMIT 50
+        LIMIT 100
     """)
     workouts = cursor.fetchall()
     conn.close()
     
     return render_template('history.html', workouts=workouts)
+
+@app.route('/delete_workout', methods=['POST'])
+def delete_workout():
+    """Delete a specific workout"""
+    try:
+        data = request.get_json()
+        workout_id = data.get('workout_id')
+        
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'No workout ID provided'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM workouts WHERE id = ?", (workout_id,))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_plan/<date>')
 def get_plan_for_date(date):
