@@ -560,6 +560,35 @@ def get_grok_response(prompt, include_context=True):
         goal, weekly_split, preferences = get_user_profile()
         context_info = f"\nUser Profile - Goal: {goal}, Weekly Split: {weekly_split}"
 
+        # Add complete weekly plan for context
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+        weekly_plan = cursor.fetchall()
+        if weekly_plan:
+            context_info += "\n\nComplete Weekly Plan:\n"
+            current_day = ""
+            for row in weekly_plan:
+                day, exercise, sets, reps, weight, order = row
+                if day != current_day:
+                    context_info += f"{day.title()}: "
+                    current_day = day
+                else:
+                    context_info += ", "
+                context_info += f"{exercise} {sets}x{reps}@{weight}"
+            context_info += "\n"
+
         # Add recent workouts for context
         cursor.execute("SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10")
         recent_workouts = cursor.fetchall()
