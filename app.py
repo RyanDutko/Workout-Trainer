@@ -10,11 +10,145 @@ import os
 sys.argv = ['app.py']  # Override sys.argv to prevent main.py console execution
 
 from main import (
-    get_user_profile, get_weekly_plan, get_user_background, get_grok_preferences,
-    manage_weekly_plan, manage_background, manage_preferences, call_grok_parse,
-    insert_log, extract_date, get_grok_response, is_onboarding_complete,
-    run_onboarding, update_background_field
+    call_grok_parse, get_grok_response, update_background_field
 )
+
+# Create Flask-specific database functions to avoid threading issues
+def get_db_connection():
+    """Create a new database connection for each request"""
+    conn = sqlite3.connect('workout_logs.db')
+    return conn
+
+def get_user_profile():
+    """Get user profile with Flask-safe database connection"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT goal, weekly_split, preferences FROM users WHERE id = 1")
+    result = cursor.fetchone()
+    conn.close()
+    return result if result else ("", "", "")
+
+def get_weekly_plan(day=None):
+    """Get weekly plan with Flask-safe database connection"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if day:
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
+            FROM weekly_plan 
+            WHERE day_of_week = ?
+            ORDER BY exercise_order
+        ''', (day.lower(),))
+    else:
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+    result = cursor.fetchall()
+    conn.close()
+    return result
+
+def get_user_background():
+    """Get user background with Flask-safe database connection"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT age, gender, height, current_weight, fitness_level, years_training, 
+               primary_goal, secondary_goals, injuries_history, current_limitations,
+               past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
+               available_equipment, time_per_session, preferred_training_style,
+               motivation_factors, biggest_challenges, past_program_experience,
+               nutrition_approach, sleep_quality, stress_level, additional_notes
+        FROM user_background WHERE user_id = 1
+    """)
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return {
+            'age': result[0], 'gender': result[1], 'height': result[2], 
+            'current_weight': result[3], 'fitness_level': result[4], 
+            'years_training': result[5], 'primary_goal': result[6],
+            'secondary_goals': result[7], 'injuries_history': result[8],
+            'current_limitations': result[9], 'past_weight_loss': result[10],
+            'past_weight_gain': result[11], 'medical_conditions': result[12],
+            'training_frequency': result[13], 'available_equipment': result[14],
+            'time_per_session': result[15], 'preferred_training_style': result[16],
+            'motivation_factors': result[17], 'biggest_challenges': result[18],
+            'past_program_experience': result[19], 'nutrition_approach': result[20],
+            'sleep_quality': result[21], 'stress_level': result[22],
+            'additional_notes': result[23]
+        }
+    return None
+
+def get_grok_preferences():
+    """Get Grok preferences with Flask-safe database connection"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level 
+        FROM users WHERE id = 1
+    """)
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        return {
+            'tone': result[0],
+            'detail_level': result[1], 
+            'format': result[2],
+            'units': result[3],
+            'communication_style': result[4],
+            'technical_level': result[5]
+        }
+    return {
+        'tone': 'motivational',
+        'detail_level': 'concise', 
+        'format': 'bullet_points',
+        'units': 'lbs',
+        'communication_style': 'encouraging',
+        'technical_level': 'beginner'
+    }
+
+def is_onboarding_complete():
+    """Check if onboarding is complete with Flask-safe database connection"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT onboarding_completed FROM user_background WHERE user_id = 1")
+    result = cursor.fetchone()
+    conn.close()
+    return result and result[0]
+
+def insert_log(entry, date_logged):
+    """Insert workout log with Flask-safe database connection"""
+    if not entry:
+        return
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (
+        entry.get("exercise_name", "Unknown"),
+        entry.get("sets", 1),
+        entry.get("reps", "Unknown"),
+        entry.get("weight", "0"),
+        date_logged.isoformat(),
+        entry.get("notes", "")
+    ))
+    
+    conn.commit()
+    conn.close()
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -27,7 +161,7 @@ def dashboard():
     today_plan = get_weekly_plan(today)
     
     # Get recent workouts
-    conn = sqlite3.connect('workout_logs.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT exercise_name, sets, reps, weight, date_logged 
@@ -97,11 +231,25 @@ def add_to_plan():
     reps = request.form['reps']
     weight = request.form['weight']
     
-    # Use existing function
-    plan_input = f"set {day} {exercise} {sets}x{reps}@{weight}"
-    result = manage_weekly_plan(plan_input)
-    flash(result, 'success')
+    # Add directly to database
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
+    # Get current exercise count for this day to set order
+    cursor.execute('SELECT COUNT(*) FROM weekly_plan WHERE day_of_week = ?', (day.lower(),))
+    order = cursor.fetchone()[0] + 1
+    
+    cursor.execute('''
+        INSERT OR REPLACE INTO weekly_plan 
+        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_date, updated_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (day.lower(), exercise.lower(), sets, reps, weight, order, "", 
+          datetime.date.today().isoformat(), datetime.date.today().isoformat()))
+    
+    conn.commit()
+    conn.close()
+    
+    flash(f"✅ Added to {day}: {exercise} {sets}x{reps}@{weight}", 'success')
     return redirect(url_for('weekly_plan'))
 
 @app.route('/progression')
@@ -112,7 +260,7 @@ def progression():
 @app.route('/get_progression', methods=['POST'])
 def get_progression():
     """API endpoint for progression suggestions"""
-    conn = sqlite3.connect('workout_logs.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
@@ -169,7 +317,7 @@ def update_profile():
 @app.route('/history')
 def history():
     """View workout history"""
-    conn = sqlite3.connect('workout_logs.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT exercise_name, sets, reps, weight, date_logged, notes 
