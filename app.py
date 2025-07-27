@@ -203,6 +203,9 @@ def log_workout():
     today_name = datetime.date.today().strftime('%A').lower()
     today_plan = get_weekly_plan(today_name)
     
+    # Debug: print what we're getting
+    print(f"DEBUG: Today is {today_name}, plan: {today_plan}")
+    
     return render_template('log_workout.html', today=today_date, today_plan=today_plan, today_name=today_name.title())
 
 @app.route('/weekly_plan')

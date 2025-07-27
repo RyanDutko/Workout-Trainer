@@ -43,6 +43,8 @@
                 <h6><i class="fas fa-calendar-day me-2"></i>{{ today_name }}'s Plan</h6>
             </div>
             <div class="card-body">
+                <!-- Debug: Show what we received -->
+                <p class="small text-muted">Debug: Plan length: {{ today_plan|length if today_plan else 'None' }}</p>
                 {% if today_plan %}
                     <div class="row">
                         {% for exercise in today_plan %}
