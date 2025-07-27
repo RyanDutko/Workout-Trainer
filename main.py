@@ -534,8 +534,33 @@ def call_grok_parse(text, date_logged):
     if not text or not text.strip():
         return None
 
-    # Get user preferences for context
-    preferences = get_grok_preferences()
+    # Get user preferences for context - Flask-safe version
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level 
+        FROM users WHERE id = 1
+    """)
+    result = cursor.fetchone()
+    if result:
+        preferences = {
+            'tone': result[0],
+            'detail_level': result[1], 
+            'format': result[2],
+            'units': result[3],
+            'communication_style': result[4],
+            'technical_level': result[5]
+        }
+    else:
+        preferences = {
+            'tone': 'motivational',
+            'detail_level': 'concise', 
+            'format': 'bullet_points',
+            'units': 'lbs',
+            'communication_style': 'encouraging',
+            'technical_level': 'beginner'
+        }
+    conn.close()
 
     parse_prompt = f"""Parse this workout description into structured data:
 "{text}"
@@ -557,6 +582,66 @@ For bodyweight exercises, ALWAYS use "bodyweight" as the weight.
 Handle exercises without explicit weight by defaulting to "bodyweight".
 Be flexible with natural language but always return valid JSON.
 """
+
+    try:
+        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        response = client.chat.completions.create(
+            model="grok-4-0709",
+            messages=[
+                {"role": "system", "content": "You are a workout parser. Return only valid JSON."},
+                {"role": "user", "content": parse_prompt}
+            ],
+            temperature=0.1
+        )
+        
+        # Try to parse the JSON response
+        import json
+        result = response.choices[0].message.content.strip()
+        
+        # Remove any markdown formatting if present
+        if result.startswith('```json'):
+            result = result[7:]
+        if result.endswith('```'):
+            result = result[:-3]
+        
+        entry = json.loads(result)
+        return entry
+        
+    except Exception as e:
+        print(f"⚠️ Grok parsing failed: {str(e)}")
+        
+        # Fallback to local regex parsing
+        pattern = r'(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.+)'
+        match = re.search(pattern, text.lower())
+        
+        if match:
+            sets, reps, weight, unit, exercise = match.groups()
+            if not unit:
+                unit = "lbs"
+            
+            return {
+                "exercise_name": exercise.strip(),
+                "sets": int(sets),
+                "reps": reps,
+                "weight": f"{weight}{unit}",
+                "notes": ""
+            }
+        
+        # Try bodyweight exercise pattern
+        bodyweight_pattern = r'(\d+)x(\d+|\d+-\d+)\s*(.+)'
+        bodyweight_match = re.search(bodyweight_pattern, text.lower())
+        
+        if bodyweight_match:
+            sets, reps, exercise = bodyweight_match.groups()
+            return {
+                "exercise_name": exercise.strip(),
+                "sets": int(sets),
+                "reps": reps,
+                "weight": "bodyweight",
+                "notes": ""
+            }
+        
+        return None
 
 # Insert workout log into database with progression tracking
 def insert_log(entry, date_logged):
