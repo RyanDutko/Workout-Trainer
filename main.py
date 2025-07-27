@@ -44,6 +44,21 @@ CREATE TABLE IF NOT EXISTS exercise_progression (
 )
 ''')
 
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS weekly_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_of_week TEXT,
+    exercise_name TEXT,
+    target_sets INTEGER,
+    target_reps TEXT,
+    target_weight TEXT,
+    exercise_order INTEGER,
+    notes TEXT,
+    created_date TEXT,
+    updated_date TEXT
+)
+''')
+
 cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
 conn.commit()
 
@@ -62,8 +77,86 @@ def extract_weight_number(weight_str):
     match = re.search(r'(\d+\.?\d*)', str(weight_str))
     return float(match.group(1)) if match else 0
 
+# Set or update weekly workout plan
+def set_weekly_plan(day, exercise_name, sets, reps, weight, order=1, notes=""):
+    cursor.execute('''
+        INSERT OR REPLACE INTO weekly_plan 
+        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_date, updated_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (day.lower(), exercise_name.lower(), sets, reps, weight, order, notes, 
+          datetime.date.today().isoformat(), datetime.date.today().isoformat()))
+    conn.commit()
+    print(f"✅ Added to weekly plan: {day} - {exercise_name} {sets}x{reps}@{weight}")
+
+# Get weekly plan for a specific day
+def get_weekly_plan(day=None):
+    if day:
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
+            FROM weekly_plan 
+            WHERE day_of_week = ?
+            ORDER BY exercise_order
+        ''', (day.lower(),))
+    else:
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+    return cursor.fetchall()
+
+# Update baseline when actual performance exceeds plan
+def update_baseline_if_exceeded(exercise_name, actual_sets, actual_reps, actual_weight):
+    # Get current baseline for this exercise from weekly plan
+    cursor.execute('''
+        SELECT target_sets, target_reps, target_weight, day_of_week, exercise_order, notes
+        FROM weekly_plan 
+        WHERE exercise_name = ?
+    ''', (exercise_name.lower(),))
+    
+    baseline = cursor.fetchone()
+    if not baseline:
+        return False
+    
+    target_sets, target_reps, target_weight, day, order, notes = baseline
+    
+    # Extract numeric values for comparison
+    actual_weight_num = extract_weight_number(actual_weight)
+    target_weight_num = extract_weight_number(target_weight)
+    
+    actual_reps_num = int(actual_reps.split('-')[0]) if '-' in str(actual_reps) else int(actual_reps)
+    target_reps_num = int(target_reps.split('-')[0]) if '-' in str(target_reps) else int(target_reps)
+    
+    # Check if actual performance exceeds baseline
+    exceeded = False
+    if actual_weight_num > target_weight_num:
+        exceeded = True
+    elif actual_weight_num == target_weight_num and actual_sets >= target_sets and actual_reps_num >= target_reps_num:
+        exceeded = True
+    
+    if exceeded:
+        # Update the baseline in weekly plan
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET target_sets = ?, target_reps = ?, target_weight = ?, updated_date = ?
+            WHERE exercise_name = ?
+        ''', (actual_sets, actual_reps, actual_weight, datetime.date.today().isoformat(), exercise_name.lower()))
+        conn.commit()
+        print(f"🔥 BASELINE UPDATED: {exercise_name} baseline updated to {actual_sets}x{actual_reps}@{actual_weight}")
+        return True
+    
+    return False
+
 # Update exercise progression tracking
-def update_progression_data(exercise_name, sets, reps, weight):
     weight_num = extract_weight_number(weight)
     reps_num = int(reps.split('-')[0]) if '-' in str(reps) else int(reps)
 
@@ -131,8 +224,10 @@ def detect_intent(user_input):
         return "log"
     if any(x in text for x in ["ready to log", "here is my log", "full log"]):
         return "log-prep"
-    if any(x in text for x in ["set my goal", "weekly split", "my split", "what's my goal", "show my goal"]) or is_similar(text, "show my split", 0.8):
+    if any(x in text for x in ["set my goal", "what's my goal", "show my goal"]):
         return "profile"
+    if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan"]) or is_similar(text, "show my split", 0.8):
+        return "weekly_plan"
     if any(x in text for x in ["why", "don't want", "dont want", "replace", "instead", "swap", "another workout"]) and conversation_history:
         return "follow-up"
     if any(x in text for x in ["progression", "suggest", "tips", "next"]) and not any(x in text for x in ["replace", "another workout"]):
@@ -200,6 +295,14 @@ def insert_log(entry, date_logged):
                 single_entry.get("reps", "Unknown"),
                 single_entry.get("weight", "0")
             )
+            
+            # Check if this exceeds baseline and update if so
+            update_baseline_if_exceeded(
+                single_entry.get("exercise_name", "Unknown"),
+                single_entry.get("sets", 1),
+                single_entry.get("reps", "Unknown"),
+                single_entry.get("weight", "0")
+            )
 
             print(f"✅ Logged: {single_entry['exercise_name']} - {single_entry['sets']}x{single_entry['reps']}@{single_entry['weight']} on {date_logged}")
     else:
@@ -222,10 +325,71 @@ def insert_log(entry, date_logged):
             entry.get("reps", "Unknown"),
             entry.get("weight", "0")
         )
+        
+        # Check if this exceeds baseline and update if so
+        update_baseline_if_exceeded(
+            entry.get("exercise_name", "Unknown"),
+            entry.get("sets", 1),
+            entry.get("reps", "Unknown"),
+            entry.get("weight", "0")
+        )
 
         print(f"✅ Logged: {entry['exercise_name']} - {entry['sets']}x{entry['reps']}@{entry['weight']} on {date_logged}")
 
     conn.commit()
+
+# Manage weekly workout plan
+def manage_weekly_plan(user_input):
+    text = user_input.lower()
+    
+    # Parse plan setting commands like "set monday leg press 3x12@180lbs"
+    plan_pattern = r'set (\w+) (.+?) (\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
+    match = re.search(plan_pattern, text)
+    
+    if match:
+        day, exercise, sets, reps, weight, unit = match.groups()
+        if not unit:
+            unit = "lbs"
+        weight_with_unit = f"{weight}{unit}"
+        
+        # Get current exercise count for this day to set order
+        cursor.execute('SELECT COUNT(*) FROM weekly_plan WHERE day_of_week = ?', (day,))
+        order = cursor.fetchone()[0] + 1
+        
+        set_weekly_plan(day, exercise, int(sets), reps, weight_with_unit, order)
+        return f"Added to {day}: {exercise} {sets}x{reps}@{weight_with_unit}"
+    
+    # Show weekly plan
+    if "show" in text and ("plan" in text or "split" in text):
+        plan = get_weekly_plan()
+        if not plan:
+            return "No weekly plan set. Use format: 'set monday leg press 3x12@180lbs'"
+        
+        result = "\n📋 Weekly Workout Plan:\n"
+        current_day = ""
+        for row in plan:
+            day, exercise, sets, reps, weight, order, notes = row
+            if day != current_day:
+                result += f"\n🔸 {day.title()}:\n"
+                current_day = day
+            result += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+        return result
+    
+    # Show specific day
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in days:
+        if day in text and "show" in text:
+            plan = get_weekly_plan(day)
+            if not plan:
+                return f"No plan set for {day.title()}"
+            
+            result = f"\n🔸 {day.title()} Plan:\n"
+            for row in plan:
+                _, exercise, sets, reps, weight, order, notes = row
+                result += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+            return result
+    
+    return "Use 'set monday leg press 3x12@180lbs' or 'show weekly plan'"
 
 # Update or show user profile
 def update_profile(user_input):
@@ -387,8 +551,12 @@ def get_progression_tips(user_input):
 # Store last 3 interactions for context
 conversation_history = []
 
-print("\n💪 Enhanced Personal Trainer: Log workouts, view history, or ask for tips. Type 'done' to exit.")
-print("Example: '3x10@200 bench press' or 'Show last 7 days' or 'Suggest progression for squats'\n")
+print("\n💪 Enhanced Personal Trainer: Log workouts, manage weekly plan, view history, or ask for tips. Type 'done' to exit.")
+print("Examples:")
+print("• Log: '3x10@200 bench press'")
+print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
+print("• History: 'show last 7 days'")
+print("• Tips: 'suggest progression for squats'\n")
 
 while True:
     try:
@@ -434,6 +602,10 @@ while True:
         elif intent == "profile":
             response = update_profile(user_input)
             print(f"🤖 Profile: {response}")
+            
+        elif intent == "weekly_plan":
+            response = manage_weekly_plan(user_input)
+            print(f"🤖 Plan: {response}")
 
         elif intent == "follow-up":
             prompt = f"{context}Respond as a personal trainer to this follow-up question: {user_input}"
