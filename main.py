@@ -28,7 +28,13 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     goal TEXT,
     weekly_split TEXT,
-    preferences TEXT
+    preferences TEXT,
+    grok_tone TEXT DEFAULT 'motivational',
+    grok_detail_level TEXT DEFAULT 'concise',
+    grok_format TEXT DEFAULT 'bullet_points',
+    preferred_units TEXT DEFAULT 'lbs',
+    communication_style TEXT DEFAULT 'encouraging',
+    technical_level TEXT DEFAULT 'beginner'
 )
 ''')
 
@@ -71,6 +77,58 @@ def get_user_profile():
     cursor.execute("SELECT goal, weekly_split, preferences FROM users WHERE id = 1")
     result = cursor.fetchone()
     return result if result else ("", "", "")
+
+# Get Grok preferences for personalized responses
+def get_grok_preferences():
+    cursor.execute("""
+        SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level 
+        FROM users WHERE id = 1
+    """)
+    result = cursor.fetchone()
+    if result:
+        return {
+            'tone': result[0],
+            'detail_level': result[1], 
+            'format': result[2],
+            'units': result[3],
+            'communication_style': result[4],
+            'technical_level': result[5]
+        }
+    return {
+        'tone': 'motivational',
+        'detail_level': 'concise', 
+        'format': 'bullet_points',
+        'units': 'lbs',
+        'communication_style': 'encouraging',
+        'technical_level': 'beginner'
+    }
+
+# Update Grok preferences
+def update_grok_preferences(preference_type, value):
+    valid_preferences = {
+        'tone': ['motivational', 'analytical', 'casual', 'professional'],
+        'detail_level': ['brief', 'concise', 'detailed', 'comprehensive'],
+        'format': ['bullet_points', 'paragraphs', 'numbered_lists', 'conversational'],
+        'units': ['lbs', 'kg'],
+        'communication_style': ['encouraging', 'direct', 'technical', 'friendly'],
+        'technical_level': ['beginner', 'intermediate', 'advanced', 'expert']
+    }
+    
+    if preference_type in valid_preferences and value in valid_preferences[preference_type]:
+        column_map = {
+            'tone': 'grok_tone',
+            'detail_level': 'grok_detail_level', 
+            'format': 'grok_format',
+            'units': 'preferred_units',
+            'communication_style': 'communication_style',
+            'technical_level': 'technical_level'
+        }
+        
+        cursor.execute(f'UPDATE users SET {column_map[preference_type]} = ? WHERE id = 1', (value,))
+        conn.commit()
+        return f"✅ Updated {preference_type} to '{value}'"
+    else:
+        return f"⚠️ Invalid {preference_type}. Options: {', '.join(valid_preferences.get(preference_type, []))}"
 
 # Extract numeric weight for progression calculations
 def extract_weight_number(weight_str):
@@ -227,6 +285,10 @@ def detect_intent(user_input):
         return "weekly_plan"
     if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan", "set monday", "set tuesday", "set wednesday", "set thursday", "set friday", "set saturday", "set sunday"]) or is_similar(text, "show my split", 0.8):
         return "weekly_plan"
+    
+    # Check for preference management
+    if any(x in text for x in ["grok preference", "response style", "communication style", "set tone", "set format", "show preferences", "update preferences"]):
+        return "preferences"
     
     # Then check for regular workout logging
     if any(x in text for x in ["did", "sets", "reps", "lbs", "kg", "press", "squat", "kettlebell"]) and re.search(r'\d+', text) and not any(day in text for day in ["monday:", "tuesday:", "wednesday:", "thursday:", "friday:", "saturday:", "sunday:"]):
@@ -514,6 +576,41 @@ def update_profile(user_input):
         return f"Your weekly split is: {split if split else 'not set'}"
     return "⚠️ Couldn't update profile. Try 'set my goal to build muscle' or 'my weekly split is Monday: chest'."
 
+# Manage Grok preferences
+def manage_preferences(user_input):
+    text = user_input.lower()
+    
+    # Show current preferences
+    if "show preferences" in text or "show my preferences" in text:
+        prefs = get_grok_preferences()
+        result = "\n🤖 Your Grok Response Preferences:\n"
+        result += f"• Tone: {prefs['tone']}\n"
+        result += f"• Detail Level: {prefs['detail_level']}\n" 
+        result += f"• Format: {prefs['format']}\n"
+        result += f"• Units: {prefs['units']}\n"
+        result += f"• Communication Style: {prefs['communication_style']}\n"
+        result += f"• Technical Level: {prefs['technical_level']}\n"
+        result += "\nTo update: 'set tone to casual' or 'set format to paragraphs'"
+        return result
+    
+    # Update specific preferences
+    preference_patterns = {
+        'tone': r'set tone to (\w+)',
+        'detail_level': r'set detail level to (\w+)',
+        'format': r'set format to (\w+)',
+        'units': r'set units to (\w+)',
+        'communication_style': r'set communication style to (\w+)',
+        'technical_level': r'set technical level to (\w+)'
+    }
+    
+    for pref_type, pattern in preference_patterns.items():
+        match = re.search(pattern, text)
+        if match:
+            value = match.group(1)
+            return update_grok_preferences(pref_type, value)
+    
+    return "⚠️ Try 'show preferences' or 'set tone to casual'"
+
 # Retrieve logs for display
 def show_logs(user_input):
     today = datetime.date.today()
@@ -558,7 +655,17 @@ def get_grok_response(prompt, include_context=True):
     if include_context:
         # Add user profile and recent workout context
         goal, weekly_split, preferences = get_user_profile()
+        grok_prefs = get_grok_preferences()
+        
+        # Build personalized context with preferences
         context_info = f"\nUser Profile - Goal: {goal}, Weekly Split: {weekly_split}"
+        context_info += f"\n\nResponse Style Preferences:"
+        context_info += f"\n- Tone: {grok_prefs['tone']}"
+        context_info += f"\n- Detail Level: {grok_prefs['detail_level']}"
+        context_info += f"\n- Format: {grok_prefs['format']}"
+        context_info += f"\n- Units: {grok_prefs['units']}"
+        context_info += f"\n- Communication Style: {grok_prefs['communication_style']}"
+        context_info += f"\n- Technical Level: {grok_prefs['technical_level']}"
 
         # Add complete weekly plan for context
         cursor.execute('''
@@ -652,7 +759,8 @@ print("• Log: '3x10@200 bench press'")
 print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
 print("• Bulk Upload: 'bulk upload plan' (for full 5-day schedule)")
 print("• History: 'show last 7 days'")
-print("• Tips: 'suggest progression for squats'\n")
+print("• Tips: 'suggest progression for squats'")
+print("• Preferences: 'show preferences' or 'set tone to casual'\n")
 
 while True:
     try:
@@ -729,6 +837,10 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
         elif intent == "profile":
             response = update_profile(user_input)
             print(f"🤖 Profile: {response}")
+            
+        elif intent == "preferences":
+            response = manage_preferences(user_input)
+            print(f"🤖 Preferences: {response}")
             
         elif intent == "weekly_plan":
             response = manage_weekly_plan(user_input)
