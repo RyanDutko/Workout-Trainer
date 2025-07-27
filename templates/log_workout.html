@@ -37,6 +37,31 @@
             </div>
         </div>
 
+        <!-- Today's Plan -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-calendar-day me-2"></i>{{ today_name }}'s Plan</h6>
+            </div>
+            <div class="card-body">
+                {% if today_plan %}
+                    <div class="row">
+                        {% for exercise in today_plan %}
+                            {% set day, exercise_name, sets, reps, weight, order, notes = exercise %}
+                            <div class="col-md-6 mb-2">
+                                <button class="btn btn-outline-success btn-sm w-100" onclick="fillPlanExercise('{{ sets }}x{{ reps }}@{{ weight }} {{ exercise_name }}')">
+                                    <strong>{{ exercise_name.title() }}</strong><br>
+                                    <small>{{ sets }}x{{ reps }} @ {{ weight }}</small>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <small class="text-muted">Click any exercise above to fill it in the log form</small>
+                {% else %}
+                    <p class="text-muted">No plan set for today. <a href="{{ url_for('weekly_plan') }}">Set up your weekly plan</a></p>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- Quick Log Examples -->
         <div class="card mt-4">
             <div class="card-header">
@@ -71,6 +96,10 @@
 <script>
 function fillExample(example) {
     document.getElementById('workout_text').value = example;
+}
+
+function fillPlanExercise(exercise) {
+    document.getElementById('workout_text').value = exercise;
 }
 </script>
 {% endblock %}

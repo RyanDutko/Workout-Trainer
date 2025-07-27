@@ -871,15 +871,63 @@ def show_logs(user_input):
     if not displayed:
         print("⚠️ No logs found for the specified period.")
 
-# Get response from Grok API with context
+# Get response from Grok API with context - Flask-safe version
 def get_grok_response(prompt, include_context=True):
     client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
     if include_context:
-        # Add user profile and recent workout context
-        goal, weekly_split, preferences = get_user_profile()
-        grok_prefs = get_grok_preferences()
-        user_background = get_user_background()
+        # Use Flask-safe database connections
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get user profile
+        cursor.execute("SELECT goal, weekly_split, preferences FROM users WHERE id = 1")
+        profile_result = cursor.fetchone()
+        goal, weekly_split, preferences = profile_result if profile_result else ("", "", "")
+        
+        # Get Grok preferences
+        cursor.execute("""
+            SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level 
+            FROM users WHERE id = 1
+        """)
+        pref_result = cursor.fetchone()
+        if pref_result:
+            grok_prefs = {
+                'tone': pref_result[0], 'detail_level': pref_result[1], 'format': pref_result[2],
+                'units': pref_result[3], 'communication_style': pref_result[4], 'technical_level': pref_result[5]
+            }
+        else:
+            grok_prefs = {'tone': 'motivational', 'detail_level': 'concise', 'format': 'bullet_points',
+                         'units': 'lbs', 'communication_style': 'encouraging', 'technical_level': 'beginner'}
+        
+        # Get user background
+        cursor.execute("""
+            SELECT age, gender, height, current_weight, fitness_level, years_training, 
+                   primary_goal, secondary_goals, injuries_history, current_limitations,
+                   past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
+                   available_equipment, time_per_session, preferred_training_style,
+                   motivation_factors, biggest_challenges, past_program_experience,
+                   nutrition_approach, sleep_quality, stress_level, additional_notes
+            FROM user_background WHERE user_id = 1
+        """)
+        bg_result = cursor.fetchone()
+        if bg_result:
+            user_background = {
+                'age': bg_result[0], 'gender': bg_result[1], 'height': bg_result[2], 
+                'current_weight': bg_result[3], 'fitness_level': bg_result[4], 
+                'years_training': bg_result[5], 'primary_goal': bg_result[6],
+                'secondary_goals': bg_result[7], 'injuries_history': bg_result[8],
+                'current_limitations': bg_result[9], 'past_weight_loss': bg_result[10],
+                'past_weight_gain': bg_result[11], 'medical_conditions': bg_result[12],
+                'training_frequency': bg_result[13], 'available_equipment': bg_result[14],
+                'time_per_session': bg_result[15], 'preferred_training_style': bg_result[16],
+                'motivation_factors': bg_result[17], 'biggest_challenges': bg_result[18],
+                'past_program_experience': bg_result[19], 'nutrition_approach': bg_result[20],
+                'sleep_quality': bg_result[21], 'stress_level': bg_result[22],
+                'additional_notes': bg_result[23]
+            }
+        else:
+            user_background = None
         
         # Build personalized context with preferences
         context_info = f"\nUser Profile - Goal: {goal}, Weekly Split: {weekly_split}"
@@ -954,6 +1002,7 @@ def get_grok_response(prompt, include_context=True):
         if recent_workouts:
             context_info += "\nRecent Workouts: " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts[:5]])
 
+        conn.close()  # Close the connection
         prompt = context_info + "\n\n" + prompt
 
     try:

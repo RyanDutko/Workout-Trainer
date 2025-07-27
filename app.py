@@ -198,9 +198,12 @@ def log_workout():
         
         return redirect(url_for('dashboard'))
     
-    # Pass current date to template
-    today = datetime.date.today().isoformat()
-    return render_template('log_workout.html', today=today)
+    # Pass current date and today's plan to template
+    today_date = datetime.date.today().isoformat()
+    today_name = datetime.date.today().strftime('%A').lower()
+    today_plan = get_weekly_plan(today_name)
+    
+    return render_template('log_workout.html', today=today_date, today_plan=today_plan, today_name=today_name.title())
 
 @app.route('/weekly_plan')
 def weekly_plan():
