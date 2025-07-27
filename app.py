@@ -228,6 +228,11 @@ def weekly_plan():
             'notes': notes
         })
     
+    # Debug: print what we found
+    print(f"DEBUG: Weekly plan loaded, found {len(plan)} total exercises")
+    for day, exercises in plan_by_day.items():
+        print(f"DEBUG: {day}: {len(exercises)} exercises - {[ex['exercise'] for ex in exercises]}")
+    
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/add_to_plan', methods=['POST'])
@@ -395,6 +400,62 @@ def log_multi_workout():
             insert_log(exercise, date_logged)
         
         return jsonify({'success': True, 'message': f'Logged {len(exercises)} exercises'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/reorder_exercise', methods=['POST'])
+def reorder_exercise():
+    """Reorder exercises in weekly plan"""
+    try:
+        data = request.get_json()
+        day = data.get('day')
+        exercise = data.get('exercise')
+        direction = data.get('direction')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get current exercise order
+        cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', 
+                      (day.lower(), exercise.lower()))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        current_order = result[0]
+        
+        if direction == 'up':
+            new_order = current_order - 1
+            # Find exercise to swap with
+            cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ? AND exercise_order = ?',
+                          (day.lower(), new_order))
+            swap_exercise = cursor.fetchone()
+            
+            if swap_exercise:
+                # Swap orders
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
+                              (new_order, day.lower(), exercise.lower()))
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
+                              (current_order, day.lower(), swap_exercise[0]))
+        
+        elif direction == 'down':
+            new_order = current_order + 1
+            # Find exercise to swap with
+            cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ? AND exercise_order = ?',
+                          (day.lower(), new_order))
+            swap_exercise = cursor.fetchone()
+            
+            if swap_exercise:
+                # Swap orders
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
+                              (new_order, day.lower(), exercise.lower()))
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
+                              (current_order, day.lower(), swap_exercise[0]))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

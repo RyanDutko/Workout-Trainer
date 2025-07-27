@@ -190,7 +190,7 @@ def update_background_field(field_name, value):
         'biggest_challenges', 'past_program_experience', 'nutrition_approach',
         'sleep_quality', 'stress_level', 'additional_notes'
     ]
-    
+
     if field_name in valid_fields:
         # Check if background record exists
         cursor.execute("SELECT id FROM user_background WHERE user_id = 1")
@@ -209,7 +209,7 @@ def update_background_field(field_name, value):
 def run_onboarding():
     print("\n🎯 Welcome to your Personal Trainer! Let's build your profile for personalized recommendations.")
     print("This will take about 5 minutes and helps me give you better progression advice.\n")
-    
+
     questions = [
         ("age", "What's your age?", "e.g., 28"),
         ("gender", "Gender? (male/female/prefer not to say)", ""),
@@ -234,19 +234,19 @@ def run_onboarding():
         ("stress_level", "Current stress level? (low/moderate/high)", ""),
         ("additional_notes", "Anything else I should know?", "e.g., motivation tips, specific concerns")
     ]
-    
+
     # Create initial record
     cursor.execute('''INSERT OR REPLACE INTO user_background 
                      (user_id, created_date, updated_date) VALUES (1, ?, ?)''',
                    (datetime.date.today().isoformat(), datetime.date.today().isoformat()))
-    
+
     for field, question, example in questions:
         while True:
             if example:
                 response = input(f"📝 {question} ({example}): ").strip()
             else:
                 response = input(f"📝 {question}: ").strip()
-            
+
             if response or field in ['secondary_goals', 'injuries_history', 'current_limitations', 
                                    'past_weight_loss', 'medical_conditions', 'additional_notes']:
                 if not response:
@@ -255,11 +255,11 @@ def run_onboarding():
                 break
             else:
                 print("⚠️ This field is required, please provide an answer.")
-    
+
     # Mark onboarding as complete
     cursor.execute('UPDATE user_background SET onboarding_completed = TRUE WHERE user_id = 1')
     conn.commit()
-    
+
     print("\n🎉 Profile complete! Now I can give you much better personalized advice.")
     print("You can update any info later with commands like 'update injuries: new knee pain'")
     print("Let's start by setting up your weekly plan!\n")
@@ -267,13 +267,13 @@ def run_onboarding():
 # Manage background updates
 def manage_background(user_input):
     text = user_input.lower()
-    
+
     # Show background
     if "show background" in text or "show profile" in text or "my profile" in text:
         background = get_user_background()
         if not background:
             return "No background profile found. Run onboarding first!"
-        
+
         result = "\n👤 Your Background Profile:\n"
         for key, value in background.items():
             if value and value != "None":
@@ -281,7 +281,7 @@ def manage_background(user_input):
                 result += f"• {formatted_key}: {value}\n"
         result += "\nTo update: 'update injuries: new info' or 'update age: 29'"
         return result
-    
+
     # Update background field
     update_pattern = r'update (\w+):\s*(.+)'
     match = re.search(update_pattern, text)
@@ -289,12 +289,12 @@ def manage_background(user_input):
         field_name = match.group(1).lower()
         value = match.group(2).strip()
         return update_background_field(field_name, value)
-    
+
     # Restart onboarding
     if "restart onboarding" in text or "redo profile" in text:
         run_onboarding()
         return "Onboarding completed!"
-    
+
     return "⚠️ Try 'show profile', 'update injuries: new info', or 'restart onboarding'"
 
 # Get Grok preferences for personalized responses
@@ -332,7 +332,7 @@ def update_grok_preferences(preference_type, value):
         'communication_style': ['encouraging', 'direct', 'technical', 'friendly'],
         'technical_level': ['beginner', 'intermediate', 'advanced', 'expert']
     }
-    
+
     if preference_type in valid_preferences and value in valid_preferences[preference_type]:
         column_map = {
             'tone': 'grok_tone',
@@ -342,7 +342,7 @@ def update_grok_preferences(preference_type, value):
             'communication_style': 'communication_style',
             'technical_level': 'technical_level'
         }
-        
+
         cursor.execute(f'UPDATE users SET {column_map[preference_type]} = ? WHERE id = 1', (value,))
         conn.commit()
         return f"✅ Updated {preference_type} to '{value}'"
@@ -399,27 +399,27 @@ def update_baseline_if_exceeded(exercise_name, actual_sets, actual_reps, actual_
         FROM weekly_plan 
         WHERE exercise_name = ?
     ''', (exercise_name.lower(),))
-    
+
     baseline = cursor.fetchone()
     if not baseline:
         return False
-    
+
     target_sets, target_reps, target_weight, day, order, notes = baseline
-    
+
     # Extract numeric values for comparison
     actual_weight_num = extract_weight_number(actual_weight)
     target_weight_num = extract_weight_number(target_weight)
-    
+
     actual_reps_num = int(actual_reps.split('-')[0]) if '-' in str(actual_reps) else int(actual_reps)
     target_reps_num = int(target_reps.split('-')[0]) if '-' in str(target_reps) else int(target_reps)
-    
+
     # Check if actual performance exceeds baseline
     exceeded = False
     if actual_weight_num > target_weight_num:
         exceeded = True
     elif actual_weight_num == target_weight_num and actual_sets >= target_sets and actual_reps_num >= target_reps_num:
         exceeded = True
-    
+
     if exceeded:
         # Update the baseline in weekly plan
         cursor.execute('''
@@ -430,7 +430,7 @@ def update_baseline_if_exceeded(exercise_name, actual_sets, actual_reps, actual_
         conn.commit()
         print(f"🔥 BASELINE UPDATED: {exercise_name} baseline updated to {actual_sets}x{actual_reps}@{actual_weight}")
         return True
-    
+
     return False
 
 # Update exercise progression tracking
@@ -498,21 +498,21 @@ def extract_date(user_input):
 # Detect intent of user input
 def detect_intent(user_input):
     text = user_input.lower()
-    
+
     # Check for bulk upload or weekly plan commands first (before general workout logging)
     if any(x in text for x in ["bulk upload", "upload plan", "full plan"]) or (("monday:" in text or "tuesday:" in text or "wednesday:" in text or "thursday:" in text or "friday:" in text or "saturday:" in text or "sunday:" in text) and "," in text):
         return "weekly_plan"
     if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan", "set monday", "set tuesday", "set wednesday", "set thursday", "set friday", "set saturday", "set sunday"]) or is_similar(text, "show my split", 0.8):
         return "weekly_plan"
-    
+
     # Check for background/profile management
     if any(x in text for x in ["show profile", "show background", "my profile", "update injuries", "update age", "update weight", "restart onboarding", "redo profile"]) or text.startswith("update "):
         return "background"
-    
+
     # Check for preference management
     if any(x in text for x in ["grok preference", "response style", "communication style", "set tone", "set format", "show preferences", "update preferences"]):
         return "preferences"
-    
+
     # Then check for regular workout logging
     if any(x in text for x in ["did", "sets", "reps", "lbs", "kg", "press", "squat", "kettlebell"]) and re.search(r'\d+', text) and not any(day in text for day in ["monday:", "tuesday:", "wednesday:", "thursday:", "friday:", "saturday:", "sunday:"]):
         return "log"
@@ -529,44 +529,34 @@ def detect_intent(user_input):
     return "chat"
 
 # Enhanced regex parser for workouts
-def call_grok_parse(user_input, date_logged):
-    # Extract notes first (everything after the first comma)
-    notes = ""
-    if "," in user_input:
-        parts = user_input.split(",", 1)
-        user_input = parts[0].strip()
-        notes = parts[1].strip()
-    
-    # Try multiple patterns
-    patterns = [
-        r'(\d+)x(\d+(?:-\d+)*|\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3x10-8-6@200lbs bench press or 3x10@200lbs bench press
-        r'(\d+)\s*sets?\s*of\s*(\d+(?:-\d+)*|\d+)\s*(?:reps?\s*)?(?:at|@)\s*(\d+\.?\d*)(lbs|kg)?\s*(.*)',  # 3 sets of 10-8-6 at 200lbs bench press
-        r'(.*?)\s*(\d+)x(\d+(?:-\d+)*|\d+)@(\d+\.?\d*)(lbs|kg)?',  # bench press 3x10-8-6@200lbs
-    ]
+def call_grok_parse(text, date_logged):
+    """Parse workout text using Grok API"""
+    if not text or not text.strip():
+        return None
 
-    for pattern in patterns:
-        match = re.search(pattern, user_input.lower().strip())
-        if match:
-            if len(match.groups()) == 5:  # Standard format
-                sets, reps, weight, unit, exercise = match.groups()
-            else:  # Alternative format
-                exercise, sets, reps, weight, unit = match.groups()
+    # Get user preferences for context
+    preferences = get_grok_preferences()
 
-            if not unit: 
-                unit = "lbs"
+    parse_prompt = f"""Parse this workout description into structured data:
+"{text}"
 
-            exercise_name = exercise.strip()
-            if not exercise_name:
-                exercise_name = "Unknown Exercise"
+Return ONLY a JSON object with these exact keys:
+- exercise_name: string (normalized, lowercase)
+- sets: integer 
+- reps: string (can be range like "8-12" or single number)
+- weight: string (include unit like "200lbs" or "bodyweight")
+- notes: string (any additional comments about performance, difficulty, etc.)
 
-            return {
-                "exercise_name": exercise_name,
-                "sets": int(sets),
-                "reps": reps,  # This can now be "10" or "10-8-6"
-                "weight": f"{weight}{unit}",
-                "notes": notes
-            }
-    return None
+Examples:
+"3x10@200lbs bench press" → {{"exercise_name": "bench press", "sets": 3, "reps": "10", "weight": "200lbs", "notes": ""}}
+"did 4x8@225 squats, felt easy" → {{"exercise_name": "squats", "sets": 4, "reps": "8", "weight": "225lbs", "notes": "felt easy"}}
+"hanging leg lifts 3x12" → {{"exercise_name": "hanging leg lifts", "sets": 3, "reps": "12", "weight": "bodyweight", "notes": ""}}
+"elevated pushups 3x15 bodyweight" → {{"exercise_name": "elevated pushups", "sets": 3, "reps": "15", "weight": "bodyweight", "notes": ""}}
+
+For bodyweight exercises, ALWAYS use "bodyweight" as the weight.
+Handle exercises without explicit weight by defaulting to "bodyweight".
+Be flexible with natural language but always return valid JSON.
+"""
 
 # Insert workout log into database with progression tracking
 def insert_log(entry, date_logged):
@@ -594,7 +584,7 @@ def insert_log(entry, date_logged):
                 single_entry.get("reps", "Unknown"),
                 single_entry.get("weight", "0")
             )
-            
+
             # Check if this exceeds baseline and update if so
             update_baseline_if_exceeded(
                 single_entry.get("exercise_name", "Unknown"),
@@ -624,7 +614,7 @@ def insert_log(entry, date_logged):
             entry.get("reps", "Unknown"),
             entry.get("weight", "0")
         )
-        
+
         # Check if this exceeds baseline and update if so
         update_baseline_if_exceeded(
             entry.get("exercise_name", "Unknown"),
@@ -644,119 +634,119 @@ def bulk_upload_plan():
     print("DAY: exercise1 3x12@180lbs, exercise2 4x8@200lbs, ...")
     print("Example: monday: leg press 3x12@180lbs, squats 4x8@225lbs")
     print("Type 'done' when finished, 'cancel' to abort\n")
-    
+
     days_data = {}
-    
+
     while True:
         line = input("Enter day plan: ").strip()
         if line.lower() == 'done':
             break
         if line.lower() == 'cancel':
             return "Upload cancelled."
-        
+
         # Parse format: "monday: exercise1 3x12@180lbs, exercise2 4x8@200lbs"
         if ':' not in line:
             print("⚠️ Format should be 'day: exercise 3x12@180lbs, exercise2 4x8@200lbs'")
             continue
-            
+
         day_part, exercises_part = line.split(':', 1)
         day = day_part.strip().lower()
-        
+
         if day not in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
             print("⚠️ Please use valid day names (monday, tuesday, etc.)")
             continue
-        
+
         # Clear existing plan for this day
         cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ?', (day,))
-        
+
         exercises = [ex.strip() for ex in exercises_part.split(',')]
         order = 1
-        
+
         for exercise_text in exercises:
             # Parse each exercise: "leg press 3x12@180lbs"
             pattern = r'(.+?)\s+(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
             match = re.search(pattern, exercise_text.strip())
-            
+
             if match:
                 exercise_name, sets, reps, weight, unit = match.groups()
                 if not unit:
                     unit = "lbs"
                 weight_with_unit = f"{weight}{unit}"
-                
+
                 set_weekly_plan(day, exercise_name.strip(), int(sets), reps, weight_with_unit, order)
                 order += 1
             else:
                 print(f"⚠️ Couldn't parse: {exercise_text}")
-        
+
         print(f"✅ Added {order-1} exercises for {day.title()}")
-    
+
     conn.commit()
     return f"✅ Bulk upload complete! Use 'show weekly plan' to review."
 
 # Manage weekly workout plan
 def manage_weekly_plan(user_input):
     text = user_input.lower()
-    
+
     # Check for bulk upload request
     if "bulk upload" in text or "upload plan" in text or "full plan" in text:
         return bulk_upload_plan()
-    
+
     # Check for direct day format like "monday: exercise1 3x12@180lbs, exercise2 4x8@200lbs"
     day_direct_pattern = r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday):\s*(.+)'
     day_match = re.search(day_direct_pattern, text)
     if day_match:
         day, exercises_part = day_match.groups()
-        
+
         # Clear existing plan for this day
         cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ?', (day,))
-        
+
         exercises = [ex.strip() for ex in exercises_part.split(',')]
         order = 1
         added_count = 0
-        
+
         for exercise_text in exercises:
             # Parse each exercise: "leg press 3x12@180lbs"
             pattern = r'(.+?)\s+(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)\s*(lbs|kg)?'
             match = re.search(pattern, exercise_text.strip())
-            
+
             if match:
                 exercise_name, sets, reps, weight, unit = match.groups()
                 if not unit:
                     unit = "lbs"
                 weight_with_unit = f"{weight}{unit}"
-                
+
                 set_weekly_plan(day, exercise_name.strip(), int(sets), reps, weight_with_unit, order)
                 order += 1
                 added_count += 1
             else:
                 print(f"⚠️ Couldn't parse: {exercise_text}")
-        
+
         conn.commit()
         return f"✅ Added {added_count} exercises to {day.title()}!"
-    
+
     # Parse plan setting commands like "set monday leg press 3x12@180lbs"
     plan_pattern = r'set (\w+) (.+?) (\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?'
     match = re.search(plan_pattern, text)
-    
+
     if match:
         day, exercise, sets, reps, weight, unit = match.groups()
         if not unit:
             unit = "lbs"
         weight_with_unit = f"{weight}{unit}"
-        
+
         # Get current exercise count for this day to set order
         cursor.execute('SELECT COUNT(*) FROM weekly_plan WHERE day_of_week = ?', (day,))
         order = cursor.fetchone()[0] + 1
-        
+
         set_weekly_plan(day, exercise, int(sets), reps, weight_with_unit, order)
         return f"Added to {day}: {exercise} {sets}x{reps}@{weight_with_unit}"
-    
+
     # Show weekly plan
     if "show" in text and ("plan" in text or "split" in text):
         plan = get_weekly_plan()
         if not plan:
             return "No weekly plan set. Use format: 'set monday leg press 3x12@180lbs'"
-        
+
         result = "\n📋 Weekly Workout Plan:\n"
         current_day = ""
         for row in plan:
@@ -766,7 +756,7 @@ def manage_weekly_plan(user_input):
                 current_day = day
             result += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
         return result
-    
+
     # Show specific day
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     for day in days:
@@ -774,13 +764,13 @@ def manage_weekly_plan(user_input):
             plan = get_weekly_plan(day)
             if not plan:
                 return f"No plan set for {day.title()}"
-            
+
             result = f"\n🔸 {day.title()} Plan:\n"
             for row in plan:
                 _, exercise, sets, reps, weight, order, notes = row
                 result += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
             return result
-    
+
     return "Use 'set monday leg press 3x12@180lbs' or 'show weekly plan'"
 
 # Update or show user profile
@@ -809,7 +799,7 @@ def update_profile(user_input):
 # Manage Grok preferences
 def manage_preferences(user_input):
     text = user_input.lower()
-    
+
     # Show current preferences
     if "show preferences" in text or "show my preferences" in text:
         prefs = get_grok_preferences()
@@ -822,7 +812,7 @@ def manage_preferences(user_input):
         result += f"• Technical Level: {prefs['technical_level']}\n"
         result += "\nTo update: 'set tone to casual' or 'set format to paragraphs'"
         return result
-    
+
     # Update specific preferences
     preference_patterns = {
         'tone': r'set tone to (\w+)',
@@ -832,13 +822,13 @@ def manage_preferences(user_input):
         'communication_style': r'set communication style to (\w+)',
         'technical_level': r'set technical level to (\w+)'
     }
-    
+
     for pref_type, pattern in preference_patterns.items():
         match = re.search(pattern, text)
         if match:
             value = match.group(1)
             return update_grok_preferences(pref_type, value)
-    
+
     return "⚠️ Try 'show preferences' or 'set tone to casual'"
 
 # Retrieve logs for display
@@ -886,12 +876,12 @@ def get_grok_response(prompt, include_context=True):
         # Use Flask-safe database connections
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get user profile
         cursor.execute("SELECT goal, weekly_split, preferences FROM users WHERE id = 1")
         profile_result = cursor.fetchone()
         goal, weekly_split, preferences = profile_result if profile_result else ("", "", "")
-        
+
         # Get Grok preferences
         cursor.execute("""
             SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level 
@@ -906,7 +896,7 @@ def get_grok_response(prompt, include_context=True):
         else:
             grok_prefs = {'tone': 'motivational', 'detail_level': 'concise', 'format': 'bullet_points',
                          'units': 'lbs', 'communication_style': 'encouraging', 'technical_level': 'beginner'}
-        
+
         # Get user background
         cursor.execute("""
             SELECT age, gender, height, current_weight, fitness_level, years_training, 
@@ -935,7 +925,7 @@ def get_grok_response(prompt, include_context=True):
             }
         else:
             user_background = None
-        
+
         # Build personalized context with preferences
         context_info = f"\nUser Profile - Goal: {goal}, Weekly Split: {weekly_split}"
         context_info += f"\n\nResponse Style Preferences:"
@@ -945,7 +935,7 @@ def get_grok_response(prompt, include_context=True):
         context_info += f"\n- Units: {grok_prefs['units']}"
         context_info += f"\n- Communication Style: {grok_prefs['communication_style']}"
         context_info += f"\n- Technical Level: {grok_prefs['technical_level']}"
-        
+
         # Add comprehensive user background for better context
         if user_background:
             context_info += f"\n\nUser Background & Training History:"
@@ -954,7 +944,7 @@ def get_grok_response(prompt, include_context=True):
             context_info += f"\n- Goals: {user_background['primary_goal']}"
             if user_background['secondary_goals'] and user_background['secondary_goals'] != "None":
                 context_info += f", {user_background['secondary_goals']}"
-            
+
             # Critical info for progression planning
             if user_background['injuries_history'] and user_background['injuries_history'] != "None":
                 context_info += f"\n- Injury History: {user_background['injuries_history']}"
@@ -964,11 +954,11 @@ def get_grok_response(prompt, include_context=True):
                 context_info += f"\n- Weight Loss History: {user_background['past_weight_loss']}"
             if user_background['medical_conditions'] and user_background['medical_conditions'] != "None":
                 context_info += f"\n- Medical Conditions: {user_background['medical_conditions']}"
-            
+
             context_info += f"\n- Training Frequency: {user_background['training_frequency']}"
             context_info += f"\n- Equipment: {user_background['available_equipment']}"
             context_info += f"\n- Session Length: {user_background['time_per_session']}"
-            
+
             if user_background['biggest_challenges'] and user_background['biggest_challenges'] != "None":
                 context_info += f"\n- Challenges: {user_background['biggest_challenges']}"
             if user_background['past_program_experience'] and user_background['past_program_experience'] != "None":
@@ -1053,7 +1043,7 @@ Please provide progression suggestions in this exact format:
 Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
 
     print("\n🤖 Getting AI-powered progression suggestions...")
-    
+
     # Get Grok's response
     response = get_grok_response(progression_prompt, include_context=True)
     print(f"\n{response}")
@@ -1148,7 +1138,7 @@ Please provide progression suggestions in this exact format:
 Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
 
                     print("\n🤖 Getting AI-powered progression suggestions...")
-                    
+
                     # Get Grok's response and store it
                     grok_response = get_grok_response(progression_prompt, include_context=True)
                     print(f"\n{grok_response}")
@@ -1157,15 +1147,15 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
             elif intent == "profile":
                 response = update_profile(user_input)
                 print(f"🤖 Profile: {response}")
-                
+
             elif intent == "preferences":
                 response = manage_preferences(user_input)
                 print(f"🤖 Preferences: {response}")
-                
+
             elif intent == "background":
                 response = manage_background(user_input)
                 print(f"🤖 Profile: {response}")
-                
+
             elif intent == "weekly_plan":
                 response = manage_weekly_plan(user_input)
                 print(f"🤖 Plan: {response}")
