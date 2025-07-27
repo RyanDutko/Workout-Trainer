@@ -65,6 +65,40 @@ CREATE TABLE IF NOT EXISTS weekly_plan (
 )
 ''')
 
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS user_background (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER DEFAULT 1,
+    age INTEGER,
+    gender TEXT,
+    height TEXT,
+    current_weight TEXT,
+    fitness_level TEXT,
+    years_training INTEGER,
+    primary_goal TEXT,
+    secondary_goals TEXT,
+    injuries_history TEXT,
+    current_limitations TEXT,
+    past_weight_loss TEXT,
+    past_weight_gain TEXT,
+    medical_conditions TEXT,
+    training_frequency TEXT,
+    available_equipment TEXT,
+    time_per_session TEXT,
+    preferred_training_style TEXT,
+    motivation_factors TEXT,
+    biggest_challenges TEXT,
+    past_program_experience TEXT,
+    nutrition_approach TEXT,
+    sleep_quality TEXT,
+    stress_level TEXT,
+    additional_notes TEXT,
+    onboarding_completed BOOLEAN DEFAULT FALSE,
+    created_date TEXT,
+    updated_date TEXT
+)
+''')
+
 cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
 
 # Add missing Grok preference columns if they don't exist
@@ -109,6 +143,159 @@ def get_user_profile():
     cursor.execute("SELECT goal, weekly_split, preferences FROM users WHERE id = 1")
     result = cursor.fetchone()
     return result if result else ("", "", "")
+
+# Check if user has completed onboarding
+def is_onboarding_complete():
+    cursor.execute("SELECT onboarding_completed FROM user_background WHERE user_id = 1")
+    result = cursor.fetchone()
+    return result and result[0]
+
+# Get user background for context
+def get_user_background():
+    cursor.execute("""
+        SELECT age, gender, height, current_weight, fitness_level, years_training, 
+               primary_goal, secondary_goals, injuries_history, current_limitations,
+               past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
+               available_equipment, time_per_session, preferred_training_style,
+               motivation_factors, biggest_challenges, past_program_experience,
+               nutrition_approach, sleep_quality, stress_level, additional_notes
+        FROM user_background WHERE user_id = 1
+    """)
+    result = cursor.fetchone()
+    if result:
+        return {
+            'age': result[0], 'gender': result[1], 'height': result[2], 
+            'current_weight': result[3], 'fitness_level': result[4], 
+            'years_training': result[5], 'primary_goal': result[6],
+            'secondary_goals': result[7], 'injuries_history': result[8],
+            'current_limitations': result[9], 'past_weight_loss': result[10],
+            'past_weight_gain': result[11], 'medical_conditions': result[12],
+            'training_frequency': result[13], 'available_equipment': result[14],
+            'time_per_session': result[15], 'preferred_training_style': result[16],
+            'motivation_factors': result[17], 'biggest_challenges': result[18],
+            'past_program_experience': result[19], 'nutrition_approach': result[20],
+            'sleep_quality': result[21], 'stress_level': result[22],
+            'additional_notes': result[23]
+        }
+    return None
+
+# Update specific background field
+def update_background_field(field_name, value):
+    valid_fields = [
+        'age', 'gender', 'height', 'current_weight', 'fitness_level', 
+        'years_training', 'primary_goal', 'secondary_goals', 'injuries_history',
+        'current_limitations', 'past_weight_loss', 'past_weight_gain', 
+        'medical_conditions', 'training_frequency', 'available_equipment',
+        'time_per_session', 'preferred_training_style', 'motivation_factors',
+        'biggest_challenges', 'past_program_experience', 'nutrition_approach',
+        'sleep_quality', 'stress_level', 'additional_notes'
+    ]
+    
+    if field_name in valid_fields:
+        # Check if background record exists
+        cursor.execute("SELECT id FROM user_background WHERE user_id = 1")
+        if cursor.fetchone():
+            cursor.execute(f'UPDATE user_background SET {field_name} = ?, updated_date = ? WHERE user_id = 1', 
+                         (value, datetime.date.today().isoformat()))
+        else:
+            cursor.execute(f'''INSERT INTO user_background (user_id, {field_name}, created_date, updated_date)
+                             VALUES (1, ?, ?, ?)''', 
+                         (value, datetime.date.today().isoformat(), datetime.date.today().isoformat()))
+        conn.commit()
+        return f"✅ Updated {field_name.replace('_', ' ')}"
+    return f"⚠️ Invalid field: {field_name}"
+
+# Comprehensive onboarding flow
+def run_onboarding():
+    print("\n🎯 Welcome to your Personal Trainer! Let's build your profile for personalized recommendations.")
+    print("This will take about 5 minutes and helps me give you better progression advice.\n")
+    
+    questions = [
+        ("age", "What's your age?", "e.g., 28"),
+        ("gender", "Gender? (male/female/prefer not to say)", ""),
+        ("height", "Height?", "e.g., 5'10\" or 178cm"),
+        ("current_weight", "Current weight?", "e.g., 180lbs or 82kg"),
+        ("fitness_level", "Current fitness level? (beginner/intermediate/advanced)", ""),
+        ("years_training", "How many years have you been training?", "e.g., 2"),
+        ("primary_goal", "Primary fitness goal?", "e.g., build muscle, lose weight, strength"),
+        ("secondary_goals", "Any secondary goals?", "e.g., improve endurance, better posture"),
+        ("injuries_history", "Past injuries I should know about?", "e.g., lower back injury 2019, knee surgery"),
+        ("current_limitations", "Current physical limitations or pain?", "e.g., tight shoulders, can't squat deep"),
+        ("past_weight_loss", "Past weight loss efforts/results?", "e.g., lost 30lbs in 2020 with cardio"),
+        ("medical_conditions", "Any medical conditions affecting exercise?", "e.g., diabetes, high blood pressure"),
+        ("training_frequency", "How often do you want to train per week?", "e.g., 4-5 times"),
+        ("available_equipment", "Available equipment?", "e.g., full gym, home dumbbells, bodyweight only"),
+        ("time_per_session", "How long per workout session?", "e.g., 60-90 minutes"),
+        ("preferred_training_style", "Preferred training style?", "e.g., heavy compound lifts, high volume, functional"),
+        ("biggest_challenges", "Biggest fitness challenges?", "e.g., consistency, motivation, plateau"),
+        ("past_program_experience", "Programs you've tried before?", "e.g., Starting Strength, P90X, personal trainer"),
+        ("nutrition_approach", "Current nutrition approach?", "e.g., tracking macros, intuitive eating, keto"),
+        ("sleep_quality", "Sleep quality? (poor/fair/good/excellent)", ""),
+        ("stress_level", "Current stress level? (low/moderate/high)", ""),
+        ("additional_notes", "Anything else I should know?", "e.g., motivation tips, specific concerns")
+    ]
+    
+    # Create initial record
+    cursor.execute('''INSERT OR REPLACE INTO user_background 
+                     (user_id, created_date, updated_date) VALUES (1, ?, ?)''',
+                   (datetime.date.today().isoformat(), datetime.date.today().isoformat()))
+    
+    for field, question, example in questions:
+        while True:
+            if example:
+                response = input(f"📝 {question} ({example}): ").strip()
+            else:
+                response = input(f"📝 {question}: ").strip()
+            
+            if response or field in ['secondary_goals', 'injuries_history', 'current_limitations', 
+                                   'past_weight_loss', 'medical_conditions', 'additional_notes']:
+                if not response:
+                    response = "None"
+                update_background_field(field, response)
+                break
+            else:
+                print("⚠️ This field is required, please provide an answer.")
+    
+    # Mark onboarding as complete
+    cursor.execute('UPDATE user_background SET onboarding_completed = TRUE WHERE user_id = 1')
+    conn.commit()
+    
+    print("\n🎉 Profile complete! Now I can give you much better personalized advice.")
+    print("You can update any info later with commands like 'update injuries: new knee pain'")
+    print("Let's start by setting up your weekly plan!\n")
+
+# Manage background updates
+def manage_background(user_input):
+    text = user_input.lower()
+    
+    # Show background
+    if "show background" in text or "show profile" in text or "my profile" in text:
+        background = get_user_background()
+        if not background:
+            return "No background profile found. Run onboarding first!"
+        
+        result = "\n👤 Your Background Profile:\n"
+        for key, value in background.items():
+            if value and value != "None":
+                formatted_key = key.replace('_', ' ').title()
+                result += f"• {formatted_key}: {value}\n"
+        result += "\nTo update: 'update injuries: new info' or 'update age: 29'"
+        return result
+    
+    # Update background field
+    update_pattern = r'update (\w+):\s*(.+)'
+    match = re.search(update_pattern, text)
+    if match:
+        field_name = match.group(1).lower()
+        value = match.group(2).strip()
+        return update_background_field(field_name, value)
+    
+    # Restart onboarding
+    if "restart onboarding" in text or "redo profile" in text:
+        run_onboarding()
+        return "Onboarding completed!"
+    
+    return "⚠️ Try 'show profile', 'update injuries: new info', or 'restart onboarding'"
 
 # Get Grok preferences for personalized responses
 def get_grok_preferences():
@@ -317,6 +504,10 @@ def detect_intent(user_input):
         return "weekly_plan"
     if any(x in text for x in ["weekly split", "my split", "weekly plan", "set plan", "show plan", "set monday", "set tuesday", "set wednesday", "set thursday", "set friday", "set saturday", "set sunday"]) or is_similar(text, "show my split", 0.8):
         return "weekly_plan"
+    
+    # Check for background/profile management
+    if any(x in text for x in ["show profile", "show background", "my profile", "update injuries", "update age", "update weight", "restart onboarding", "redo profile"]) or text.startswith("update "):
+        return "background"
     
     # Check for preference management
     if any(x in text for x in ["grok preference", "response style", "communication style", "set tone", "set format", "show preferences", "update preferences"]):
@@ -688,6 +879,7 @@ def get_grok_response(prompt, include_context=True):
         # Add user profile and recent workout context
         goal, weekly_split, preferences = get_user_profile()
         grok_prefs = get_grok_preferences()
+        user_background = get_user_background()
         
         # Build personalized context with preferences
         context_info = f"\nUser Profile - Goal: {goal}, Weekly Split: {weekly_split}"
@@ -698,6 +890,34 @@ def get_grok_response(prompt, include_context=True):
         context_info += f"\n- Units: {grok_prefs['units']}"
         context_info += f"\n- Communication Style: {grok_prefs['communication_style']}"
         context_info += f"\n- Technical Level: {grok_prefs['technical_level']}"
+        
+        # Add comprehensive user background for better context
+        if user_background:
+            context_info += f"\n\nUser Background & Training History:"
+            context_info += f"\n- Age: {user_background['age']}, Gender: {user_background['gender']}"
+            context_info += f"\n- Fitness Level: {user_background['fitness_level']} ({user_background['years_training']} years training)"
+            context_info += f"\n- Goals: {user_background['primary_goal']}"
+            if user_background['secondary_goals'] and user_background['secondary_goals'] != "None":
+                context_info += f", {user_background['secondary_goals']}"
+            
+            # Critical info for progression planning
+            if user_background['injuries_history'] and user_background['injuries_history'] != "None":
+                context_info += f"\n- Injury History: {user_background['injuries_history']}"
+            if user_background['current_limitations'] and user_background['current_limitations'] != "None":
+                context_info += f"\n- Current Limitations: {user_background['current_limitations']}"
+            if user_background['past_weight_loss'] and user_background['past_weight_loss'] != "None":
+                context_info += f"\n- Weight Loss History: {user_background['past_weight_loss']}"
+            if user_background['medical_conditions'] and user_background['medical_conditions'] != "None":
+                context_info += f"\n- Medical Conditions: {user_background['medical_conditions']}"
+            
+            context_info += f"\n- Training Frequency: {user_background['training_frequency']}"
+            context_info += f"\n- Equipment: {user_background['available_equipment']}"
+            context_info += f"\n- Session Length: {user_background['time_per_session']}"
+            
+            if user_background['biggest_challenges'] and user_background['biggest_challenges'] != "None":
+                context_info += f"\n- Challenges: {user_background['biggest_challenges']}"
+            if user_background['past_program_experience'] and user_background['past_program_experience'] != "None":
+                context_info += f"\n- Past Programs: {user_background['past_program_experience']}"
 
         # Add complete weekly plan for context
         cursor.execute('''
@@ -785,6 +1005,15 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
 # Store last 3 interactions for context
 conversation_history = []
 
+# Check if user needs onboarding
+if not is_onboarding_complete():
+    print("\n🆕 First time setup detected!")
+    choice = input("Would you like to complete your profile for personalized recommendations? (y/n): ").lower().strip()
+    if choice in ['y', 'yes']:
+        run_onboarding()
+    else:
+        print("You can run onboarding later with 'restart onboarding'\n")
+
 print("\n💪 Enhanced Personal Trainer: Log workouts, manage weekly plan, view history, or ask for tips. Type 'done' to exit.")
 print("Examples:")
 print("• Log: '3x10@200 bench press'")
@@ -792,7 +1021,8 @@ print("• Plan: 'set monday leg press 3x12@180lbs' or 'show weekly plan'")
 print("• Bulk Upload: 'bulk upload plan' (for full 5-day schedule)")
 print("• History: 'show last 7 days'")
 print("• Tips: 'suggest progression for squats'")
-print("• Preferences: 'show preferences' or 'set tone to casual'\n")
+print("• Preferences: 'show preferences' or 'set tone to casual'")
+print("• Profile: 'show profile' or 'update injuries: new info'\n")
 
 while True:
     try:
@@ -873,6 +1103,10 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
         elif intent == "preferences":
             response = manage_preferences(user_input)
             print(f"🤖 Preferences: {response}")
+            
+        elif intent == "background":
+            response = manage_background(user_input)
+            print(f"🤖 Profile: {response}")
             
         elif intent == "weekly_plan":
             response = manage_weekly_plan(user_input)
