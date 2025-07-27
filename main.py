@@ -692,8 +692,39 @@ while True:
             response = "Displayed your logs."
 
         elif intent == "progression":
-            get_progression_tips(user_input)
-            response = "Provided progression suggestions."
+            # Capture the actual Grok response for follow-up context
+            cursor.execute('''
+                SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
+                FROM weekly_plan 
+                ORDER BY exercise_name
+            ''')
+            planned_exercises = cursor.fetchall()
+
+            if not planned_exercises:
+                print("⚠️ No weekly plan found. Set up your plan first!")
+                response = "No weekly plan found."
+            else:
+                # Format weekly plan for Grok
+                plan_text = ""
+                for exercise_name, sets, reps, weight in planned_exercises:
+                    plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+
+                # Create progression prompt for Grok
+                progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
+
+{plan_text}
+
+Please provide progression suggestions in this exact format:
+• exercise name: specific suggestion
+
+Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
+
+                print("\n🤖 Getting AI-powered progression suggestions...")
+                
+                # Get Grok's response and store it
+                grok_response = get_grok_response(progression_prompt, include_context=True)
+                print(f"\n{grok_response}")
+                response = grok_response  # Store full response for follow-up context
 
         elif intent == "profile":
             response = update_profile(user_input)
