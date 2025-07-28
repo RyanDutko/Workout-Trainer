@@ -178,21 +178,30 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         full_prompt = context_info + "\n\n" + prompt
 
         response = client.chat.completions.create(
-            model="grok-4-0709",
-            messages=[
-                {"role": "system", "content": """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
+                model="grok-4-0709",
+                messages=[
+                    {"role": "system", "content": """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
 
-IMPORTANT: Respond naturally and conversationally. Only reference the workout data if the user's question actually requires it.
+RESPONSE LENGTH GUIDELINES:
+- Greetings ("hello", "hi"): Very brief (1-2 sentences)
+- General questions ("what can you do"): Moderate length with bullet points
+- Historical data ("what did I do Friday"): Brief summary format
+- Progression tips: Use this specific format:
+  • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
+  • Exercise Name: specific actionable change
+  Then end with: "Ask for my reasoning on any of these progressions if you'd like more detail."
 
-- For greetings like "hello" or "hi", respond briefly and warmly without mentioning their workout data
-- For casual conversation, keep it natural and don't dump workout information unless relevant
-- For specific fitness questions like "what did I do last Friday" or "suggest progression", then use the workout context
-- Always respond in your characteristic Grok style - helpful but not overly verbose
-- Don't feel obligated to reference every piece of context data you have access to"""},
-                {"role": "user", "content": full_prompt}
-            ],
-            temperature=0.7
-        )
+CONTEXT USAGE:
+- Only reference workout data when the question actually requires it
+- For greetings and casual conversation, respond naturally without mentioning workout data
+- For specific fitness questions, use the provided context appropriately
+- Don't feel obligated to reference every piece of context data you have access to
+
+Always respond in your characteristic Grok style - helpful and conversational, but follow the length guidelines above."""},
+                    {"role": "user", "content": full_prompt}
+                ],
+                temperature=0.7
+            )
         return response.choices[0].message.content
     except Exception as e:
         print(f"⚠️ API error: {str(e)}")
