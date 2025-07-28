@@ -265,14 +265,35 @@ def log_workout():
 def history():
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM workouts ORDER BY date_logged DESC')
+    cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged, notes, id FROM workouts ORDER BY date_logged DESC')
     workouts = cursor.fetchall()
     conn.close()
     return render_template('history.html', workouts=workouts)
 
 @app.route('/weekly_plan')
 def weekly_plan():
-    return render_template('weekly_plan.html')
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight, order_index, notes FROM weekly_plan ORDER BY day_of_week, order_index')
+    plan_data = cursor.fetchall()
+    conn.close()
+    
+    # Organize plan by day
+    plan_by_day = {}
+    for row in plan_data:
+        day, exercise, sets, reps, weight, order, notes = row
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+        plan_by_day[day].append({
+            'exercise': exercise,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'order': order,
+            'notes': notes
+        })
+    
+    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/profile')
 def profile():
@@ -288,18 +309,75 @@ def analytics():
 
 @app.route('/add_to_plan', methods=['POST'])
 def add_to_plan():
-    # Handle adding exercises to weekly plan
-    return jsonify({'status': 'success'})
+    try:
+        data = request.form
+        day = data.get('day')
+        exercise = data.get('exercise')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get next order index for this day
+        cursor.execute('SELECT MAX(order_index) FROM weekly_plan WHERE day_of_week = ?', (day,))
+        result = cursor.fetchone()
+        order_index = (result[0] or 0) + 1
+        
+        cursor.execute('''
+            INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, order_index)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (day, exercise, sets, reps, weight, order_index))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/save_workout', methods=['POST'])
 def save_workout():
-    # Handle saving workouts
-    return jsonify({'status': 'success'})
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        notes = data.get('notes', '')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, reps, weight, notes))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/get_plan/<day>')
 def get_plan(day):
-    # Get plan for specific day
-    return jsonify({'exercises': []})
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT exercise_name, sets, reps, weight FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (day,))
+    exercises = cursor.fetchall()
+    conn.close()
+    
+    exercise_list = []
+    for exercise in exercises:
+        exercise_list.append({
+            'exercise_name': exercise[0],
+            'sets': exercise[1],
+            'reps': exercise[2],
+            'weight': exercise[3]
+        })
+    
+    return jsonify({'exercises': exercise_list, 'day_name': day.title()})
 
 if __name__ == '__main__':
     init_db()
