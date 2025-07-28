@@ -859,7 +859,6 @@ Recent workout data:"""
 
             conn.close()
 
-            ```python
             # Use fast response for history queries to keep them concise
             response = get_grok_response_fast(chat_prompt)
 
