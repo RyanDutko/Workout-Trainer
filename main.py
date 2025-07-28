@@ -720,7 +720,7 @@ def insert_log(entry, date_logged):
             update_baseline_if_exceeded(
                 single_entry.get("exercise_name", "Unknown"),
                 single_entry.get("sets", 1),
-```python
+                single_entry.get```python
                 single_entry.get("reps", "Unknown"),
                 single_entry.get("weight", "0")
             )
