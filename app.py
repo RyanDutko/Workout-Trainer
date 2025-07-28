@@ -914,7 +914,9 @@ def get_grok_response_fast(prompt):
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
         print(f"DEBUG: Making API call with prompt: '{prompt[:100]}...'")
-        
+        print(f"DEBUG: API Key exists: {bool(os.environ.get('GROK_API_KEY'))}")
+        print(f"DEBUG: API Key length: {len(os.environ.get('GROK_API_KEY', ''))}")
+
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
@@ -926,14 +928,22 @@ def get_grok_response_fast(prompt):
             timeout=15        # Increased timeout to 15 seconds
         )
 
+        print(f"DEBUG: Full response object: {response}")
+        print(f"DEBUG: Response choices: {response.choices}")
+        print(f"DEBUG: Response usage: {getattr(response, 'usage', 'No usage info')}")
+
         result = response.choices[0].message.content
         print(f"DEBUG: Fast API response: '{result}'")
         print(f"DEBUG: Response length: {len(result) if result else 0}")
+        print(f"DEBUG: Response type: {type(result)}")
 
         # Make sure we have a valid response
         if not result or not result.strip():
-            print("DEBUG: Empty response from fast API, returning fallback")
-            return "I found your question but couldn't process it properly. Could you try asking again?"
+            print("DEBUG: Empty response from fast API, trying fallback with workout data")
+            # Try to provide a basic response using the workout data in the prompt
+            if "recent workout data:" in prompt.lower():
+                return "Here's what I found in your recent workout history. Let me know if you need more specific details!"
+            return "I found your question but couldn't process it properly. Could you try asking that again?"
 
         return result.strip()
 
@@ -941,7 +951,7 @@ def get_grok_response_fast(prompt):
         print(f"⚠️ Fast API error: {str(e)}")
         print(f"DEBUG: Exception type: {type(e)}")
         print(f"DEBUG: Full exception details: {repr(e)}")
-        
+
         # Check if it's an API key issue
         if "api_key" in str(e).lower() or "unauthorized" in str(e).lower():
             return "I'm having authentication issues with my AI service. Please check if the API key is properly configured."
