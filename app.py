@@ -180,7 +180,7 @@ def dashboard():
     today_lowercase = today.lower()
     
     # Get today's plan - select specific columns to match template unpacking
-    cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (today_lowercase,))
+    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     today_plan = cursor.fetchall()
     
     # Get recent workouts
@@ -442,10 +442,8 @@ def get_plan(day):
     cursor.execute("PRAGMA table_info(weekly_plan)")
     columns = [col[1] for col in cursor.fetchall()]
     
-    if 'target_sets' in columns:
-        cursor.execute('SELECT exercise_name, target_sets, target_reps, target_weight FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (day,))
-    else:
-        cursor.execute('SELECT exercise_name, sets, reps, weight FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (day,))
+    # Always use the correct column names based on actual table structure
+    cursor.execute('SELECT exercise_name, target_sets, target_reps, target_weight FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (day,))
     
     exercises = cursor.fetchall()
     conn.close()
