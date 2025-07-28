@@ -17,6 +17,21 @@ from main import (
 def get_db_connection():
     """Create a new database connection for each request"""
     conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    # Ensure weight_logs table exists
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS weight_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER DEFAULT 1,
+            weight REAL NOT NULL,
+            date_logged DATE NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
     return conn
 
 def get_user_profile():
