@@ -197,7 +197,7 @@ CONTEXT USAGE:
 - For specific fitness questions, use the provided context appropriately
 - Don't feel obligated to reference every piece of context data you have access to
 
-Always respond in your characteristic Grok style - helpful and conversational, but follow the length guidelines above."""},
+STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here's what I think" - just dive into the answer."""},
                     {"role": "user", "content": full_prompt}
                 ],
                 temperature=0.7
