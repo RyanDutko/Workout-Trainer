@@ -795,45 +795,70 @@ def chat():
     """Chat with AI trainer"""
     if request.method == 'POST':
         user_message = request.form['message']
+        message_lower = user_message.lower()
 
-        # Determine if this is a workout-related question that needs context
+        # Detect if user is asking about workout history/data
+        history_keywords = [
+            'what did i do', 'show me what', 'last friday', 'last monday', 'last tuesday', 'last wednesday', 
+            'last thursday', 'last saturday', 'last sunday', 'yesterday', 'last week', 'this week',
+            'my logs', 'my workouts', 'history', 'did i work', 'what workout'
+        ]
+        
+        is_history_query = any(keyword in message_lower for keyword in history_keywords)
+        
+        # Detect if user is asking about workout context
         workout_keywords = [
             'workout', 'exercise', 'plan', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
             'bench', 'squat', 'deadlift', 'press', 'curl', 'extension', 'row', 'pullup', 'pushup',
             'progression', 'weight', 'reps', 'sets', 'volume', 'training', 'muscle', 'strength',
             'schedule', 'routine', 'program', 'split', 'session', 'lift', 'lifting'
         ]
-
-        message_lower = user_message.lower()
+        
         needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
 
-        # Build optimized chat prompt (shorter for faster processing)
-        chat_prompt = f"""You are a professional personal trainer. Be conversational, helpful, and concise.
+        # For history queries or complex workout questions, use full context
+        if is_history_query or (needs_workout_context and len(user_message.split()) > 3):
+            # Build comprehensive prompt with workout data
+            chat_prompt = f"""You are a professional personal trainer with access to the user's workout history. 
 
-User: {user_message}"""
+User question: {user_message}
 
-        # Only add minimal context for workout questions to reduce token count
-        if needs_workout_context:
-            # Get only essential context (reduced from full context)
+Here is their recent workout data to help answer their question:"""
+
+            # Get workout data for context
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Get just recent workouts (last 10 instead of 50)
+            # Get recent workouts with dates for history queries
             cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged
+                SELECT exercise_name, sets, reps, weight, date_logged, notes
                 FROM workouts 
                 ORDER BY date_logged DESC 
-                LIMIT 10
+                LIMIT 30
             """)
             recent_workouts = cursor.fetchall()
             
             if recent_workouts:
-                chat_prompt += f"\nRecent workouts: " + ", ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]}" for w in recent_workouts[:5]])
+                chat_prompt += "\n\nRecent workout logs:\n"
+                for workout in recent_workouts:
+                    exercise, sets, reps, weight, date, notes = workout
+                    chat_prompt += f"• {date}: {exercise} {sets}x{reps}@{weight}"
+                    if notes:
+                        chat_prompt += f" ({notes})"
+                    chat_prompt += "\n"
             
             conn.close()
+            
+            # Use full context Grok response
+            response = get_grok_response(chat_prompt, include_context=False)
+            
+        else:
+            # For simple questions, use fast response
+            chat_prompt = f"""You are a professional personal trainer. Be conversational, helpful, and concise.
 
-        # Use optimized Grok call
-        response = get_grok_response_fast(chat_prompt)
+User: {user_message}"""
+            
+            response = get_grok_response_fast(chat_prompt)
         
         # Check if response is empty or None
         if not response or not response.strip():
