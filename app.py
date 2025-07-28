@@ -801,10 +801,16 @@ def chat():
         history_keywords = [
             'what did i do', 'show me what', 'last friday', 'last monday', 'last tuesday', 'last wednesday', 
             'last thursday', 'last saturday', 'last sunday', 'yesterday', 'last week', 'this week',
-            'my logs', 'my workouts', 'history', 'did i work', 'what workout'
+            'my logs', 'my workouts', 'history', 'did i work', 'what workout', 'friday', 'monday',
+            'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday', 'show me', 'what i did'
         ]
         
         is_history_query = any(keyword in message_lower for keyword in history_keywords)
+        
+        # Debug: Print what was detected
+        print(f"DEBUG: User message: '{user_message}'")
+        print(f"DEBUG: Is history query: {is_history_query}")
+        print(f"DEBUG: Matched keywords: {[kw for kw in history_keywords if kw in message_lower]}")
         
         # Detect if user is asking about workout context
         workout_keywords = [
