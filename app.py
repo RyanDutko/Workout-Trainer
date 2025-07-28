@@ -807,58 +807,76 @@ def chat():
         message_lower = user_message.lower()
         needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
 
-        # Build basic chat prompt
-        chat_prompt = f"""You are a professional personal trainer having a conversation with your client.
-
-RESPONSE GUIDELINES:
-- Be conversational and helpful
-- Keep responses concise unless specifically asked for detailed information
-- If asked about workouts, provide specific exercise breakdowns with progression notes
-- Be professional but friendly
-- Don't assume they want their full workout plan unless they specifically ask for it
+        # Build optimized chat prompt (shorter for faster processing)
+        chat_prompt = f"""You are a professional personal trainer. Be conversational, helpful, and concise.
 
 User: {user_message}"""
 
-        # Build workout context if needed
+        # Only add minimal context for workout questions to reduce token count
         if needs_workout_context:
-            context_info = ""
-            # Get user profile
-            user_profile = get_user_profile()
-            if user_profile:
-                goal, weekly_split, preferences = user_profile
-                context_info += f"\nUser Goal: {goal}"
-                context_info += f"\nWeekly Split: {weekly_split}"
-                context_info += f"\nPreferences: {preferences}"
-
-            # Get weekly plan
-            weekly_plan = get_weekly_plan()
-            if weekly_plan:
-                context_info += "\nWeekly Plan:"
-                for day, exercise, sets, reps, weight, order, notes in weekly_plan:
-                    context_info += f"\n{day.title()}: {exercise} {sets}x{reps}@{weight}"
-
-            # Get recent workout data for context
+            # Get only essential context (reduced from full context)
             conn = get_db_connection()
             cursor = conn.cursor()
+            
+            # Get just recent workouts (last 10 instead of 50)
             cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes
+                SELECT exercise_name, sets, reps, weight, date_logged
                 FROM workouts 
                 ORDER BY date_logged DESC 
-                LIMIT 50
+                LIMIT 10
             """)
             recent_workouts = cursor.fetchall()
+            
             if recent_workouts:
-                context_info += "\nRecent Workouts (last 50 entries): " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts])
+                chat_prompt += f"\nRecent workouts: " + ", ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]}" for w in recent_workouts[:5]])
+            
             conn.close()
 
-            chat_prompt += context_info
-
-
-        # Only include full context for workout-related questions
-        response = get_grok_response(chat_prompt, include_context=False)
+        # Use optimized Grok call
+        response = get_grok_response_fast(chat_prompt)
         return jsonify({'response': response})
 
     return render_template('chat.html')
+
+@app.route('/chat_stream', methods=['POST'])
+def chat_stream():
+    """Streaming chat endpoint for real-time responses"""
+    from flask import Response
+    import json
+    
+    user_message = request.form['message']
+    
+    # Build minimal prompt for speed
+    chat_prompt = f"""You are a professional personal trainer. Be helpful and concise.
+
+User: {user_message}"""
+    
+    def generate():
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+            
+            response = client.chat.completions.create(
+                model="grok-4-0709",
+                messages=[
+                    {"role": "system", "content": "You are a helpful personal trainer. Be concise."},
+                    {"role": "user", "content": chat_prompt}
+                ],
+                temperature=0.3,  # Lower temperature for faster, more focused responses
+                max_tokens=300,   # Limit response length for speed
+                stream=True       # Enable streaming
+            )
+            
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
+            
+            yield f"data: {json.dumps({'done': True})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return Response(generate(), mimetype='text/plain')
 
 if __name__ == '__main__':
     print("🌐 Starting Flask web server...")

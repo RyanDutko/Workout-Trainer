@@ -999,6 +999,27 @@ def show_logs(user_input):
     if not displayed:
         print("⚠️ No logs found for the specified period.")
 
+# Optimized Grok response function for fast chat responses
+def get_grok_response_fast(prompt):
+    """Fast Grok response with minimal context for chat"""
+    try:
+        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        
+        response = client.chat.completions.create(
+            model="grok-4-0709",
+            messages=[
+                {"role": "system", "content": "You are a helpful personal trainer. Be concise and direct."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for faster responses
+            max_tokens=200,   # Limit tokens for speed
+            timeout=10        # 10 second timeout
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"⚠️ Fast API error: {str(e)}")
+        return "I'm here to help! Could you try asking that again?"
+
 # Get response from Grok API with context - Flask-safe version
 def get_grok_response(prompt, include_context=True):
     client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
