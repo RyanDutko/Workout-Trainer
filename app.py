@@ -240,18 +240,24 @@ def chat_stream():
     def generate():
         try:
             user_message = request.form.get('message', '')
+            print(f"Chat request received: {user_message}")  # Debug log
             
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
             cursor = conn.cursor()
             
-            cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-            user_bg = cursor.fetchone()
-            user_background = None
-            
-            if user_bg:
-                columns = [description[0] for description in cursor.description]
-                user_background = dict(zip(columns, user_bg))
+            # Check if user_background table has data
+            cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
+            if cursor.fetchone()[0] > 0:
+                cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
+                user_bg = cursor.fetchone()
+                if user_bg:
+                    columns = [description[0] for description in cursor.description]
+                    user_background = dict(zip(columns, user_bg))
+                else:
+                    user_background = None
+            else:
+                user_background = None
             
             # Get recent workouts for context
             cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
@@ -263,9 +269,11 @@ def chat_stream():
                     recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]} ({log[4]})\n"
             
             conn.close()
+            print(f"Database queries completed successfully")  # Debug log
             
             # Get AI response with full context
             response = get_grok_response_with_context(user_message, user_background, recent_workouts)
+            print(f"AI response received: {len(response)} characters")  # Debug log
             
             # Stream the response
             for char in response:
@@ -275,6 +283,7 @@ def chat_stream():
             yield f"data: {json.dumps({'done': True})}\n\n"
             
         except Exception as e:
+            print(f"Chat stream error: {str(e)}")  # Debug log
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
     
     return Response(generate(), mimetype='text/plain')
