@@ -74,6 +74,42 @@
     </div>
 </div>
 
+<!-- Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <h4>{{ "{:,}".format(stats.week_volume) }}</h4>
+                <small>lbs lifted this week</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <h4>{{ "{:,}".format(stats.month_volume) }}</h4>
+                <small>lbs lifted this month</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <h4>{{ stats.week_workouts }}</h4>
+                <small>workouts this week</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body text-center">
+                <h4>{{ stats.latest_weight or 'N/A' }}</h4>
+                <small>current weight {% if stats.weight_date %}({{ stats.weight_date }}){% endif %}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Quick Actions -->
 <div class="row">
     <div class="col-md-12">

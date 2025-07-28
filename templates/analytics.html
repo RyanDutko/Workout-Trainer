@@ -1,0 +1,285 @@
+
+{% extends "base.html" %}
+
+{% block title %}Analytics - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-chart-bar me-2"></i>Analytics & Progress</h1>
+</div>
+
+<div class="row">
+    <!-- Weight Progress Chart -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-weight me-2"></i>Body Weight Progress</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="weightChart" width="400" height="200"></canvas>
+                <div class="mt-3">
+                    <form id="weightLogForm" class="row g-2">
+                        <div class="col-md-6">
+                            <input type="number" id="weightInput" class="form-control" placeholder="Weight (lbs)" step="0.1">
+                        </div>
+                        <div class="col-md-4">
+                            <input type="date" id="weightDate" class="form-control" value="{{ today_date }}">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">Log</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Volume Progress Chart -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-chart-line me-2"></i>Weekly Volume Progress</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="volumeChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Exercise Performance Comparison -->
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-dumbbell me-2"></i>Exercise Performance Comparison</h6>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <select id="exerciseSelect" class="form-select">
+                            <option value="">Select exercise to analyze...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button id="analyzeBtn" class="btn btn-primary">Analyze</button>
+                    </div>
+                </div>
+                <canvas id="exerciseChart" width="400" height="200"></canvas>
+                <div id="exerciseStats" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let weightChart, volumeChart, exerciseChart;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    loadExerciseOptions();
+    
+    // Weight logging form
+    document.getElementById('weightLogForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        logWeight();
+    });
+    
+    // Exercise analysis
+    document.getElementById('analyzeBtn').addEventListener('click', analyzeExercise);
+});
+
+function initializeCharts() {
+    // Weight Chart
+    const weightCtx = document.getElementById('weightChart').getContext('2d');
+    weightChart = new Chart(weightCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Weight (lbs)',
+                data: [],
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+    
+    // Volume Chart
+    const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+    volumeChart = new Chart(volumeCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Weekly Volume (lbs)',
+                data: [],
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    // Exercise Chart
+    const exerciseCtx = document.getElementById('exerciseChart').getContext('2d');
+    exerciseChart = new Chart(exerciseCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: []
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+    
+    loadWeightData();
+    loadVolumeData();
+}
+
+function loadWeightData() {
+    fetch('/get_weight_history')
+        .then(response => response.json())
+        .then(data => {
+            weightChart.data.labels = data.dates;
+            weightChart.data.datasets[0].data = data.weights;
+            weightChart.update();
+        })
+        .catch(error => console.error('Error loading weight data:', error));
+}
+
+function loadVolumeData() {
+    fetch('/get_volume_history')
+        .then(response => response.json())
+        .then(data => {
+            volumeChart.data.labels = data.weeks;
+            volumeChart.data.datasets[0].data = data.volumes;
+            volumeChart.update();
+        })
+        .catch(error => console.error('Error loading volume data:', error));
+}
+
+function loadExerciseOptions() {
+    fetch('/get_exercise_list')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('exerciseSelect');
+            data.exercises.forEach(exercise => {
+                const option = document.createElement('option');
+                option.value = exercise;
+                option.textContent = exercise.charAt(0).toUpperCase() + exercise.slice(1);
+                select.appendChild(option);
+            });
+        })
+        .catch(error => console.error('Error loading exercises:', error));
+}
+
+function logWeight() {
+    const weight = document.getElementById('weightInput').value;
+    const date = document.getElementById('weightDate').value;
+    
+    if (!weight) {
+        alert('Please enter a weight');
+        return;
+    }
+    
+    fetch('/log_weight', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            weight: weight,
+            date: date
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('weightInput').value = '';
+            loadWeightData();
+            alert('Weight logged successfully!');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+function analyzeExercise() {
+    const exercise = document.getElementById('exerciseSelect').value;
+    if (!exercise) {
+        alert('Please select an exercise');
+        return;
+    }
+    
+    fetch(`/get_exercise_performance/${exercise}`)
+        .then(response => response.json())
+        .then(data => {
+            // Update chart
+            exerciseChart.data.labels = data.dates;
+            exerciseChart.data.datasets = [{
+                label: 'Max Weight (lbs)',
+                data: data.max_weights,
+                borderColor: 'rgb(255, 99, 132)',
+                tension: 0.1
+            }, {
+                label: 'Total Volume (lbs)',
+                data: data.volumes,
+                borderColor: 'rgb(54, 162, 235)',
+                tension: 0.1
+            }];
+            exerciseChart.update();
+            
+            // Update stats
+            const statsDiv = document.getElementById('exerciseStats');
+            statsDiv.innerHTML = `
+                <div class="row">
+                    <div class="col-md-3">
+                        <strong>Best Session:</strong><br>
+                        ${data.best_weight} lbs (${data.best_date})
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Recent Average:</strong><br>
+                        ${data.recent_avg} lbs
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Progress:</strong><br>
+                        ${data.progress > 0 ? '+' : ''}${data.progress}% this month
+                    </div>
+                    <div class="col-md-3">
+                        <strong>Total Sessions:</strong><br>
+                        ${data.total_sessions}
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => console.error('Error:', error));
+}
+</script>
+{% endblock %}

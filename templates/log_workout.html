@@ -117,6 +117,21 @@
                 </div>
             </div>
         </div>
+
+        <!-- Rest Timer -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-clock me-2"></i>Rest Timer</h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="restMinutes" class="form-label">Rest Time (Minutes)</label>
+                    <input type="number" class="form-control" id="restMinutes" value="2" min="0">
+                </div>
+                <button type="button" class="btn btn-success w-100" id="startTimer"><i class="fas fa-play me-2"></i>Start Timer</button>
+                <h4 class="text-center mt-3" id="timerDisplay">2:00</h4>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -139,10 +154,10 @@
                     <div class="btn-group w-100" role="group">
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusCompleted" value="completed" checked>
                         <label class="btn btn-outline-success" for="statusCompleted">Completed</label>
-                        
+
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusSkipped" value="skipped">
                         <label class="btn btn-outline-warning" for="statusSkipped">Skipped</label>
-                        
+
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusSubstituted" value="substituted">
                         <label class="btn btn-outline-info" for="statusSubstituted">Substituted</label>
                     </div>
@@ -344,7 +359,7 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
             const skipContainer = document.getElementById('skipReasonContainer');
             const substitutionContainer = document.getElementById('substitutionContainer');
             const setsSection = document.getElementById('setsSection');
-            
+
             if (this.value === 'skipped') {
                 skipContainer.style.display = 'block';
                 substitutionContainer.style.display = 'none';
@@ -407,9 +422,9 @@ function submitDetailedLog() {
 
         const reasonText = document.getElementById('skipReason').options[document.getElementById('skipReason').selectedIndex].text;
         notes = `SKIPPED: ${reasonText}${notes ? ' - ' + notes : ''}`;
-        
+
         workoutText = `0x0@0 ${currentExercise.name} - SKIPPED: ${reasonText}`;
-        
+
         exercise = {
             exercise_name: currentExercise.name,
             sets: 0,
@@ -424,7 +439,7 @@ function submitDetailedLog() {
         // Handle substituted workout
         const substitutedExercise = document.getElementById('substitutedExercise').value;
         const substitutionReason = document.getElementById('substitutionReason').value;
-        
+
         if (!substitutedExercise || !substitutionReason) {
             alert('Please fill in what exercise you substituted and why');
             return;
@@ -450,10 +465,10 @@ function submitDetailedLog() {
 
         const reasonText = document.getElementById('substitutionReason').options[document.getElementById('substitutionReason').selectedIndex].text;
         const repsString = setReps.join('-');
-        
+
         notes = `SUBSTITUTED: ${substitutedExercise} (${reasonText})${notes ? ' - ' + notes : ''}`;
         workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${substitutedExercise} - SUBSTITUTED for ${currentExercise.name} (${reasonText})`;
-        
+
         exercise = {
             exercise_name: substitutedExercise, // Log the actual exercise done
             sets: currentExercise.sets,
@@ -553,7 +568,7 @@ function updateSessionDisplay() {
     sessionExercises.forEach((exercise, index) => {
         let alertClass = 'alert-light';
         let statusBadge = '';
-        
+
         if (exercise.status === 'skipped') {
             alertClass = 'alert-warning';
             statusBadge = '<span class="badge bg-warning text-dark">SKIPPED</span> ';
@@ -561,7 +576,7 @@ function updateSessionDisplay() {
             alertClass = 'alert-info';
             statusBadge = '<span class="badge bg-info">SUBSTITUTED</span> ';
         }
-        
+
         html += `
             <div class="alert ${alertClass} d-flex justify-content-between align-items-center">
                 <div>
@@ -611,5 +626,66 @@ function submitMultiSession() {
         alert('❌ Error submitting session');
     });
 }
+
+// Rest Timer Functions
+let timerInterval = null;
+let timeRemaining = 0;
+
+document.addEventListener('DOMContentLoaded', function() {
+    const startTimerBtn = document.getElementById('startTimer');
+    const timerDisplay = document.getElementById('timerDisplay');
+    const restMinutes = document.getElementById('restMinutes');
+
+    startTimerBtn.addEventListener('click', function() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            startTimerBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Timer';
+            startTimerBtn.className = 'btn btn-success w-100';
+            return;
+        }
+
+        timeRemaining = parseInt(restMinutes.value) * 60;
+        startTimerBtn.innerHTML = '<i class="fas fa-stop me-2"></i>Stop Timer';
+        startTimerBtn.className = 'btn btn-danger w-100';
+
+        timerInterval = setInterval(function() {
+            const minutes = Math.floor(timeRemaining / 60);
+            const seconds = timeRemaining % 60;
+            timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+            if (timeRemaining <= 0) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+                startTimerBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Timer';
+                startTimerBtn.className = 'btn btn-success w-100';
+                timerDisplay.textContent = 'REST OVER!';
+
+                // Play notification sound (if browser supports it)
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('Rest time is over!', {
+                        body: 'Time for your next set',
+                        icon: '/static/icon.png'
+                    });
+                }
+
+                // Visual notification
+                timerDisplay.style.color = 'red';
+                setTimeout(() => {
+                    timerDisplay.style.color = 'black';
+                    timerDisplay.textContent = `${parseInt(restMinutes.value)}:00`;
+                }, 3000);
+
+                return;
+            }
+            timeRemaining--;
+        }, 1000);
+    });
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+});
 </script>
 {% endblock %}

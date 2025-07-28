@@ -162,9 +162,10 @@ def dashboard():
     today = datetime.date.today().strftime('%A').lower()
     today_plan = get_weekly_plan(today)
     
-    # Get recent workouts
+    # Get recent workouts and calculate stats
     conn = get_db_connection()
     cursor = conn.cursor()
+    
     cursor.execute("""
         SELECT exercise_name, sets, reps, weight, date_logged 
         FROM workouts 
@@ -172,16 +173,70 @@ def dashboard():
         LIMIT 10
     """)
     recent_workouts = cursor.fetchall()
+    
+    # Calculate this week's total volume
+    week_start = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())).isoformat()
+    cursor.execute("""
+        SELECT SUM(CASE 
+            WHEN weight LIKE '%lbs' THEN CAST(REPLACE(weight, 'lbs', '') AS REAL) * sets * CAST(reps AS REAL)
+            WHEN weight = 'bodyweight' THEN 0
+            ELSE 0
+        END) as total_volume
+        FROM workouts 
+        WHERE date_logged >= ?
+    """, (week_start,))
+    week_volume = cursor.fetchone()[0] or 0
+    
+    # Calculate this month's total volume
+    month_start = datetime.date.today().replace(day=1).isoformat()
+    cursor.execute("""
+        SELECT SUM(CASE 
+            WHEN weight LIKE '%lbs' THEN CAST(REPLACE(weight, 'lbs', '') AS REAL) * sets * CAST(reps AS REAL)
+            WHEN weight = 'bodyweight' THEN 0
+            ELSE 0
+        END) as total_volume
+        FROM workouts 
+        WHERE date_logged >= ?
+    """, (month_start,))
+    month_volume = cursor.fetchone()[0] or 0
+    
+    # Count workouts this week
+    cursor.execute("""
+        SELECT COUNT(DISTINCT date_logged) as workout_days
+        FROM workouts 
+        WHERE date_logged >= ?
+    """, (week_start,))
+    week_workouts = cursor.fetchone()[0] or 0
+    
+    # Get latest weight
+    cursor.execute("""
+        SELECT weight, date_logged 
+        FROM weight_logs 
+        WHERE user_id = 1 
+        ORDER BY date_logged DESC 
+        LIMIT 1
+    """)
+    latest_weight = cursor.fetchone()
+    
     conn.close()
     
     # Check if onboarding is needed
     needs_onboarding = not is_onboarding_complete()
     
+    stats = {
+        'week_volume': int(week_volume),
+        'month_volume': int(month_volume),
+        'week_workouts': week_workouts,
+        'latest_weight': latest_weight[0] if latest_weight else None,
+        'weight_date': latest_weight[1] if latest_weight else None
+    }
+    
     return render_template('dashboard.html', 
                          today=today.title(),
                          today_plan=today_plan,
                          recent_workouts=recent_workouts,
-                         needs_onboarding=needs_onboarding)
+                         needs_onboarding=needs_onboarding,
+                         stats=stats)
 
 @app.route('/log_workout', methods=['GET', 'POST'])
 def log_workout():
@@ -511,6 +566,215 @@ def reorder_exercise():
     
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/log_weight', methods=['POST'])
+def log_weight():
+    """Log body weight"""
+    try:
+        data = request.get_json()
+        weight = data.get('weight')
+        date_str = data.get('date', datetime.date.today().isoformat())
+        
+        if not weight:
+            return jsonify({'success': False, 'error': 'Weight is required'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create weight_logs table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weight_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER DEFAULT 1,
+                weight REAL NOT NULL,
+                date_logged DATE NOT NULL,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Insert or update weight for this date
+        cursor.execute('''
+            INSERT OR REPLACE INTO weight_logs (user_id, weight, date_logged)
+            VALUES (1, ?, ?)
+        ''', (float(weight), date_str))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': f'Weight logged: {weight} lbs'})
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_weight_history')
+def get_weight_history():
+    """Get weight history for charts"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT date_logged, weight 
+            FROM weight_logs 
+            WHERE user_id = 1 
+            ORDER BY date_logged DESC 
+            LIMIT 30
+        ''')
+        
+        weight_data = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'dates': [row[0] for row in reversed(weight_data)],
+            'weights': [row[1] for row in reversed(weight_data)]
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/analytics')
+def analytics():
+    """Analytics and progress charts page"""
+    today_date = datetime.date.today().isoformat()
+    return render_template('analytics.html', today_date=today_date)
+
+@app.route('/get_volume_history')
+def get_volume_history():
+    """Get weekly volume history for charts"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get last 12 weeks of volume data
+        weeks = []
+        volumes = []
+        
+        for i in range(12):
+            week_start = (datetime.date.today() - datetime.timedelta(weeks=i+1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            week_end = week_start + datetime.timedelta(days=6)
+            
+            cursor.execute("""
+                SELECT SUM(CASE 
+                    WHEN weight LIKE '%lbs' THEN CAST(REPLACE(weight, 'lbs', '') AS REAL) * sets * CAST(reps AS REAL)
+                    WHEN weight = 'bodyweight' THEN 0
+                    ELSE 0
+                END) as total_volume
+                FROM workouts 
+                WHERE date_logged >= ? AND date_logged <= ?
+            """, (week_start.strftime('%Y-%m-%d'), week_end.strftime('%Y-%m-%d')))
+            
+            volume = cursor.fetchone()[0] or 0
+            weeks.append(f"Week {week_start.strftime('%m/%d')}")
+            volumes.append(int(volume))
+        
+        conn.close()
+        
+        return jsonify({
+            'weeks': list(reversed(weeks)),
+            'volumes': list(reversed(volumes))
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/get_exercise_list')
+def get_exercise_list():
+    """Get list of exercises for analysis"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT DISTINCT exercise_name 
+            FROM workouts 
+            ORDER BY exercise_name
+        """)
+        
+        exercises = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        return jsonify({'exercises': exercises})
+    
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/get_exercise_performance/<exercise>')
+def get_exercise_performance(exercise):
+    """Get performance data for specific exercise"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT date_logged, weight, sets, reps
+            FROM workouts 
+            WHERE exercise_name = ?
+            ORDER BY date_logged
+        """, (exercise.lower(),))
+        
+        data = cursor.fetchall()
+        conn.close()
+        
+        if not data:
+            return jsonify({'error': 'No data found for this exercise'})
+        
+        dates = []
+        max_weights = []
+        volumes = []
+        
+        for row in data:
+            date, weight, sets, reps = row
+            dates.append(date)
+            
+            # Extract numeric weight
+            if weight.endswith('lbs'):
+                weight_num = float(weight.replace('lbs', ''))
+            else:
+                weight_num = 0
+            
+            max_weights.append(weight_num)
+            
+            # Calculate volume
+            try:
+                reps_num = int(reps) if reps.isdigit() else 10  # default if reps is range
+                volume = weight_num * sets * reps_num
+                volumes.append(volume)
+            except:
+                volumes.append(0)
+        
+        # Calculate stats
+        recent_weights = [w for w in max_weights[-5:] if w > 0]
+        recent_avg = sum(recent_weights) / len(recent_weights) if recent_weights else 0
+        
+        best_weight = max(max_weights) if max_weights else 0
+        best_index = max_weights.index(best_weight) if best_weight > 0 else 0
+        best_date = dates[best_index] if dates else 'N/A'
+        
+        # Calculate monthly progress
+        month_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+        month_data = [(d, w) for d, w in zip(dates, max_weights) if d >= month_ago and w > 0]
+        
+        if len(month_data) >= 2:
+            first_weight = month_data[0][1]
+            last_weight = month_data[-1][1]
+            progress = round(((last_weight - first_weight) / first_weight) * 100, 1) if first_weight > 0 else 0
+        else:
+            progress = 0
+        
+        return jsonify({
+            'dates': dates,
+            'max_weights': max_weights,
+            'volumes': volumes,
+            'best_weight': best_weight,
+            'best_date': best_date,
+            'recent_avg': round(recent_avg, 1),
+            'progress': progress,
+            'total_sessions': len(data)
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/chat', methods=['GET', 'POST'])
 def chat():
