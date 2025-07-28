@@ -463,6 +463,70 @@ def analytics():
 def analyze_plan():
     return render_template('analyze_plan.html')
 
+@app.route('/get_stored_context')
+def get_stored_context():
+    """Get currently stored plan context for debugging/editing"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get plan context
+        cursor.execute('''
+            SELECT plan_philosophy, training_style, weekly_structure, progression_strategy,
+                   special_considerations, created_by_ai, creation_reasoning, created_date, updated_date
+            FROM plan_context 
+            WHERE user_id = 1 
+            ORDER BY created_date DESC 
+            LIMIT 1
+        ''')
+        
+        plan_result = cursor.fetchone()
+        plan_context = None
+        
+        if plan_result:
+            plan_context = {
+                'plan_philosophy': plan_result[0],
+                'training_style': plan_result[1],
+                'weekly_structure': plan_result[2],
+                'progression_strategy': plan_result[3],
+                'special_considerations': plan_result[4],
+                'created_by_ai': bool(plan_result[5]),
+                'creation_reasoning': plan_result[6],
+                'created_date': plan_result[7],
+                'updated_date': plan_result[8]
+            }
+
+        # Get exercise metadata
+        cursor.execute('''
+            SELECT exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date
+            FROM exercise_metadata 
+            WHERE user_id = 1
+            ORDER BY exercise_name
+        ''')
+        
+        exercise_results = cursor.fetchall()
+        exercise_metadata = []
+        
+        for row in exercise_results:
+            exercise_metadata.append({
+                'exercise_name': row[0],
+                'exercise_type': row[1],
+                'primary_purpose': row[2],
+                'progression_logic': row[3],
+                'ai_notes': row[4],
+                'created_date': row[5]
+            })
+
+        conn.close()
+        
+        return jsonify({
+            'plan_context': plan_context,
+            'exercise_metadata': exercise_metadata
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/extract_plan_context', methods=['POST'])
 def extract_plan_context():
     """Extract structured plan context from AI conversation"""

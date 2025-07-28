@@ -97,6 +97,13 @@
                         <li>Special considerations</li>
                     </ul>
                 </div>
+
+                <!-- Current Context Section -->
+                <div class="mt-3">
+                    <button class="btn btn-outline-info btn-sm w-100" type="button" data-bs-toggle="collapse" data-bs-target="#storedContextSection">
+                        <i class="fas fa-eye me-2"></i>View Stored Context
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -166,6 +173,39 @@
                 <p><strong>Smarter Suggestions:</strong> Recommendations will align with your actual training philosophy.</p>
                 <p><strong>Context-Aware Chat:</strong> Grok can explain why certain exercises are programmed the way they are.</p>
                 <p><strong>Future Plans:</strong> This context will help if you ever want to modify or rebuild your plan.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Stored Context Section (Collapsible) -->
+<div class="collapse mt-4" id="storedContextSection">
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Currently Stored Plan Context</h5>
+                    <small>This shows what Grok actually has access to about your plan</small>
+                </div>
+                <div class="card-body">
+                    <div id="storedContextDisplay">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading stored context...</p>
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-3">
+                        <button id="editStoredContextBtn" class="btn btn-warning me-2" style="display: none;">
+                            <i class="fas fa-edit me-2"></i>Edit Context
+                        </button>
+                        <button id="refreshContextBtn" class="btn btn-secondary">
+                            <i class="fas fa-sync me-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -491,5 +531,162 @@ document.getElementById('planContextForm').addEventListener('submit', async func
 
 // Load exercise context on page load
 loadExerciseContext();
+
+// Load stored context when section is expanded
+document.getElementById('refreshContextBtn').addEventListener('click', loadStoredContext);
+
+// Auto-load when collapse is shown
+document.getElementById('storedContextSection').addEventListener('shown.bs.collapse', function() {
+    loadStoredContext();
+});
+
+async function loadStoredContext() {
+    document.getElementById('storedContextDisplay').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading stored context...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch('/get_stored_context');
+        const data = await response.json();
+
+        let html = '';
+
+        if (data.plan_context) {
+            const ctx = data.plan_context;
+            html += `
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6><i class="fas fa-brain me-2"></i>Plan Context</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tr><th>Philosophy:</th><td>${ctx.plan_philosophy || '<em>Not set</em>'}</td></tr>
+                                <tr><th>Weekly Structure:</th><td>${ctx.weekly_structure || '<em>Not set</em>'}</td></tr>
+                                <tr><th>Progression Strategy:</th><td>${ctx.progression_strategy || '<em>Not set</em>'}</td></tr>
+                                <tr><th>Special Considerations:</th><td>${ctx.special_considerations || '<em>Not set</em>'}</td></tr>
+                                <tr><th>Creation Reasoning:</th><td>${ctx.creation_reasoning ? ctx.creation_reasoning.substring(0, 200) + '...' : '<em>Not set</em>'}</td></tr>
+                                <tr><th>Created By AI:</th><td>${ctx.created_by_ai ? 'Yes' : 'No'}</td></tr>
+                                <tr><th>Last Updated:</th><td>${ctx.updated_date || 'Never'}</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    No plan context found. Use AI Analysis or Manual Entry to create context.
+                </div>
+            `;
+        }
+
+        if (data.exercise_metadata && data.exercise_metadata.length > 0) {
+            html += `
+                <div class="row">
+                    <div class="col-12">
+                        <h6><i class="fas fa-dumbbell me-2"></i>Exercise Context (${data.exercise_metadata.length} exercises)</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Exercise</th>
+                                        <th>Type</th>
+                                        <th>Purpose</th>
+                                        <th>Progression</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+
+            data.exercise_metadata.forEach(ex => {
+                html += `
+                    <tr>
+                        <td><strong>${ex.exercise_name}</strong></td>
+                        <td><span class="badge bg-secondary">${ex.exercise_type}</span></td>
+                        <td>${ex.primary_purpose || '<em>Not set</em>'}</td>
+                        <td><span class="badge bg-info">${ex.progression_logic}</span></td>
+                        <td>${ex.ai_notes || '<em>None</em>'}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    No exercise metadata found. Exercise-specific context will be created during analysis.
+                </div>
+            `;
+        }
+
+        document.getElementById('storedContextDisplay').innerHTML = html;
+        document.getElementById('editStoredContextBtn').style.display = data.plan_context ? 'inline-block' : 'none';
+
+    } catch (error) {
+        document.getElementById('storedContextDisplay').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                Error loading stored context: ${error.message}
+            </div>
+        `;
+    }
+}
+
+document.getElementById('editStoredContextBtn').addEventListener('click', function() {
+    // Switch to manual mode and populate with current data
+    document.getElementById('manualMode').checked = true;
+    document.getElementById('manualMode').dispatchEvent(new Event('change'));
+    
+    // Load current context into manual form
+    populateManualFormWithStoredData();
+});
+
+async function populateManualFormWithStoredData() {
+    try {
+        const response = await fetch('/get_stored_context');
+        const data = await response.json();
+
+        if (data.plan_context) {
+            const ctx = data.plan_context;
+            document.querySelector('[name="philosophy"]').value = ctx.plan_philosophy || '';
+            document.querySelector('[name="weekly_structure"]').value = ctx.weekly_structure || '';
+            document.querySelector('[name="progression_strategy"]').value = ctx.progression_strategy || '';
+            document.querySelector('[name="special_considerations"]').value = ctx.special_considerations || '';
+            document.querySelector('[name="reasoning"]').value = ctx.creation_reasoning || '';
+        }
+
+        // Populate exercise fields if they exist
+        if (data.exercise_metadata) {
+            data.exercise_metadata.forEach(ex => {
+                const purposeField = document.querySelector(`[name="exercise_purpose_${ex.exercise_name}"]`);
+                const progressionField = document.querySelector(`[name="exercise_progression_${ex.exercise_name}"]`);
+                const notesField = document.querySelector(`[name="exercise_notes_${ex.exercise_name}"]`);
+
+                if (purposeField) purposeField.value = ex.primary_purpose || '';
+                if (progressionField) progressionField.value = ex.progression_logic || 'normal';
+                if (notesField) notesField.value = ex.ai_notes || '';
+            });
+        }
+
+        // Scroll to manual section
+        document.getElementById('manualAnalysisSection').scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (error) {
+        alert('Error loading data for editing: ' + error.message);
+    }
+}
 </script>
 {% endblock %}
