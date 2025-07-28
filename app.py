@@ -37,7 +37,7 @@ def init_db():
         sets INTEGER,
         reps TEXT,
         weight TEXT,
-        order_index INTEGER,
+        order_index INTEGER DEFAULT 1,
         notes TEXT
     )
     ''')
@@ -92,6 +92,12 @@ def init_db():
         updated_date TEXT
     )
     ''')
+    
+    # Add order_index column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute('ALTER TABLE weekly_plan ADD COLUMN order_index INTEGER DEFAULT 1')
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     
     cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
     conn.commit()
@@ -151,7 +157,7 @@ def dashboard():
     today = datetime.now().strftime('%A')
     
     # Get today's plan
-    cursor.execute('SELECT * FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (today,))
+    cursor.execute('SELECT * FROM weekly_plan WHERE day_of_week = ? ORDER BY id', (today,))
     today_plan = cursor.fetchall()
     
     # Get recent workouts
