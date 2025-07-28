@@ -296,7 +296,17 @@ def history():
 def weekly_plan():
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight, order_index, notes FROM weekly_plan ORDER BY day_of_week, order_index')
+    
+    # Check what columns actually exist
+    cursor.execute("PRAGMA table_info(weekly_plan)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    # Use the correct column names based on what exists
+    if 'target_sets' in columns:
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes FROM weekly_plan ORDER BY day_of_week, exercise_order')
+    else:
+        cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, "") FROM weekly_plan ORDER BY day_of_week, order_index')
+    
     plan_data = cursor.fetchall()
     conn.close()
     
@@ -312,7 +322,7 @@ def weekly_plan():
             'reps': reps,
             'weight': weight,
             'order': order,
-            'notes': notes
+            'notes': notes or ""
         })
     
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
@@ -415,7 +425,16 @@ def get_plan(day):
         
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT exercise_name, sets, reps, weight FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (day,))
+    
+    # Check what columns actually exist and use appropriate query
+    cursor.execute("PRAGMA table_info(weekly_plan)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if 'target_sets' in columns:
+        cursor.execute('SELECT exercise_name, target_sets, target_reps, target_weight FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (day,))
+    else:
+        cursor.execute('SELECT exercise_name, sets, reps, weight FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (day,))
+    
     exercises = cursor.fetchall()
     conn.close()
     
