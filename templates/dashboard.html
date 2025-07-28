@@ -27,7 +27,7 @@
             <div class="card-body">
                 {% if today_plan %}
                     {% for row in today_plan %}
-                        {% set day, exercise, sets, reps, weight, order, notes = row %}
+                        {% set id, day, exercise, sets, reps, weight, order, notes = row %}
                         <div class="d-flex justify-content-between align-items-center border-bottom py-2">
                             <div>
                                 <strong>{{ exercise.title() }}</strong><br>
