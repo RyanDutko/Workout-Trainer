@@ -463,6 +463,87 @@ def analytics():
 def analyze_plan():
     return render_template('analyze_plan.html')
 
+@app.route('/extract_plan_context', methods=['POST'])
+def extract_plan_context():
+    """Extract structured plan context from AI conversation"""
+    try:
+        data = request.json
+        conversation = data.get('conversation', '')
+        
+        # Use Grok to extract structured data from conversation
+        response = get_grok_response_with_context(conversation)
+        
+        # Parse Grok's structured response
+        lines = response.split('\n')
+        extracted_data = {}
+        exercises = []
+        
+        for line in lines:
+            if line.startswith('TRAINING_PHILOSOPHY:'):
+                extracted_data['philosophy'] = line.replace('TRAINING_PHILOSOPHY:', '').strip()
+            elif line.startswith('WEEKLY_STRUCTURE:'):
+                extracted_data['weekly_structure'] = line.replace('WEEKLY_STRUCTURE:', '').strip()
+            elif line.startswith('PROGRESSION_STRATEGY:'):
+                extracted_data['progression_strategy'] = line.replace('PROGRESSION_STRATEGY:', '').strip()
+            elif line.startswith('SPECIAL_CONSIDERATIONS:'):
+                extracted_data['special_considerations'] = line.replace('SPECIAL_CONSIDERATIONS:', '').strip()
+            elif line.startswith('REASONING:'):
+                extracted_data['reasoning'] = line.replace('REASONING:', '').strip()
+            elif line.startswith('EXERCISE_CONTEXT:'):
+                # Parse exercise context: exercise_name|purpose|progression_type|notes
+                context_line = line.replace('EXERCISE_CONTEXT:', '').strip()
+                parts = context_line.split('|')
+                if len(parts) >= 3:
+                    exercises.append({
+                        'name': parts[0].strip(),
+                        'purpose': parts[1].strip(),
+                        'progression_logic': parts[2].strip(),
+                        'notes': parts[3].strip() if len(parts) > 3 else ''
+                    })
+        
+        # Save to database
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO plan_context
+            (user_id, plan_philosophy, weekly_structure, progression_strategy, 
+             special_considerations, created_by_ai, creation_reasoning, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, TRUE, ?, ?, ?)
+        ''', (
+            extracted_data.get('philosophy', ''),
+            extracted_data.get('weekly_structure', ''),
+            extracted_data.get('progression_strategy', ''),
+            extracted_data.get('special_considerations', ''),
+            extracted_data.get('reasoning', ''),
+            datetime.now().strftime('%Y-%m-%d'),
+            datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        # Clear and insert exercise metadata
+        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+        for exercise in exercises:
+            cursor.execute('''
+                INSERT INTO exercise_metadata
+                (user_id, exercise_name, exercise_type, primary_purpose, 
+                 progression_logic, ai_notes, created_date)
+                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+            ''', (
+                exercise['name'],
+                exercise['purpose'],
+                exercise['progression_logic'],
+                exercise['notes'],
+                datetime.now().strftime('%Y-%m-%d')
+            ))
+
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'AI analysis saved successfully!'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/save_plan_context', methods=['POST'])
 def save_plan_context():
     """Save the reasoning and context behind the current workout plan"""
