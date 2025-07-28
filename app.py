@@ -972,9 +972,50 @@ def chat_stream():
     import json
 
     user_message = request.form['message']
+    message_lower = user_message.lower()
 
-    # Build minimal prompt for speed
-    chat_prompt = f"""You are a professional personal trainer. Be helpful and concise.
+    # Use the same detection logic as the regular chat endpoint
+    history_keywords = [
+        'what did i do', 'show me what', 'last friday', 'last monday', 'last tuesday', 'last wednesday', 
+        'last thursday', 'last saturday', 'last sunday', 'yesterday', 'last week', 'this week',
+        'my logs', 'my workouts', 'history', 'did i work', 'what workout', 'friday', 'monday',
+        'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday', 'show me', 'what i did'
+    ]
+
+    is_history_query = any(keyword in message_lower for keyword in history_keywords)
+
+    # Build appropriate prompt based on query type
+    if is_history_query:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes
+            FROM workouts 
+            ORDER BY date_logged DESC 
+            LIMIT 10
+        """)
+        recent_workouts = cursor.fetchall()
+        conn.close()
+
+        if recent_workouts:
+            workout_data = ""
+            for workout in recent_workouts:
+                exercise, sets, reps, weight, date, notes = workout
+                workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
+
+            chat_prompt = f"""Answer this workout history question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and concisely."""
+        else:
+            chat_prompt = f"User asked: {user_message}\n\nNo recent workout data found. Let them know no workouts are logged yet."
+    else:
+        chat_prompt = f"""You are a professional personal trainer. Be conversational, helpful, and concise.
 
 User: {user_message}"""
 
@@ -986,12 +1027,12 @@ User: {user_message}"""
             response = client.chat.completions.create(
                 model="grok-4-0709",
                 messages=[
-                    {"role": "system", "content": "You are a helpful personal trainer. Be concise."},
+                    {"role": "system", "content": "You are a professional fitness assistant. Provide helpful, concise responses about workouts, training, and fitness. Do not introduce yourself with a name."},
                     {"role": "user", "content": chat_prompt}
                 ],
-                temperature=0.3,  # Lower temperature for faster, more focused responses
-                max_tokens=300,   # Limit response length for speed
-                stream=True       # Enable streaming
+                temperature=0.3,
+                max_tokens=400,
+                stream=True
             )
 
             for chunk in response:
