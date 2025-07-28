@@ -126,44 +126,42 @@ def init_db():
     conn.close()
 
 def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
-    """Enhanced Grok response with user context and workout history"""
+    """Optimized Grok response with appropriate length and context"""
     try:
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
         
-        # Build context-aware prompt
+        # Build minimal context for simple queries
         context_info = ""
-        if user_background:
-            context_info += f"User Profile: {user_background['primary_goal']}"
-            if user_background['secondary_goals'] and user_background['secondary_goals'] != "None":
-                context_info += f", {user_background['secondary_goals']}"
-            if user_background['injuries_history'] and user_background['injuries_history'] != "None":
-                context_info += f"\n- Injury History: {user_background['injuries_history']}"
-            if user_background['current_limitations'] and user_background['current_limitations'] != "None":
-                context_info += f"\n- Current Limitations: {user_background['current_limitations']}"
-            context_info += f"\n- Training Frequency: {user_background['training_frequency']}"
-            context_info += f"\n- Equipment: {user_background['available_equipment']}"
+        is_simple_greeting = any(word in prompt.lower() for word in ['hello', 'hi', 'hey', 'good morning', 'good afternoon'])
+        is_progression_query = any(word in prompt.lower() for word in ['progression', 'progress', 'next', 'increase', 'improve', 'advance', 'plan'])
+        is_history_query = any(word in prompt.lower() for word in ['show', 'what did', 'last', 'history', 'previous', 'when', 'recent'])
         
-        if recent_workouts:
-            context_info += f"\n\nRecent Workouts:\n{recent_workouts}"
+        # Only add context for complex queries, not simple greetings
+        if not is_simple_greeting and (is_progression_query or is_history_query):
+            if user_background and user_background.get('primary_goal'):
+                context_info += f"User Goal: {user_background['primary_goal']}\n"
+            if recent_workouts and (is_progression_query or is_history_query):
+                context_info += f"Recent Workouts:\n{recent_workouts[:200]}...\n"  # Limit context
         
-        chat_prompt = f"{context_info}\n\nUser Question: {prompt}" if context_info else prompt
+        chat_prompt = f"{context_info}\n{prompt}" if context_info else prompt
         
-        # Detect query type for appropriate token allocation
-        is_progression_query = any(word in prompt.lower() for word in ['progression', 'progress', 'next', 'increase', 'improve', 'advance'])
-        is_history_query = any(word in prompt.lower() for word in ['show', 'what did', 'last', 'history', 'previous', 'when'])
-        
-        # Increase token limits for testing - we'll optimize later
-        max_tokens = 1200 if (is_progression_query or is_history_query) else 600
+        # Smart token allocation
+        if is_simple_greeting:
+            max_tokens = 50
+        elif is_progression_query or is_history_query:
+            max_tokens = 300
+        else:
+            max_tokens = 150
         
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
-                {"role": "system", "content": "You are a professional fitness assistant. Provide helpful, detailed responses about workouts, training, and fitness. Use the user's background information to personalize your advice. Do not introduce yourself with a name."},
+                {"role": "system", "content": "You are a helpful fitness assistant. Keep responses concise and relevant. For greetings, respond briefly and offer to help with workouts."},
                 {"role": "user", "content": chat_prompt}
             ],
             temperature=0.3,
             max_tokens=max_tokens,
-            timeout=30
+            timeout=15
         )
         return response.choices[0].message.content
     except Exception as e:
