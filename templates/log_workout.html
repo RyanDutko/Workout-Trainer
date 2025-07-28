@@ -3,170 +3,69 @@
 {% block title %}Log Workout - Personal Trainer{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-plus me-2"></i>Log Workout</h1>
-</div>
+<div class="container-fluid p-3">
+    <!-- Workout Not Started State -->
+    <div id="workout-not-started" class="text-center">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h2 class="mb-3"><i class="fas fa-dumbbell me-2 text-primary"></i>Ready to Workout?</h2>
+                <p class="text-muted mb-4">Today's plan: <span id="workout-count">0</span> exercises</p>
 
-<div class="row">
-    <div class="col-md-8 mx-auto">
-        <div class="card">
-            <div class="card-body">
-                <!-- Multi-Exercise Session -->
-                <div id="multi-exercise-mode" style="display: none;">
-                    <div class="alert alert-info">
-                        <h6><i class="fas fa-list me-2"></i>Multi-Exercise Session for <span id="session-date"></span></h6>
-                        <p class="mb-0">Add multiple exercises to this session, then submit all at once.</p>
-                    </div>
-
-                    <div id="session-exercises" class="mb-3">
-                        <!-- Session exercises will be added here -->
-                    </div>
-
-                    <div class="d-flex gap-2 mb-3">
-                        <button type="button" class="btn btn-success" onclick="submitMultiSession()">
-                            <i class="fas fa-check me-2"></i>Submit All Exercises
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" onclick="exitMultiMode()">
-                            <i class="fas fa-times me-2"></i>Exit Multi-Exercise Mode
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Single Exercise Mode -->
-                <form method="POST" id="single-exercise-form">
-                    <div class="mb-3">
-                        <label for="workout_text" class="form-label">Workout Description</label>
-                        <textarea class="form-control" id="workout_text" name="workout_text" rows="4" 
-                                placeholder="Type naturally - I understand many formats:&#10;• 3x10@200lbs bench press&#10;• bench press 3 sets of 10 at 200 pounds&#10;• did 4x8@225 squats, felt easy&#10;• deadlift 1x5@315lbs, barely got it" required></textarea>
-                        <div class="form-text">
-                            <strong>💡 Tip:</strong> I understand natural language! Include notes like "felt easy" or "struggled with last rep" - this helps with progression suggestions.
+                <!-- Today's Plan Preview -->
+                <div id="plan-preview" class="mb-4">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="date" class="form-label">Date</label>
-                        <input type="date" class="form-control" id="date" name="date" value="{{ today }}">
-                    </div>
-
-                    <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Log Single Exercise
-                        </button>
-                        <button type="button" class="btn btn-outline-success" onclick="startMultiMode()">
-                            <i class="fas fa-plus me-2"></i>Start Multi-Exercise Session
-                        </button>
-                        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
-                            <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
-                        </a>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Selected Date's Plan -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h6><i class="fas fa-calendar-day me-2"></i><span id="plan-day-name">{{ today_name }}</span>'s Plan</h6>
-            </div>
-            <div class="card-body" id="plan-container">
-                <!-- Plan will be loaded here via JavaScript -->
-                <div class="text-center">
-                    <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <span class="ms-2">Loading plan...</span>
-                </div>
-            </div>
-        </div></div>
-        </div>
-
-        <!-- Natural Language Examples -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h6><i class="fas fa-lightbulb me-2"></i>Example Formats (All Work!)</h6>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x10@200lbs bench press')">
-                            Standard: 3x10@200lbs bench press
-                        </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('bench press 3 sets of 10 at 200 pounds')">
-                            Natural: bench press 3 sets of 10 at 200 pounds
-                        </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('did 4x8@225 squats, felt easy')">
-                            With Notes: did 4x8@225 squats, felt easy
-                        </button>
-                    </div>
-                    <div class="col-md-6">
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('deadlift 1x5@315lbs, barely got the last rep')">
-                            Struggle: deadlift 1x5@315lbs, barely got the last rep
-                        </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('3x15@bodyweight pull ups, could do more')">
-                            Bodyweight: 3x15@bodyweight pull ups, could do more
-                        </button>
-                        <button class="btn btn-outline-primary btn-sm mb-2 w-100" onclick="fillExample('overhead press 3x8@135, form was solid')">
-                            Good Form: overhead press 3x8@135, form was solid
-                        </button>
+                        <span class="ms-2">Loading plan...</span>
                     </div>
                 </div>
-                <div class="mt-2">
-                    <small class="text-muted">
-                        <strong>🎯 Pro tip:</strong> Notes like "easy", "struggled", "perfect form" help the AI give better progression advice!
-                    </small>
-                </div>
-            </div>
-        </div>
 
-        <!-- Rest Timer -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h6><i class="fas fa-clock me-2"></i>Rest Timer</h6>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label for="restMinutes" class="form-label">Rest Time (Minutes)</label>
-                    <input type="number" class="form-control" id="restMinutes" value="2" min="0">
-                </div>
-                <button type="button" class="btn btn-success w-100" id="startTimer"><i class="fas fa-play me-2"></i>Start Timer</button>
-                <h4 class="text-center mt-3" id="timerDisplay">2:00</h4>
+                <button class="btn btn-primary btn-lg px-5" onclick="beginWorkout()">
+                    <i class="fas fa-play me-2"></i>Begin Workout
+                </button>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Detailed Logging Modal -->
-<div class="modal fade" id="detailedLogModal" tabindex="-1" aria-labelledby="detailedLogModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="detailedLogModalLabel">Log Exercise Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    <!-- Active Workout State -->
+    <div id="workout-active" style="display: none;">
+        <!-- Workout Header -->
+        <div class="row mb-3">
+            <div class="col-6">
+                <small class="text-muted">Exercise <span id="current-exercise-num">1</span> of <span id="total-exercises">1</span></small>
             </div>
-            <div class="modal-body">
-                <div id="exerciseDetails" class="mb-3">
-                    <!-- Exercise details will be populated here -->
+            <div class="col-6 text-end">
+                <div id="live-clock" class="badge bg-secondary fs-6">00:00:00</div>
+            </div>
+        </div>
+
+        <!-- Current Exercise Card -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body p-4">
+                <h3 id="exercise-name" class="text-center mb-3">Exercise Name</h3>
+                <div class="text-center mb-4">
+                    <div class="badge bg-info fs-6" id="exercise-target">3x10 @ 100lbs</div>
                 </div>
 
                 <!-- Workout Status Options -->
-                <div class="mb-3">
-                    <label class="form-label"><strong>Workout Status</strong></label>
+                <div class="mb-4">
                     <div class="btn-group w-100" role="group">
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusCompleted" value="completed" checked>
-                        <label class="btn btn-outline-success" for="statusCompleted">Completed</label>
+                        <label class="btn btn-outline-success" for="statusCompleted">Complete</label>
 
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusSkipped" value="skipped">
-                        <label class="btn btn-outline-warning" for="statusSkipped">Skipped</label>
+                        <label class="btn btn-outline-warning" for="statusSkipped">Skip</label>
 
                         <input type="radio" class="btn-check" name="workoutStatus" id="statusSubstituted" value="substituted">
-                        <label class="btn btn-outline-info" for="statusSubstituted">Substituted</label>
+                        <label class="btn btn-outline-info" for="statusSubstituted">Substitute</label>
                     </div>
                 </div>
 
-                <!-- Skip Reason (shown when skipped is selected) -->
+                <!-- Skip Reason (hidden by default) -->
                 <div id="skipReasonContainer" class="mb-3" style="display: none;">
-                    <label for="skipReason" class="form-label">Why was this skipped?</label>
-                    <select class="form-control" id="skipReason">
+                    <label for="skipReason" class="form-label">Why skipping?</label>
+                    <select class="form-select" id="skipReason">
                         <option value="">Select reason...</option>
                         <option value="ran_out_of_time">Ran out of time</option>
                         <option value="too_tired">Too tired/fatigued</option>
@@ -178,16 +77,16 @@
                     </select>
                 </div>
 
-                <!-- Substitution Exercise (shown when substituted is selected) -->
+                <!-- Substitution (hidden by default) -->
                 <div id="substitutionContainer" class="mb-3" style="display: none;">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-12 mb-2">
                             <label for="substitutedExercise" class="form-label">What did you do instead?</label>
                             <input type="text" class="form-control" id="substitutedExercise" placeholder="e.g., leg press, goblet squats">
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label for="substitutionReason" class="form-label">Why substitute?</label>
-                            <select class="form-control" id="substitutionReason">
+                            <select class="form-select" id="substitutionReason">
                                 <option value="">Select reason...</option>
                                 <option value="machine_taken">Machine was taken</option>
                                 <option value="different_gym">At different gym</option>
@@ -200,30 +99,67 @@
                     </div>
                 </div>
 
-                <div id="setsSection" class="mb-3">
-                    <label class="form-label"><strong>How did each set go?</strong></label>
+                <!-- Sets Logging -->
+                <div id="setsSection" class="mb-4">
+                    <h6 class="mb-3">Log Your Sets:</h6>
                     <div id="setsContainer">
                         <!-- Sets will be populated here -->
                     </div>
-                </div>
 
-                <div class="mb-3">
-                    <label for="quickFillReps" class="form-label">Quick Fill Options</label>
-                    <div class="btn-group w-100" role="group">
-                        <button type="button" class="btn btn-outline-primary" onclick="quickFillAllSets('planned')">As Planned</button>
-                        <button type="button" class="btn btn-outline-success" onclick="quickFillAllSets('plus1')">Planned +1</button>
-                        <button type="button" class="btn btn-outline-warning" onclick="quickFillAllSets('minus1')">Planned -1</button>
+                    <!-- Quick Fill -->
+                    <div class="mt-3">
+                        <small class="text-muted d-block mb-2">Quick fill all sets:</small>
+                        <div class="btn-group w-100" role="group">
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="quickFillAllSets('planned')">As Planned</button>
+                            <button type="button" class="btn btn-outline-success btn-sm" onclick="quickFillAllSets('plus1')">+1 Rep</button>
+                            <button type="button" class="btn btn-outline-warning btn-sm" onclick="quickFillAllSets('minus1')">-1 Rep</button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="mb-3">
+                <!-- Notes -->
+                <div class="mb-4">
                     <label for="workoutNotes" class="form-label">Notes (Optional)</label>
-                    <textarea class="form-control" id="workoutNotes" rows="3" placeholder="How did it feel? Easy, challenging, perfect form, etc."></textarea>
+                    <textarea class="form-control" id="workoutNotes" rows="2" placeholder="How did it feel? Easy, challenging, etc."></textarea>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary btn-lg" onclick="logCurrentExercise()">
+                        <i class="fas fa-check me-2"></i>Log & Continue
+                    </button>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <button class="btn btn-outline-secondary w-100" onclick="previousExercise()" id="prevBtn">
+                                <i class="fas fa-arrow-left me-1"></i>Previous
+                            </button>
+                        </div>
+                        <div class="col-6">
+                            <button class="btn btn-outline-danger w-100" onclick="endWorkout()">
+                                <i class="fas fa-stop me-1"></i>End Workout
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitDetailedLog()">Log Workout</button>
+        </div>
+    </div>
+
+    <!-- Workout Complete State -->
+    <div id="workout-complete" style="display: none;">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center p-5">
+                <i class="fas fa-trophy fa-3x text-success mb-3"></i>
+                <h2 class="text-success mb-3">Workout Complete!</h2>
+                <p class="text-muted mb-4">Great job! All exercises logged.</p>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-home me-2"></i>Back to Dashboard
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="startNewWorkout()">
+                        <i class="fas fa-plus me-2"></i>Start Another Workout
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -232,146 +168,120 @@
 
 {% block scripts %}
 <script>
-function fillExample(example) {
-    document.getElementById('workout_text').value = example;
-}
+// Global workout state
+let currentWorkoutPlan = [];
+let currentExerciseIndex = 0;
+let workoutStartTime = null;
+let clockInterval = null;
 
-function fillPlanExercise(exercise) {
-    document.getElementById('workout_text').value = exercise;
-}
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadTodaysPlan();
+    setupWorkoutStatusListeners();
+});
 
-function loadPlanForDate(dateStr) {
-    const planContainer = document.getElementById('plan-container');
-    const planDayName = document.getElementById('plan-day-name');
+function loadTodaysPlan() {
+    const today = new Date().toISOString().split('T')[0];
 
-    // Show loading spinner
-    planContainer.innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border spinner-border-sm" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <span class="ms-2">Loading plan...</span>
-        </div>
-    `;
-
-    // Ensure we have a valid date string
-    if (!dateStr || dateStr === '') {
-        dateStr = document.getElementById('date').value || '{{ today }}';
-    }
-
-    fetch(`/get_plan/${dateStr}`)
+    fetch(`/get_plan/${today}`)
         .then(response => response.json())
         .then(data => {
-            planDayName.textContent = data.day_name;
+            currentWorkoutPlan = data.exercises || [];
+            document.getElementById('workout-count').textContent = currentWorkoutPlan.length;
 
-            if (data.exercises && data.exercises.length > 0) {
-                let planHtml = '<div class="row">';
-                data.exercises.forEach(exercise => {
-                    planHtml += `
-                        <div class="col-md-6 mb-2">
-                            <button class="btn btn-outline-success btn-sm w-100" onclick="openDetailedLog('${exercise.exercise_name}', ${exercise.sets}, '${exercise.reps}', '${exercise.weight}')">
-                                <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
-                                <small>${exercise.sets}x${exercise.reps} @ ${exercise.weight}</small>
-                            </button>
+            // Show plan preview
+            const previewContainer = document.getElementById('plan-preview');
+            if (currentWorkoutPlan.length > 0) {
+                let previewHtml = '<div class="list-group list-group-flush">';
+                currentWorkoutPlan.forEach((exercise, index) => {
+                    previewHtml += `
+                        <div class="list-group-item border-0 py-2">
+                            <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
+                            <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
                         </div>
                     `;
                 });
-                planHtml += '</div><small class="text-muted">Click any exercise above to fill it in the log form</small>';
-                planContainer.innerHTML = planHtml;
+                previewHtml += '</div>';
+                previewContainer.innerHTML = previewHtml;
             } else {
-                planContainer.innerHTML = `<p class="text-muted">No plan set for ${data.day_name}. <a href="{{ url_for('weekly_plan') }}">Set up your weekly plan</a></p>`;
+                previewContainer.innerHTML = '<p class="text-muted">No exercises planned for today. <a href="/weekly_plan">Set up your plan</a></p>';
             }
         })
         .catch(error => {
             console.error('Error loading plan:', error);
-            planContainer.innerHTML = '<p class="text-danger">Error loading plan</p>';
+            document.getElementById('plan-preview').innerHTML = '<p class="text-danger">Error loading plan</p>';
         });
 }
 
-// Load plan when date changes
-document.getElementById('date').addEventListener('change', function() {
-    loadPlanForDate(this.value);
-});
-
-// Load initial plan on page load
-document.addEventListener('DOMContentLoaded', function() {
-    const dateInput = document.getElementById('date');
-    // Ensure we have today's date if the input is empty
-    if (!dateInput.value) {
-        dateInput.value = '{{ today }}';
+function beginWorkout() {
+    if (currentWorkoutPlan.length === 0) {
+        alert('No workout plan for today. Please set up your weekly plan first.');
+        return;
     }
-    loadPlanForDate(dateInput.value);
-});
 
-// Global variables for detailed logging
-let currentExercise = null;
-let sessionExercises = [];
+    workoutStartTime = new Date();
+    currentExerciseIndex = 0;
 
-function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) {
-    currentExercise = {
-        name: exerciseName,
-        sets: plannedSets,
-        reps: plannedReps,
-        weight: plannedWeight
-    };
+    // Switch to workout view
+    document.getElementById('workout-not-started').style.display = 'none';
+    document.getElementById('workout-active').style.display = 'block';
 
-    // Check for progression from last week
-    fetch('/get_last_week_weight', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({exercise_name: exerciseName})
-    })
-    .then(response => response.json())
-    .then(data => {
-        let progressionNote = '';
-        if (data.last_weight && data.last_weight !== plannedWeight) {
-            progressionNote = `<small class="text-success"><i class="fas fa-arrow-up me-1"></i>Up from ${data.last_weight} last week</small>`;
-        }
+    // Start live clock
+    startLiveClock();
 
-        // Populate exercise details
-        document.getElementById('exerciseDetails').innerHTML = `
-            <div class="alert alert-info">
-                <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
-                <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
-                ${progressionNote}
-            </div>
-        `;
-    })
-    .catch(error => {
-        console.error('Error getting last week weight:', error);
-        // Fallback to original display
-        document.getElementById('exerciseDetails').innerHTML = `
-            <div class="alert alert-info">
-                <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
-                <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
-            </div>
-        `;
-    });
+    // Load first exercise
+    loadCurrentExercise();
+}
+
+function startLiveClock() {
+    function updateClock() {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', { hour12: false });
+        document.getElementById('live-clock').textContent = timeString;
+    }
+
+    updateClock(); // Update immediately
+    clockInterval = setInterval(updateClock, 1000);
+}
+
+function loadCurrentExercise() {
+    if (currentExerciseIndex >= currentWorkoutPlan.length) {
+        completeWorkout();
+        return;
+    }
+
+    const exercise = currentWorkoutPlan[currentExerciseIndex];
+    const totalExercises = currentWorkoutPlan.length;
+
+    // Update header
+    document.getElementById('current-exercise-num').textContent = currentExerciseIndex + 1;
+    document.getElementById('total-exercises').textContent = totalExercises;
+
+    // Update exercise info
+    document.getElementById('exercise-name').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
+    document.getElementById('exercise-target').textContent = `${exercise.sets}x${exercise.reps} @ ${exercise.weight}`;
 
     // Create set inputs
     const setsContainer = document.getElementById('setsContainer');
     setsContainer.innerHTML = '';
 
-    for (let i = 1; i <= plannedSets; i++) {
+    for (let i = 1; i <= exercise.sets; i++) {
         setsContainer.innerHTML += `
             <div class="row mb-2 align-items-center">
-                <div class="col-2">
-                    <label class="form-label mb-0">Set ${i}:</label>
+                <div class="col-3">
+                    <span class="fw-bold">Set ${i}:</span>
+                </div>
+                <div class="col-5">
+                    <input type="number" class="form-control" id="set${i}Reps" 
+                           placeholder="${exercise.reps}" min="0" max="50">
                 </div>
                 <div class="col-4">
-                    <input type="number" class="form-control form-control-sm" id="set${i}Reps" 
-                           placeholder="${plannedReps}" min="0" max="50">
-                </div>
-                <div class="col-6">
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${plannedReps}')">
-                            ${plannedReps}
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${exercise.reps}')" title="As planned">
+                            ${exercise.reps}
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${parseInt(plannedReps) + 1})">
-                            ${parseInt(plannedReps) + 1}
-                        </button>
-                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="setReps(${i}, ${Math.max(1, parseInt(plannedReps) - 1)})">
-                            ${Math.max(1, parseInt(plannedReps) - 1)}
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${parseInt(exercise.reps) + 1})" title="+1">
+                            +1
                         </button>
                     </div>
                 </div>
@@ -379,14 +289,25 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
         `;
     }
 
-    // Clear notes and reset form
-    document.getElementById('workoutNotes').value = '';
+    // Reset form state
     document.getElementById('statusCompleted').checked = true;
+    document.getElementById('workoutNotes').value = '';
     document.getElementById('skipReasonContainer').style.display = 'none';
     document.getElementById('substitutionContainer').style.display = 'none';
     document.getElementById('setsSection').style.display = 'block';
 
-    // Add event listeners for workout status changes
+    // Update previous button
+    const prevBtn = document.getElementById('prevBtn');
+    if (currentExerciseIndex === 0) {
+        prevBtn.disabled = true;
+        prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
+    } else {
+        prevBtn.disabled = false;
+        prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
+    }
+}
+
+function setupWorkoutStatusListeners() {
     document.querySelectorAll('input[name="workoutStatus"]').forEach(radio => {
         radio.addEventListener('change', function() {
             const skipContainer = document.getElementById('skipReasonContainer');
@@ -408,9 +329,6 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
             }
         });
     });
-
-    // Show modal
-    new bootstrap.Modal(document.getElementById('detailedLogModal')).show();
 }
 
 function setReps(setNumber, reps) {
@@ -418,7 +336,8 @@ function setReps(setNumber, reps) {
 }
 
 function quickFillAllSets(type) {
-    const plannedReps = parseInt(currentExercise.reps);
+    const exercise = currentWorkoutPlan[currentExerciseIndex];
+    const plannedReps = parseInt(exercise.reps);
     let repsValue;
 
     switch(type) {
@@ -433,43 +352,38 @@ function quickFillAllSets(type) {
             break;
     }
 
-    for (let i = 1; i <= currentExercise.sets; i++) {
+    for (let i = 1; i <= exercise.sets; i++) {
         document.getElementById(`set${i}Reps`).value = repsValue;
     }
 }
 
-function submitDetailedLog() {
-    // Get workout status
+function logCurrentExercise() {
+    const exercise = currentWorkoutPlan[currentExerciseIndex];
     const workoutStatus = document.querySelector('input[name="workoutStatus"]:checked').value;
     let notes = document.getElementById('workoutNotes').value;
-    let workoutText = '';
-    let exercise = {};
+
+    // Build workout data based on status
+    let workoutData = {
+        exercise_name: exercise.exercise_name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        weight: exercise.weight,
+        notes: notes,
+        status: workoutStatus,
+        date: new Date().toISOString().split('T')[0]
+    };
 
     if (workoutStatus === 'skipped') {
-        // Handle skipped workout
         const skipReason = document.getElementById('skipReason').value;
         if (!skipReason) {
             alert('Please select a reason for skipping this exercise');
             return;
         }
-
-        const reasonText = document.getElementById('skipReason').options[document.getElementById('skipReason').selectedIndex].text;
-        notes = `SKIPPED: ${reasonText}${notes ? ' - ' + notes : ''}`;
-
-        workoutText = `0x0@0 ${currentExercise.name} - SKIPPED: ${reasonText}`;
-
-        exercise = {
-            exercise_name: currentExercise.name,
-            sets: 0,
-            reps: 0,
-            weight: 0,
-            notes: notes,
-            status: 'skipped',
-            skip_reason: skipReason
-        };
-
+        workoutData.skip_reason = skipReason;
+        workoutData.sets = 0;
+        workoutData.reps = 0;
+        workoutData.weight = 0;
     } else if (workoutStatus === 'substituted') {
-        // Handle substituted workout
         const substitutedExercise = document.getElementById('substitutedExercise').value;
         const substitutionReason = document.getElementById('substitutionReason').value;
 
@@ -478,48 +392,17 @@ function submitDetailedLog() {
             return;
         }
 
-        // Still need to collect reps for the substituted exercise
+        workoutData.exercise_name = substitutedExercise;
+        workoutData.original_exercise = exercise.exercise_name;
+        workoutData.substitution_reason = substitutionReason;
+    }
+
+    if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
+        // Collect actual reps performed
         const setReps = [];
         let allSetsHaveReps = true;
 
-        for (let i = 1; i <= currentExercise.sets; i++) {
-            const reps = document.getElementById(`set${i}Reps`).value;
-            if (!reps || reps === '') {
-                allSetsHaveReps = false;
-                break;
-            }
-            setReps.push(parseInt(reps));
-        }
-
-        if (!allSetsHaveReps) {
-            alert('Please fill in reps for all sets of the substituted exercise');
-            return;
-        }
-
-        const reasonText = document.getElementById('substitutionReason').options[document.getElementById('substitutionReason').selectedIndex].text;
-        const repsString = setReps.join('-');
-
-        notes = `SUBSTITUTED: ${substitutedExercise} (${reasonText})${notes ? ' - ' + notes : ''}`;
-        workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${substitutedExercise} - SUBSTITUTED for ${currentExercise.name} (${reasonText})`;
-
-        exercise = {
-            exercise_name: substitutedExercise, // Log the actual exercise done
-            sets: currentExercise.sets,
-            reps: currentExercise.reps,
-            weight: currentExercise.weight,
-            notes: notes,
-            status: 'substituted',
-            original_exercise: currentExercise.name,
-            substitution_reason: substitutionReason,
-            reps_performed: setReps
-        };
-
-    } else {
-        // Handle completed workout (original logic)
-        const setReps = [];
-        let allSetsHaveReps = true;
-
-        for (let i = 1; i <= currentExercise.sets; i++) {
+        for (let i = 1; i <= exercise.sets; i++) {
             const reps = document.getElementById(`set${i}Reps`).value;
             if (!reps || reps === '') {
                 allSetsHaveReps = false;
@@ -533,192 +416,76 @@ function submitDetailedLog() {
             return;
         }
 
-        const repsString = setReps.join('-');
-        workoutText = `${currentExercise.sets}x${repsString}@${currentExercise.weight} ${currentExercise.name}`;
-
-        if (notes.trim()) {
-            workoutText += `, ${notes.trim()}`;
-        }
-
-        exercise = {
-            exercise_name: currentExercise.name,
-            sets: currentExercise.sets,
-            reps: currentExercise.reps,
-            weight: currentExercise.weight,
-            notes: notes,
-            status: 'completed',
-            reps_performed: setReps
-        };
+        workoutData.reps_performed = setReps;
     }
 
-    // If in multi-exercise mode, add to session; otherwise fill the form
-    if (document.getElementById('multi-exercise-mode').style.display === 'block') {
-        addToSession(exercise);
-    } else {
-        document.getElementById('workout_text').value = workoutText;
-    }
-
-    bootstrap.Modal.getInstance(document.getElementById('detailedLogModal')).hide();
-
-    // Focus on the main form
-    document.getElementById('workout_text').focus();
-}
-
-// Multi-exercise session functions
-function startMultiMode() {
-    const selectedDate = document.getElementById('date').value;
-    document.getElementById('session-date').textContent = new Date(selectedDate).toLocaleDateString();
-    document.getElementById('multi-exercise-mode').style.display = 'block';
-    document.getElementById('single-exercise-form').style.display = 'none';
-    sessionExercises = [];
-    updateSessionDisplay();
-}
-
-function exitMultiMode() {
-    document.getElementById('multi-exercise-mode').style.display = 'none';
-    document.getElementById('single-exercise-form').style.display = 'block';
-    sessionExercises = [];
-}
-
-function addToSession(exercise) {
-    sessionExercises.push(exercise);
-    updateSessionDisplay();
-}
-
-function removeFromSession(index) {
-    sessionExercises.splice(index, 1);
-    updateSessionDisplay();
-}
-
-function updateSessionDisplay() {
-    const container = document.getElementById('session-exercises');
-    if (sessionExercises.length === 0) {
-        container.innerHTML = '<p class="text-muted">No exercises added yet. Click exercises from your plan below or use the detailed logging modal.</p>';
-        return;
-    }
-
-    let html = '<h6>Exercises in this session:</h6>';
-    sessionExercises.forEach((exercise, index) => {
-        let alertClass = 'alert-light';
-        let statusBadge = '';
-
-        if (exercise.status === 'skipped') {
-            alertClass = 'alert-warning';
-            statusBadge = '<span class="badge bg-warning text-dark">SKIPPED</span> ';
-        } else if (exercise.status === 'substituted') {
-            alertClass = 'alert-info';
-            statusBadge = '<span class="badge bg-info">SUBSTITUTED</span> ';
-        }
-
-        html += `
-            <div class="alert ${alertClass} d-flex justify-content-between align-items-center">
-                <div>
-                    ${statusBadge}<strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
-                    <small>${exercise.sets}x${exercise.reps} @ ${exercise.weight}</small>
-                    ${exercise.notes ? `<br><small class="text-muted">${exercise.notes}</small>` : ''}
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFromSession(${index})">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </div>
-        `;
-    });
-    container.innerHTML = html;
-}
-
-function submitMultiSession() {
-    if (sessionExercises.length === 0) {
-        alert('Please add at least one exercise to the session');
-        return;
-    }
-
-    const selectedDate = document.getElementById('date').value;
-
-    // Submit all exercises
+    // Log the exercise
     fetch('/log_multi_workout', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            exercises: sessionExercises,
-            date: selectedDate
+            exercises: [workoutData],
+            date: workoutData.date
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`✅ Successfully logged ${sessionExercises.length} exercises!`);
-            window.location.href = '/';  // Redirect to dashboard
+            // Move to next exercise
+            currentExerciseIndex++;
+            loadCurrentExercise();
         } else {
-            alert('❌ Error logging exercises: ' + data.error);
+            alert('Error logging exercise: ' + data.error);
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('❌ Error submitting session');
+        alert('Error logging exercise');
     });
 }
 
-// Rest Timer Functions
-let timerInterval = null;
-let timeRemaining = 0;
-
-document.addEventListener('DOMContentLoaded', function() {
-    const startTimerBtn = document.getElementById('startTimer');
-    const timerDisplay = document.getElementById('timerDisplay');
-    const restMinutes = document.getElementById('restMinutes');
-
-    startTimerBtn.addEventListener('click', function() {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-            startTimerBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Timer';
-            startTimerBtn.className = 'btn btn-success w-100';
-            return;
-        }
-
-        timeRemaining = parseInt(restMinutes.value) * 60;
-        startTimerBtn.innerHTML = '<i class="fas fa-stop me-2"></i>Stop Timer';
-        startTimerBtn.className = 'btn btn-danger w-100';
-
-        timerInterval = setInterval(function() {
-            const minutes = Math.floor(timeRemaining / 60);
-            const seconds = timeRemaining % 60;
-            timerDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-            if (timeRemaining <= 0) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-                startTimerBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Timer';
-                startTimerBtn.className = 'btn btn-success w-100';
-                timerDisplay.textContent = 'REST OVER!';
-
-                // Play notification sound (if browser supports it)
-                if ('Notification' in window && Notification.permission === 'granted') {
-                    new Notification('Rest time is over!', {
-                        body: 'Time for your next set',
-                        icon: '/static/icon.png'
-                    });
-                }
-
-                // Visual notification
-                timerDisplay.style.color = 'red';
-                setTimeout(() => {
-                    timerDisplay.style.color = 'black';
-                    timerDisplay.textContent = `${parseInt(restMinutes.value)}:00`;
-                }, 3000);
-
-                return;
-            }
-            timeRemaining--;
-        }, 1000);
-    });
-
-    // Request notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
+function previousExercise() {
+    if (currentExerciseIndex > 0) {
+        currentExerciseIndex--;
+        loadCurrentExercise();
     }
-});
+}
+
+function completeWorkout() {
+    // Stop clock
+    if (clockInterval) {
+        clearInterval(clockInterval);
+        clockInterval = null;
+    }
+
+    // Switch to complete view
+    document.getElementById('workout-active').style.display = 'none';
+    document.getElementById('workout-complete').style.display = 'block';
+}
+
+function endWorkout() {
+    if (confirm('Are you sure you want to end your workout early?')) {
+        completeWorkout();
+    }
+}
+
+function startNewWorkout() {
+    // Reset everything
+    currentExerciseIndex = 0;
+    workoutStartTime = null;
+
+    if (clockInterval) {
+        clearInterval(clockInterval);
+        clockInterval = null;
+    }
+
+    // Show initial state
+    document.getElementById('workout-complete').style.display = 'none';
+    document.getElementById('workout-active').style.display = 'none';
+    document.getElementById('workout-not-started').style.display = 'block';
+
+    // Reload plan
+    loadTodaysPlan();
+}
 </script>
 {% endblock %}
