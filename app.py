@@ -424,7 +424,7 @@ def get_progression():
 
         # Get current weekly plan
         cursor.execute('''
-            SELECT DISTINCT exercise_name, sets, reps, weight
+            SELECT DISTINCT exercise_name, target_sets, target_reps, target_weight
             FROM weekly_plan 
             ORDER BY exercise_name
         ''')
@@ -443,8 +443,8 @@ def get_progression():
 
         # Format weekly plan for Grok
         plan_text = ""
-        for exercise_name, sets, reps, weight in planned_exercises:
-            plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+        for exercise_name, target_sets, target_reps, target_weight in planned_exercises:
+            plan_text += f"• {exercise_name}: {target_sets}x{target_reps}@{target_weight}\n"
 
         # Create progression prompt for Grok
         progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
@@ -495,13 +495,13 @@ def apply_progression():
                 values = []
                 
                 if new_sets:
-                    update_parts.append('sets = ?')
+                    update_parts.append('target_sets = ?')
                     values.append(new_sets)
                 if new_reps:
-                    update_parts.append('reps = ?')
+                    update_parts.append('target_reps = ?')
                     values.append(new_reps)
                 if new_weight:
-                    update_parts.append('weight = ?')
+                    update_parts.append('target_weight = ?')
                     values.append(new_weight)
                 
                 values.append(exercise_name)
