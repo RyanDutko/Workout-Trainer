@@ -913,6 +913,8 @@ def get_grok_response_fast(prompt):
         from openai import OpenAI
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
+        print(f"DEBUG: Making API call with prompt: '{prompt[:100]}...'")
+        
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
@@ -921,11 +923,12 @@ def get_grok_response_fast(prompt):
             ],
             temperature=0.3,  # Lower temperature for faster, more focused responses
             max_tokens=200,   # Limit tokens for speed
-            timeout=10        # 10 second timeout
+            timeout=15        # Increased timeout to 15 seconds
         )
 
         result = response.choices[0].message.content
         print(f"DEBUG: Fast API response: '{result}'")
+        print(f"DEBUG: Response length: {len(result) if result else 0}")
 
         # Make sure we have a valid response
         if not result or not result.strip():
@@ -937,7 +940,15 @@ def get_grok_response_fast(prompt):
     except Exception as e:
         print(f"⚠️ Fast API error: {str(e)}")
         print(f"DEBUG: Exception type: {type(e)}")
-        return "I'm having trouble accessing my AI service right now. Could you try asking that again?"
+        print(f"DEBUG: Full exception details: {repr(e)}")
+        
+        # Check if it's an API key issue
+        if "api_key" in str(e).lower() or "unauthorized" in str(e).lower():
+            return "I'm having authentication issues with my AI service. Please check if the API key is properly configured."
+        elif "timeout" in str(e).lower():
+            return "The AI service is taking too long to respond. Could you try asking that again?"
+        else:
+            return "I'm having trouble accessing my AI service right now. Could you try asking that again?"
 
 @app.route('/chat_stream', methods=['POST'])
 def chat_stream():
