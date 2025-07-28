@@ -126,47 +126,70 @@ def init_db():
     conn.close()
 
 def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
-    """Optimized Grok response with appropriate length and context"""
+    """Full context-aware Grok response - restored working version"""
     try:
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
         
-        # Build minimal context for simple queries
+        # Build comprehensive context like the working version
         context_info = ""
-        is_simple_greeting = any(word in prompt.lower() for word in ['hello', 'hi', 'hey', 'good morning', 'good afternoon'])
-        is_progression_query = any(word in prompt.lower() for word in ['progression', 'progress', 'next', 'increase', 'improve', 'advance', 'plan'])
-        is_history_query = any(word in prompt.lower() for word in ['show', 'what did', 'last', 'history', 'previous', 'when', 'recent'])
         
-        # Only add context for complex queries, not simple greetings
-        if not is_simple_greeting and (is_progression_query or is_history_query):
-            if user_background and user_background.get('primary_goal'):
-                context_info += f"User Goal: {user_background['primary_goal']}\n"
-            if recent_workouts and (is_progression_query or is_history_query):
-                context_info += f"Recent Workouts:\n{recent_workouts[:200]}...\n"  # Limit context
+        # Add user background context
+        if user_background:
+            if user_background.get('primary_goal'):
+                context_info += f"User's Primary Goal: {user_background['primary_goal']}\n"
+            if user_background.get('fitness_level'):
+                context_info += f"Fitness Level: {user_background['fitness_level']}\n"
+            if user_background.get('training_frequency'):
+                context_info += f"Training Frequency: {user_background['training_frequency']}\n"
         
-        chat_prompt = f"{context_info}\n{prompt}" if context_info else prompt
+        # Add weekly plan context for progression queries
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight FROM weekly_plan ORDER BY day_of_week, order_index')
+        planned_exercises = cursor.fetchall()
         
-        # Smart token allocation
-        if is_simple_greeting:
-            max_tokens = 50
-        elif is_progression_query or is_history_query:
-            max_tokens = 300
-        else:
-            max_tokens = 150
+        if planned_exercises:
+            context_info += "\nWeekly Plan:\n"
+            current_day = ""
+            for day, exercise, sets, reps, weight in planned_exercises:
+                if day != current_day:
+                    if current_day != "":
+                        context_info += "\n"
+                    context_info += f"{day.title()}: "
+                    current_day = day
+                else:
+                    context_info += ", "
+                context_info += f"{exercise} {sets}x{reps}@{weight}"
+            context_info += "\n"
+
+        # Get recent workout data for context
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes
+            FROM workouts 
+            ORDER BY date_logged DESC 
+            LIMIT 50
+        """)
+        recent_workout_logs = cursor.fetchall()
+        if recent_workout_logs:
+            context_info += "\nRecent Workouts (last 50 entries): " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workout_logs])
+
+        conn.close()
         
+        # Build final prompt with context
+        full_prompt = context_info + "\n\n" + prompt
+
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
-                {"role": "system", "content": "You are a helpful fitness assistant. Keep responses concise and relevant. For greetings, respond briefly and offer to help with workouts."},
-                {"role": "user", "content": chat_prompt}
+                {"role": "system", "content": "You are a helpful personal trainer AI with access to the user's workout history and profile."},
+                {"role": "user", "content": full_prompt}
             ],
-            temperature=0.3,
-            max_tokens=max_tokens,
-            timeout=15
+            temperature=0.7
         )
         return response.choices[0].message.content
     except Exception as e:
         print(f"⚠️ API error: {str(e)}")
-        return f"Sorry, I'm having trouble connecting right now. Please try again in a moment."
+        return "Sorry, I encountered an error. Please try again."
 
 @app.route('/')
 def dashboard():
