@@ -100,6 +100,28 @@ def init_db():
         pass  # Column already exists
     
     cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
+    
+    # Add sample weekly plan if empty
+    cursor.execute('SELECT COUNT(*) FROM weekly_plan')
+    if cursor.fetchone()[0] == 0:
+        sample_plan = [
+            ('monday', 'Bench Press', 4, '8-10', '185lbs', 1),
+            ('monday', 'Squats', 4, '8-12', '225lbs', 2),
+            ('monday', 'Deadlifts', 3, '5-8', '275lbs', 3),
+            ('wednesday', 'Overhead Press', 4, '8-10', '135lbs', 1),
+            ('wednesday', 'Pull-ups', 3, '8-12', 'bodyweight', 2),
+            ('wednesday', 'Rows', 4, '10-12', '155lbs', 3),
+            ('friday', 'Incline Press', 4, '8-10', '165lbs', 1),
+            ('friday', 'Leg Press', 4, '12-15', '315lbs', 2),
+            ('friday', 'Bicep Curls', 3, '10-12', '35lbs', 3)
+        ]
+        
+        for day, exercise, sets, reps, weight, order in sample_plan:
+            cursor.execute('''
+                INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, order_index)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (day, exercise, sets, reps, weight, order))
+    
     conn.commit()
     conn.close()
 
@@ -388,6 +410,9 @@ def save_workout():
 
 @app.route('/get_plan/<day>')
 def get_plan(day):
+    if not day:
+        return jsonify({'exercises': [], 'day_name': 'Unknown'})
+        
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
     cursor.execute('SELECT exercise_name, sets, reps, weight FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (day,))
@@ -404,6 +429,23 @@ def get_plan(day):
         })
     
     return jsonify({'exercises': exercise_list, 'day_name': day.title()})
+
+@app.route('/delete_exercise', methods=['POST'])
+def delete_exercise():
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
