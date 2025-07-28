@@ -805,11 +805,18 @@ def chat():
             'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday', 'show me', 'what i did'
         ]
 
+        progression_keywords = [
+            'progression', 'tips', 'progress', 'increase', 'advance', 'improve', 'next', 'should i',
+            'how to progress', 'what should', 'recommend', 'suggestion', 'advice', 'better'
+        ]
+
         is_history_query = any(keyword in message_lower for keyword in history_keywords)
+        is_progression_query = any(keyword in message_lower for keyword in progression_keywords)
 
         # Debug: Print what was detected
         print(f"DEBUG: User message: '{user_message}'")
         print(f"DEBUG: Is history query: {is_history_query}")
+        print(f"DEBUG: Is progression query: {is_progression_query}")
         print(f"DEBUG: Matched keywords: {[kw for kw in history_keywords if kw in message_lower]}")
 
         # Detect if user is asking about workout context
@@ -857,9 +864,6 @@ Answer directly and concisely."""
             else:
                 chat_prompt = f"User asked: {user_message}\n\nNo recent workout data found. Let them know no workouts are logged yet."
 
-            # Check if this is a progression/tips query that needs more tokens
-            is_progression_query = any(word in message_lower for word in ['progression', 'tips', 'progress', 'increase', 'advance', 'improve', 'next'])
-            
             if is_progression_query:
                 # Use regular response with more tokens for progression queries
                 response = get_grok_response(chat_prompt, include_context=False)
@@ -982,7 +986,13 @@ def chat_stream():
         'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday', 'show me', 'what i did'
     ]
 
+    progression_keywords = [
+        'progression', 'tips', 'progress', 'increase', 'advance', 'improve', 'next', 'should i',
+        'how to progress', 'what should', 'recommend', 'suggestion', 'advice', 'better'
+    ]
+
     is_history_query = any(keyword in message_lower for keyword in history_keywords)
+    is_progression_query = any(keyword in message_lower for keyword in progression_keywords)
 
     # Build appropriate prompt based on query type
     if is_history_query:
@@ -1024,6 +1034,9 @@ User: {user_message}"""
             from openai import OpenAI
             client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
+            # Adjust token limit based on query type
+            max_tokens = 800 if is_progression_query else 400
+            
             response = client.chat.completions.create(
                 model="grok-4-0709",
                 messages=[
@@ -1031,7 +1044,7 @@ User: {user_message}"""
                     {"role": "user", "content": chat_prompt}
                 ],
                 temperature=0.3,
-                max_tokens=400,
+                max_tokens=max_tokens,
                 stream=True
             )
 
