@@ -11,6 +11,14 @@
             min-height: 100vh;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
+        @media (max-width: 767px) {
+            .sidebar {
+                min-height: auto;
+            }
+            .main-content {
+                padding-top: 0;
+            }
+        }
         .main-content {
             background-color: #f8f9fa;
             min-height: 100vh;
@@ -31,10 +39,22 @@
     </style>
 </head>
 <body>
+    <!-- Mobile Navigation Toggle -->
+    <nav class="navbar navbar-dark d-md-none" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <div class="container-fluid">
+            <span class="navbar-brand">
+                <i class="fas fa-dumbbell me-2"></i>Personal Trainer
+            </span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mobileSidebar">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+        </div>
+    </nav>
+
     <div class="container-fluid">
         <div class="row">
             <!-- Sidebar -->
-            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
+            <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse" id="mobileSidebar">
                 <div class="position-sticky pt-3">
                     <div class="navbar-brand px-3 mb-4">
                         <i class="fas fa-dumbbell me-2"></i>
