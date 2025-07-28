@@ -286,6 +286,21 @@ def progression():
 def analytics():
     return render_template('analytics.html')
 
+@app.route('/add_to_plan', methods=['POST'])
+def add_to_plan():
+    # Handle adding exercises to weekly plan
+    return jsonify({'status': 'success'})
+
+@app.route('/save_workout', methods=['POST'])
+def save_workout():
+    # Handle saving workouts
+    return jsonify({'status': 'success'})
+
+@app.route('/get_plan/<day>')
+def get_plan(day):
+    # Get plan for specific day
+    return jsonify({'exercises': []})
+
 if __name__ == '__main__':
     init_db()
     print("🌐 Starting Flask web server...")
