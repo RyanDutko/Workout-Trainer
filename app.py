@@ -768,6 +768,7 @@ def delete_exercise():
 
         return jsonify({'success': True})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/onboarding')
