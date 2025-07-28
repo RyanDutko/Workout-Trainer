@@ -9,7 +9,7 @@ import os
 sys.argv = ['app.py']  # Override sys.argv to prevent main.py console execution
 
 from main import (
-    call_grok_parse, get_grok_response, update_background_field
+    call_grok_parse, get_grok_response, get_grok_response_fast, update_background_field
 )
 
 # Create Flask-specific database functions to avoid threading issues
