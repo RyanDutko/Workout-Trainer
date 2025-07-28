@@ -86,7 +86,11 @@ chatForm.addEventListener('submit', function(e) {
     .then(response => response.json())
     .then(data => {
         removeTypingIndicator(typingId);
-        addMessage(data.response, 'ai');
+        if (data.response && data.response.trim()) {
+            addMessage(data.response, 'ai');
+        } else {
+            addMessage('I received an empty response. Could you try asking that again?', 'ai');
+        }
     })
     .catch(error => {
         removeTypingIndicator(typingId);

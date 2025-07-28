@@ -834,6 +834,11 @@ User: {user_message}"""
 
         # Use optimized Grok call
         response = get_grok_response_fast(chat_prompt)
+        
+        # Check if response is empty or None
+        if not response or not response.strip():
+            response = "I'm here to help with your fitness questions! Could you try asking that again?"
+        
         return jsonify({'response': response})
 
     return render_template('chat.html')

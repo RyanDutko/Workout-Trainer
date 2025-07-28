@@ -718,6 +718,7 @@ def insert_log(entry, date_logged):
 
             # Check if this exceeds baseline and update if so
             update_baseline_if_exceeded(
+```python
                 single_entry.get("exercise_name", "Unknown"),
                 single_entry.get("sets", 1),
                 single_entry.get("reps", "Unknown"),
@@ -1004,14 +1005,14 @@ def get_grok_response_fast(prompt):
     """Fast Grok response with minimal context for chat"""
     try:
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-        
+
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
-                {"role": "system", "content": "You are a helpful personal trainer. Be concise and direct."},
+                {"role": "system", "content": "You are a professional fitness assistant. Provide helpful, concise responses about workouts, training, and fitness. Do not introduce yourself with a name."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,  # Lower temperature for faster responses
+            temperature=0.3,  # Lower temperature for faster, more focused responses
             max_tokens=200,   # Limit tokens for speed
             timeout=10        # 10 second timeout
         )
