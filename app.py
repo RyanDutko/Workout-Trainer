@@ -145,7 +145,7 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         # Add weekly plan context for progression queries
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight FROM weekly_plan ORDER BY day_of_week, order_index')
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week, exercise_order')
         planned_exercises = cursor.fetchall()
         
         if planned_exercises:
