@@ -609,34 +609,34 @@ Be flexible with natural language but always return valid JSON.
             ],
             temperature=0.1
         )
-        
+
         # Try to parse the JSON response
         import json
         result = response.choices[0].message.content.strip()
-        
+
         # Remove any markdown formatting if present
         if result.startswith('```json'):
             result = result[7:]
         if result.endswith('```'):
             result = result[:-3]
-        
+
         entry = json.loads(result)
         return entry
-        
+
     except Exception as e:
         print(f"⚠️ Grok parsing failed: {str(e)}")
-        
+
         # Fallback to local regex parsing
-        
+
         # Pattern 1: Standard weight format (3x10@200lbs bench press)
         weight_pattern = r'(\d+)x(\d+|\d+-\d+)@(\d+\.?\d*)(lbs|kg)?\s*(.+)'
         weight_match = re.search(weight_pattern, text.lower())
-        
+
         if weight_match:
             sets, reps, weight, unit, exercise = weight_match.groups()
             if not unit:
                 unit = "lbs"
-            
+
             return {
                 "exercise_name": exercise.strip(),
                 "sets": int(sets),
@@ -644,11 +644,11 @@ Be flexible with natural language but always return valid JSON.
                 "weight": f"{weight}{unit}",
                 "notes": ""
             }
-        
+
         # Pattern 2: Explicit bodyweight (3x15 bodyweight pushups, 4x12@bodyweight squats)
         bodyweight_explicit_pattern = r'(\d+)x(\d+|\d+-\d+)@?bodyweight\s*(.+)'
         bodyweight_explicit_match = re.search(bodyweight_explicit_pattern, text.lower())
-        
+
         if bodyweight_explicit_match:
             sets, reps, exercise = bodyweight_explicit_match.groups()
             return {
@@ -658,7 +658,7 @@ Be flexible with natural language but always return valid JSON.
                 "weight": "bodyweight",
                 "notes": ""
             }
-        
+
         # Pattern 3: Common bodyweight exercises (no weight specified)
         bodyweight_exercises = [
             'pushups', 'push ups', 'pullups', 'pull ups', 'chin ups', 'chinups',
@@ -667,18 +667,18 @@ Be flexible with natural language but always return valid JSON.
             'squats', 'lunges', 'calf raises', 'pike pushups', 'elevated pushups',
             'wall sits', 'handstand pushups', 'pistol squats', 'jump squats'
         ]
-        
+
         # Pattern 4: Standard format but likely bodyweight exercise
         standard_pattern = r'(\d+)x(\d+|\d+-\d+)\s*(.+)'
         standard_match = re.search(standard_pattern, text.lower())
-        
+
         if standard_match:
             sets, reps, exercise = standard_match.groups()
             exercise_name = exercise.strip()
-            
+
             # Check if it's a common bodyweight exercise
             is_bodyweight = any(bw_ex in exercise_name for bw_ex in bodyweight_exercises)
-            
+
             return {
                 "exercise_name": exercise_name,
                 "sets": int(sets),
@@ -686,7 +686,7 @@ Be flexible with natural language but always return valid JSON.
                 "weight": "bodyweight" if is_bodyweight else "0lbs",
                 "notes": ""
             }
-        
+
         return None
 
 # Insert workout log into database with progression tracking
@@ -720,6 +720,7 @@ def insert_log(entry, date_logged):
             update_baseline_if_exceeded(
                 single_entry.get("exercise_name", "Unknown"),
                 single_entry.get("sets", 1),
+```python
                 single_entry.get("reps", "Unknown"),
                 single_entry.get("weight", "0")
             )
@@ -1124,8 +1125,13 @@ def get_grok_response(prompt, include_context=True):
                 context_info += f"{exercise} {sets}x{reps}@{weight}"
             context_info += "\n"
 
-        # Add recent workouts for context
-        cursor.execute("SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10")
+        # Get recent workout data for context
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes
+            FROM workouts 
+            ORDER BY date_logged DESC 
+            LIMIT 20
+        """)
         recent_workouts = cursor.fetchall()
         if recent_workouts:
             context_info += "\nRecent Workouts: " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts[:5]])
