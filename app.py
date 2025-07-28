@@ -297,7 +297,33 @@ def weekly_plan():
 
 @app.route('/profile')
 def profile():
-    return render_template('profile.html')
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    # Get user background
+    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+    bg_result = cursor.fetchone()
+    background = None
+    
+    if bg_result:
+        columns = [description[0] for description in cursor.description]
+        background = dict(zip(columns, bg_result))
+    
+    # Get user preferences
+    cursor.execute('SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level FROM users WHERE id = 1')
+    pref_result = cursor.fetchone()
+    
+    preferences = {
+        'tone': pref_result[0] if pref_result else 'motivational',
+        'detail_level': pref_result[1] if pref_result else 'concise',
+        'format': pref_result[2] if pref_result else 'bullet_points',
+        'units': pref_result[3] if pref_result else 'lbs',
+        'communication_style': pref_result[4] if pref_result else 'encouraging',
+        'technical_level': pref_result[5] if pref_result else 'beginner'
+    }
+    
+    conn.close()
+    return render_template('profile.html', background=background, preferences=preferences)
 
 @app.route('/progression')
 def progression():
@@ -378,6 +404,71 @@ def get_plan(day):
         })
     
     return jsonify({'exercises': exercise_list, 'day_name': day.title()})
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    try:
+        field_name = request.form.get('field_name')
+        value = request.form.get('value')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Check if user background exists
+        cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
+        if cursor.fetchone()[0] == 0:
+            # Create initial record
+            cursor.execute('INSERT INTO user_background (user_id) VALUES (1)')
+        
+        # Update the specified field
+        valid_fields = ['current_weight', 'injuries_history', 'current_limitations', 'primary_goal', 'fitness_level', 'training_frequency']
+        if field_name in valid_fields:
+            cursor.execute(f'UPDATE user_background SET {field_name} = ?, updated_date = datetime("now") WHERE user_id = 1', (value,))
+            conn.commit()
+        
+        conn.close()
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/reorder_exercise', methods=['POST'])
+def reorder_exercise():
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+        direction = data.get('direction')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get current exercise order
+        cursor.execute('SELECT order_index FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+        
+        current_order = result[0]
+        
+        if direction == 'up' and current_order > 1:
+            new_order = current_order - 1
+            # Swap with exercise above
+            cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND order_index = ?', (current_order, day, new_order))
+            cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+        elif direction == 'down':
+            cursor.execute('SELECT MAX(order_index) FROM weekly_plan WHERE day_of_week = ?', (day,))
+            max_order = cursor.fetchone()[0]
+            if current_order < max_order:
+                new_order = current_order + 1
+                # Swap with exercise below
+                cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND order_index = ?', (current_order, day, new_order))
+                cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+        
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     init_db()
