@@ -315,13 +315,38 @@ function openDetailedLog(exerciseName, plannedSets, plannedReps, plannedWeight) 
         weight: plannedWeight
     };
 
-    // Populate exercise details
-    document.getElementById('exerciseDetails').innerHTML = `
-        <div class="alert alert-info">
-            <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
-            <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
-        </div>
-    `;
+    // Check for progression from last week
+    fetch('/get_last_week_weight', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({exercise_name: exerciseName})
+    })
+    .then(response => response.json())
+    .then(data => {
+        let progressionNote = '';
+        if (data.last_weight && data.last_weight !== plannedWeight) {
+            progressionNote = `<small class="text-success"><i class="fas fa-arrow-up me-1"></i>Up from ${data.last_weight} last week</small>`;
+        }
+
+        // Populate exercise details
+        document.getElementById('exerciseDetails').innerHTML = `
+            <div class="alert alert-info">
+                <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
+                <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
+                ${progressionNote}
+            </div>
+        `;
+    })
+    .catch(error => {
+        console.error('Error getting last week weight:', error);
+        // Fallback to original display
+        document.getElementById('exerciseDetails').innerHTML = `
+            <div class="alert alert-info">
+                <h6><i class="fas fa-dumbbell me-2"></i>${exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1)}</h6>
+                <p class="mb-0">Planned: ${plannedSets} sets of ${plannedReps} reps @ ${plannedWeight}</p>
+            </div>
+        `;
+    });
 
     // Create set inputs
     const setsContainer = document.getElementById('setsContainer');

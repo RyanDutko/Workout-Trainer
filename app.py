@@ -500,6 +500,44 @@ Keep suggestions practical and progressive (small weight increases, rep adjustme
         print(f"Progression error: {str(e)}")
         return jsonify({'error': f'Error getting progression suggestions: {str(e)}'})
 
+@app.route('/get_last_week_weight', methods=['POST'])
+def get_last_week_weight():
+    """Get the weight used for an exercise in the last week"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name', '').lower()
+        
+        if not exercise_name:
+            return jsonify({'error': 'Exercise name required'})
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get workouts from last week (7-14 days ago to avoid current week)
+        week_ago_start = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+        week_ago_end = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        cursor.execute('''
+            SELECT weight 
+            FROM workouts 
+            WHERE LOWER(exercise_name) = ? 
+            AND date_logged BETWEEN ? AND ?
+            ORDER BY date_logged DESC 
+            LIMIT 1
+        ''', (exercise_name, week_ago_start, week_ago_end))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return jsonify({'last_weight': result[0]})
+        else:
+            return jsonify({'last_weight': None})
+            
+    except Exception as e:
+        print(f"Error getting last week weight: {str(e)}")
+        return jsonify({'error': str(e)})
+
 @app.route('/apply_progression', methods=['POST'])
 def apply_progression():
     """Apply approved progression changes to weekly plan"""
