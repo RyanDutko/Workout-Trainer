@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import sqlite3
 import datetime
@@ -18,7 +17,7 @@ def get_db_connection():
     """Create a new database connection for each request"""
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    
+
     # Ensure weight_logs table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS weight_logs (
@@ -30,7 +29,7 @@ def get_db_connection():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
+
     conn.commit()
     return conn
 
@@ -148,10 +147,10 @@ def insert_log(entry, date_logged):
     """Insert workout log with Flask-safe database connection"""
     if not entry:
         return
-    
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('''
         INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -163,7 +162,7 @@ def insert_log(entry, date_logged):
         date_logged.isoformat(),
         entry.get("notes", "")
     ))
-    
+
     conn.commit()
     conn.close()
 
@@ -176,11 +175,11 @@ def dashboard():
     # Get today's plan
     today = datetime.date.today().strftime('%A').lower()
     today_plan = get_weekly_plan(today)
-    
+
     # Get recent workouts and calculate stats
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         SELECT exercise_name, sets, reps, weight, date_logged 
         FROM workouts 
@@ -188,7 +187,7 @@ def dashboard():
         LIMIT 10
     """)
     recent_workouts = cursor.fetchall()
-    
+
     # Calculate this week's total volume
     week_start = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())).isoformat()
     cursor.execute("""
@@ -201,7 +200,7 @@ def dashboard():
         WHERE date_logged >= ?
     """, (week_start,))
     week_volume = cursor.fetchone()[0] or 0
-    
+
     # Calculate this month's total volume
     month_start = datetime.date.today().replace(day=1).isoformat()
     cursor.execute("""
@@ -214,7 +213,7 @@ def dashboard():
         WHERE date_logged >= ?
     """, (month_start,))
     month_volume = cursor.fetchone()[0] or 0
-    
+
     # Count workouts this week
     cursor.execute("""
         SELECT COUNT(DISTINCT date_logged) as workout_days
@@ -222,7 +221,7 @@ def dashboard():
         WHERE date_logged >= ?
     """, (week_start,))
     week_workouts = cursor.fetchone()[0] or 0
-    
+
     # Get latest weight
     cursor.execute("""
         SELECT weight, date_logged 
@@ -232,12 +231,12 @@ def dashboard():
         LIMIT 1
     """)
     latest_weight = cursor.fetchone()
-    
+
     conn.close()
-    
+
     # Check if onboarding is needed
     needs_onboarding = not is_onboarding_complete()
-    
+
     stats = {
         'week_volume': int(week_volume),
         'month_volume': int(month_volume),
@@ -245,7 +244,7 @@ def dashboard():
         'latest_weight': latest_weight[0] if latest_weight else None,
         'weight_date': latest_weight[1] if latest_weight else None
     }
-    
+
     return render_template('dashboard.html', 
                          today=today.title(),
                          today_plan=today_plan,
@@ -260,31 +259,31 @@ def log_workout():
         workout_text = request.form['workout_text']
         date_str = request.form.get('date', datetime.date.today().isoformat())
         date_logged = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-        
+
         entry = call_grok_parse(workout_text, date_logged)
         if entry:
             insert_log(entry, date_logged)
             flash(f"✅ Logged: {entry['exercise_name']} - {entry['sets']}x{entry['reps']}@{entry['weight']}", 'success')
         else:
             flash("⚠️ Couldn't parse workout. Try format like '3x10@200lbs bench press'", 'error')
-        
+
         return redirect(url_for('dashboard'))
-    
+
     # Pass current date and today's plan to template
     today_date = datetime.date.today().isoformat()
     today_name = datetime.date.today().strftime('%A').lower()
     today_plan = get_weekly_plan(today_name)
-    
+
     # Debug: print what we're getting
     print(f"DEBUG: Today is {today_name}, plan: {today_plan}")
-    
+
     return render_template('log_workout.html', today=today_date, today_plan=today_plan, today_name=today_name.title())
 
 @app.route('/weekly_plan')
 def weekly_plan():
     """View and manage weekly workout plan"""
     plan = get_weekly_plan()
-    
+
     # Organize by day
     plan_by_day = {}
     for row in plan:
@@ -299,12 +298,12 @@ def weekly_plan():
             'order': order,
             'notes': notes
         })
-    
+
     # Debug: print what we found
     print(f"DEBUG: Weekly plan loaded, found {len(plan)} total exercises")
     for day, exercises in plan_by_day.items():
         print(f"DEBUG: {day}: {len(exercises)} exercises - {[ex['exercise'] for ex in exercises]}")
-    
+
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/add_to_plan', methods=['POST'])
@@ -315,25 +314,25 @@ def add_to_plan():
     sets = int(request.form['sets'])
     reps = request.form['reps']
     weight = request.form['weight']
-    
+
     # Add directly to database
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     # Get current exercise count for this day to set order
     cursor.execute('SELECT COUNT(*) FROM weekly_plan WHERE day_of_week = ?', (day.lower(),))
     order = cursor.fetchone()[0] + 1
-    
+
     cursor.execute('''
         INSERT OR REPLACE INTO weekly_plan 
         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_date, updated_date)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (day.lower(), exercise.lower(), sets, reps, weight, order, "", 
           datetime.date.today().isoformat(), datetime.date.today().isoformat()))
-    
+
     conn.commit()
     conn.close()
-    
+
     flash(f"✅ Added to {day}: {exercise} {sets}x{reps}@{weight}", 'success')
     return redirect(url_for('weekly_plan'))
 
@@ -347,7 +346,7 @@ def get_progression():
     """API endpoint for detailed progression analysis"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     # Get weekly plan organized by day
     cursor.execute('''
         SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
@@ -364,7 +363,7 @@ def get_progression():
             END, exercise_order
     ''')
     weekly_plan = cursor.fetchall()
-    
+
     # Get recent performance data
     cursor.execute('''
         SELECT exercise_name, sets, reps, weight, date_logged, notes
@@ -373,7 +372,7 @@ def get_progression():
         ORDER BY date_logged DESC
     ''')
     recent_workouts = cursor.fetchall()
-    
+
     conn.close()
 
     if not weekly_plan:
@@ -385,13 +384,13 @@ def get_progression():
         if day not in plan_by_day:
             plan_by_day[day] = []
         plan_by_day[day].append(f"{exercise}: {sets}x{reps}@{weight}")
-    
+
     plan_text = ""
     for day, exercises in plan_by_day.items():
         plan_text += f"\n{day.title()}:\n"
         for exercise in exercises:
             plan_text += f"  • {exercise}\n"
-    
+
     # Build recent performance summary
     performance_text = "\nRecent Performance (last 30 days):\n"
     exercise_performance = {}
@@ -399,7 +398,7 @@ def get_progression():
         if exercise not in exercise_performance:
             exercise_performance[exercise] = []
         exercise_performance[exercise].append(f"{sets}x{reps}@{weight} ({date}) {notes}")
-    
+
     for exercise, performances in exercise_performance.items():
         performance_text += f"\n{exercise}:\n"
         for perf in performances[:3]:  # Show last 3 sessions
@@ -431,7 +430,7 @@ def profile():
     background = get_user_background()
     preferences = get_grok_preferences()
     goal, weekly_split, prefs = get_user_profile()
-    
+
     return render_template('profile.html', 
                          background=background,
                          preferences=preferences,
@@ -443,10 +442,10 @@ def update_profile():
     """Update user profile information"""
     field_name = request.form['field_name']
     value = request.form['value']
-    
+
     result = update_background_field(field_name, value)
     flash(result, 'success')
-    
+
     return redirect(url_for('profile'))
 
 @app.route('/history')
@@ -462,7 +461,7 @@ def history():
     """)
     workouts = cursor.fetchall()
     conn.close()
-    
+
     return render_template('history.html', workouts=workouts)
 
 @app.route('/delete_workout', methods=['POST'])
@@ -471,14 +470,14 @@ def delete_workout():
     try:
         data = request.get_json()
         workout_id = data.get('workout_id')
-        
+
         if not workout_id:
             return jsonify({'success': False, 'error': 'No workout ID provided'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM workouts WHERE id = ?", (workout_id,))
-        
+
         if cursor.rowcount > 0:
             conn.commit()
             conn.close()
@@ -486,7 +485,7 @@ def delete_workout():
         else:
             conn.close()
             return jsonify({'success': False, 'error': 'Workout not found'})
-            
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -497,7 +496,7 @@ def get_plan_for_date(date):
         selected_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
         day_name = selected_date.strftime('%A').lower()
         plan = get_weekly_plan(day_name)
-        
+
         return jsonify({
             'day_name': day_name.title(),
             'plan': plan
@@ -513,16 +512,16 @@ def log_multi_workout():
         exercises = data.get('exercises', [])
         date_str = data.get('date', datetime.date.today().isoformat())
         date_logged = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-        
+
         if not exercises:
             return jsonify({'success': False, 'error': 'No exercises provided'})
-        
+
         # Log each exercise
         for exercise in exercises:
             insert_log(exercise, date_logged)
-        
+
         return jsonify({'success': True, 'message': f'Logged {len(exercises)} exercises'})
-    
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -534,51 +533,51 @@ def reorder_exercise():
         day = data.get('day')
         exercise = data.get('exercise')
         direction = data.get('direction')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get current exercise order
         cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', 
                       (day.lower(), exercise.lower()))
         result = cursor.fetchone()
         if not result:
             return jsonify({'success': False, 'error': 'Exercise not found'})
-        
+
         current_order = result[0]
-        
+
         if direction == 'up':
             new_order = current_order - 1
             # Find exercise to swap with
             cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ? AND exercise_order = ?',
                           (day.lower(), new_order))
             swap_exercise = cursor.fetchone()
-            
+
             if swap_exercise:
                 # Swap orders
                 cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
                               (new_order, day.lower(), exercise.lower()))
                 cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
                               (current_order, day.lower(), swap_exercise[0]))
-        
+
         elif direction == 'down':
             new_order = current_order + 1
             # Find exercise to swap with
             cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ? AND exercise_order = ?',
                           (day.lower(), new_order))
             swap_exercise = cursor.fetchone()
-            
+
             if swap_exercise:
                 # Swap orders
                 cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
                               (new_order, day.lower(), exercise.lower()))
                 cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?',
                               (current_order, day.lower(), swap_exercise[0]))
-        
+
         conn.commit()
         conn.close()
         return jsonify({'success': True})
-    
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -589,13 +588,13 @@ def log_weight():
         data = request.get_json()
         weight = data.get('weight')
         date_str = data.get('date', datetime.date.today().isoformat())
-        
+
         if not weight:
             return jsonify({'success': False, 'error': 'Weight is required'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Create weight_logs table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS weight_logs (
@@ -607,18 +606,18 @@ def log_weight():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Insert or update weight for this date
         cursor.execute('''
             INSERT OR REPLACE INTO weight_logs (user_id, weight, date_logged)
             VALUES (1, ?, ?)
         ''', (float(weight), date_str))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'success': True, 'message': f'Weight logged: {weight} lbs'})
-    
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -628,7 +627,7 @@ def get_weight_history():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT date_logged, weight 
             FROM weight_logs 
@@ -636,15 +635,15 @@ def get_weight_history():
             ORDER BY date_logged DESC 
             LIMIT 30
         ''')
-        
+
         weight_data = cursor.fetchall()
         conn.close()
-        
+
         return jsonify({
             'dates': [row[0] for row in reversed(weight_data)],
             'weights': [row[1] for row in reversed(weight_data)]
         })
-    
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -660,15 +659,15 @@ def get_volume_history():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get last 12 weeks of volume data
         weeks = []
         volumes = []
-        
+
         for i in range(12):
             week_start = (datetime.date.today() - datetime.timedelta(weeks=i+1)).replace(hour=0, minute=0, second=0, microsecond=0)
             week_end = week_start + datetime.timedelta(days=6)
-            
+
             cursor.execute("""
                 SELECT SUM(CASE 
                     WHEN weight LIKE '%lbs' THEN CAST(REPLACE(weight, 'lbs', '') AS REAL) * sets * CAST(reps AS REAL)
@@ -678,18 +677,18 @@ def get_volume_history():
                 FROM workouts 
                 WHERE date_logged >= ? AND date_logged <= ?
             """, (week_start.strftime('%Y-%m-%d'), week_end.strftime('%Y-%m-%d')))
-            
+
             volume = cursor.fetchone()[0] or 0
             weeks.append(f"Week {week_start.strftime('%m/%d')}")
             volumes.append(int(volume))
-        
+
         conn.close()
-        
+
         return jsonify({
             'weeks': list(reversed(weeks)),
             'volumes': list(reversed(volumes))
         })
-    
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -699,18 +698,18 @@ def get_exercise_list():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT DISTINCT exercise_name 
             FROM workouts 
             ORDER BY exercise_name
         """)
-        
+
         exercises = [row[0] for row in cursor.fetchall()]
         conn.close()
-        
+
         return jsonify({'exercises': exercises})
-    
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -720,36 +719,36 @@ def get_exercise_performance(exercise):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT date_logged, weight, sets, reps
             FROM workouts 
             WHERE exercise_name = ?
             ORDER BY date_logged
         """, (exercise.lower(),))
-        
+
         data = cursor.fetchall()
         conn.close()
-        
+
         if not data:
             return jsonify({'error': 'No data found for this exercise'})
-        
+
         dates = []
         max_weights = []
         volumes = []
-        
+
         for row in data:
             date, weight, sets, reps = row
             dates.append(date)
-            
+
             # Extract numeric weight
             if weight.endswith('lbs'):
                 weight_num = float(weight.replace('lbs', ''))
             else:
                 weight_num = 0
-            
+
             max_weights.append(weight_num)
-            
+
             # Calculate volume
             try:
                 reps_num = int(reps) if reps.isdigit() else 10  # default if reps is range
@@ -757,26 +756,26 @@ def get_exercise_performance(exercise):
                 volumes.append(volume)
             except:
                 volumes.append(0)
-        
+
         # Calculate stats
         recent_weights = [w for w in max_weights[-5:] if w > 0]
         recent_avg = sum(recent_weights) / len(recent_weights) if recent_weights else 0
-        
+
         best_weight = max(max_weights) if max_weights else 0
         best_index = max_weights.index(best_weight) if best_weight > 0 else 0
         best_date = dates[best_index] if dates else 'N/A'
-        
+
         # Calculate monthly progress
         month_ago = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
         month_data = [(d, w) for d, w in zip(dates, max_weights) if d >= month_ago and w > 0]
-        
+
         if len(month_data) >= 2:
             first_weight = month_data[0][1]
             last_weight = month_data[-1][1]
             progress = round(((last_weight - first_weight) / first_weight) * 100, 1) if first_weight > 0 else 0
         else:
             progress = 0
-        
+
         return jsonify({
             'dates': dates,
             'max_weights': max_weights,
@@ -787,7 +786,7 @@ def get_exercise_performance(exercise):
             'progress': progress,
             'total_sessions': len(data)
         })
-    
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -796,7 +795,7 @@ def chat():
     """Chat with AI trainer"""
     if request.method == 'POST':
         user_message = request.form['message']
-        
+
         # Determine if this is a workout-related question that needs context
         workout_keywords = [
             'workout', 'exercise', 'plan', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -804,10 +803,10 @@ def chat():
             'progression', 'weight', 'reps', 'sets', 'volume', 'training', 'muscle', 'strength',
             'schedule', 'routine', 'program', 'split', 'session', 'lift', 'lifting'
         ]
-        
+
         message_lower = user_message.lower()
         needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
-        
+
         # Build basic chat prompt
         chat_prompt = f"""You are a professional personal trainer having a conversation with your client.
 
@@ -820,10 +819,45 @@ RESPONSE GUIDELINES:
 
 User: {user_message}"""
 
+        # Build workout context if needed
+        if needs_workout_context:
+            context_info = ""
+            # Get user profile
+            user_profile = get_user_profile()
+            if user_profile:
+                goal, weekly_split, preferences = user_profile
+                context_info += f"\nUser Goal: {goal}"
+                context_info += f"\nWeekly Split: {weekly_split}"
+                context_info += f"\nPreferences: {preferences}"
+
+            # Get weekly plan
+            weekly_plan = get_weekly_plan()
+            if weekly_plan:
+                context_info += "\nWeekly Plan:"
+                for day, exercise, sets, reps, weight, order, notes in weekly_plan:
+                    context_info += f"\n{day.title()}: {exercise} {sets}x{reps}@{weight}"
+
+            # Get recent workout data for context
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, notes
+                FROM workouts 
+                ORDER BY date_logged DESC 
+                LIMIT 50
+            """)
+            recent_workouts = cursor.fetchall()
+            if recent_workouts:
+                context_info += "\nRecent Workouts (last 50 entries): " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts])
+            conn.close()
+
+            chat_prompt += context_info
+
+
         # Only include full context for workout-related questions
-        response = get_grok_response(chat_prompt, include_context=needs_workout_context)
+        response = get_grok_response(chat_prompt, include_context=False)
         return jsonify({'response': response})
-    
+
     return render_template('chat.html')
 
 if __name__ == '__main__':

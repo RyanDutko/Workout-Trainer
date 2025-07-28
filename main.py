@@ -1129,11 +1129,11 @@ def get_grok_response(prompt, include_context=True):
             SELECT exercise_name, sets, reps, weight, date_logged, notes
             FROM workouts 
             ORDER BY date_logged DESC 
-            LIMIT 20
+            LIMIT 50
         """)
         recent_workouts = cursor.fetchall()
         if recent_workouts:
-            context_info += "\nRecent Workouts: " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts[:5]])
+            context_info += "\nRecent Workouts (last 50 entries): " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workouts])
 
         conn.close()  # Close the connection
         prompt = context_info + "\n\n" + prompt
