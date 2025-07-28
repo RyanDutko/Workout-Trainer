@@ -804,14 +804,14 @@ def chat():
             'my logs', 'my workouts', 'history', 'did i work', 'what workout', 'friday', 'monday',
             'tuesday', 'wednesday', 'thursday', 'saturday', 'sunday', 'show me', 'what i did'
         ]
-        
+
         is_history_query = any(keyword in message_lower for keyword in history_keywords)
-        
+
         # Debug: Print what was detected
         print(f"DEBUG: User message: '{user_message}'")
         print(f"DEBUG: Is history query: {is_history_query}")
         print(f"DEBUG: Matched keywords: {[kw for kw in history_keywords if kw in message_lower]}")
-        
+
         # Detect if user is asking about workout context
         workout_keywords = [
             'workout', 'exercise', 'plan', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -819,7 +819,7 @@ def chat():
             'progression', 'weight', 'reps', 'sets', 'volume', 'training', 'muscle', 'strength',
             'schedule', 'routine', 'program', 'split', 'session', 'lift', 'lifting'
         ]
-        
+
         needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
 
         # For history queries, provide focused data lookup
@@ -834,7 +834,7 @@ Recent workout data:"""
             # Get workout data for context
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             # Get recent workouts with dates for history queries
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes
@@ -843,7 +843,7 @@ Recent workout data:"""
                 LIMIT 20
             """)
             recent_workouts = cursor.fetchall()
-            
+
             if recent_workouts:
                 chat_prompt += "\n"
                 for workout in recent_workouts:
@@ -852,16 +852,17 @@ Recent workout data:"""
                     if notes:
                         chat_prompt += f" ({notes})"
                     chat_prompt += "\n"
-                    
+
                 chat_prompt += "\nPlease answer the user's question directly. Be concise and only mention the specific workouts they asked about. No introductions or extra explanations."
             else:
                 chat_prompt += "\nNo recent workout data found."
-            
+
             conn.close()
-            
+
+            ```python
             # Use fast response for history queries to keep them concise
             response = get_grok_response_fast(chat_prompt)
-            
+
         # For complex workout questions, use full context
         elif needs_workout_context and len(user_message.split()) > 3:
             # Build comprehensive prompt with workout data for complex questions
@@ -874,7 +875,7 @@ Recent workout context:"""
             # Get workout data for context
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged
                 FROM workouts 
@@ -882,49 +883,81 @@ Recent workout context:"""
                 LIMIT 10
             """)
             recent_workouts = cursor.fetchall()
-            
+
             if recent_workouts:
                 chat_prompt += "\n" + ", ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]}" for w in recent_workouts[:5]])
-            
+
             conn.close()
-            
+
             # Use full context Grok response for complex questions
             response = get_grok_response(chat_prompt, include_context=False)
-            
+
         else:
             # For simple questions, use fast response
             chat_prompt = f"""You are a professional personal trainer. Be conversational, helpful, and concise.
 
 User: {user_message}"""
-            
+
             response = get_grok_response_fast(chat_prompt)
-        
+
         # Check if response is empty or None
         if not response or not response.strip():
             response = "I'm here to help with your fitness questions! Could you try asking that again?"
-        
+
         return jsonify({'response': response})
 
     return render_template('chat.html')
+
+def get_grok_response_fast(prompt):
+    """Fast Grok response with minimal context for chat"""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+
+        response = client.chat.completions.create(
+            model="grok-4-0709",
+            messages=[
+                {"role": "system", "content": "You are a professional fitness assistant. Provide helpful, concise responses about workouts, training, and fitness. Do not introduce yourself with a name."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3,  # Lower temperature for faster, more focused responses
+            max_tokens=200,   # Limit tokens for speed
+            timeout=10        # 10 second timeout
+        )
+
+        result = response.choices[0].message.content
+        print(f"DEBUG: Fast API response: '{result}'")
+
+        # Make sure we have a valid response
+        if not result or not result.strip():
+            print("DEBUG: Empty response from fast API, returning fallback")
+            return "I found your question but couldn't process it properly. Could you try asking again?"
+
+        return result.strip()
+
+    except Exception as e:
+        print(f"⚠️ Fast API error: {str(e)}")
+        print(f"DEBUG: Exception type: {type(e)}")
+        return "I'm having trouble accessing my AI service right now. Could you try asking that again?"
 
 @app.route('/chat_stream', methods=['POST'])
 def chat_stream():
     """Streaming chat endpoint for real-time responses"""
     from flask import Response
     import json
-    
+
     user_message = request.form['message']
-    
+
     # Build minimal prompt for speed
     chat_prompt = f"""You are a professional personal trainer. Be helpful and concise.
 
 User: {user_message}"""
-    
+
     def generate():
         try:
             from openai import OpenAI
             client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-            
+
             response = client.chat.completions.create(
                 model="grok-4-0709",
                 messages=[
@@ -935,16 +968,16 @@ User: {user_message}"""
                 max_tokens=300,   # Limit response length for speed
                 stream=True       # Enable streaming
             )
-            
+
             for chunk in response:
                 if chunk.choices[0].delta.content:
                     yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
-            
+
             yield f"data: {json.dumps({'done': True})}\n\n"
-            
+
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
+
     return Response(generate(), mimetype='text/plain')
 
 if __name__ == '__main__':
