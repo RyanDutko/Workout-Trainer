@@ -415,6 +415,117 @@ def progression():
 def analytics():
     return render_template('analytics.html')
 
+@app.route('/get_progression', methods=['POST'])
+def get_progression():
+    """Get AI progression suggestions for review and approval"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get current weekly plan
+        cursor.execute('''
+            SELECT DISTINCT exercise_name, sets, reps, weight
+            FROM weekly_plan 
+            ORDER BY exercise_name
+        ''')
+        planned_exercises = cursor.fetchall()
+
+        if not planned_exercises:
+            return jsonify({'error': 'No weekly plan found. Set up your plan first!'})
+
+        # Get user background for context
+        cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
+        user_bg = cursor.fetchone()
+        user_background = None
+        if user_bg:
+            columns = [description[0] for description in cursor.description]
+            user_background = dict(zip(columns, user_bg))
+
+        # Format weekly plan for Grok
+        plan_text = ""
+        for exercise_name, sets, reps, weight in planned_exercises:
+            plan_text += f"• {exercise_name}: {sets}x{reps}@{weight}\n"
+
+        # Create progression prompt for Grok
+        progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
+
+{plan_text}
+
+Please provide progression suggestions in THIS EXACT FORMAT (this is crucial for parsing):
+• Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
+• Exercise Name: specific actionable change
+
+Then end with: "Ask for my reasoning on any of these progressions if you'd like more detail."
+
+Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
+
+        # Get Grok's response with full context
+        response = get_grok_response_with_context(progression_prompt, user_background)
+        
+        conn.close()
+        return jsonify({'suggestions': response})
+        
+    except Exception as e:
+        print(f"Progression error: {str(e)}")
+        return jsonify({'error': f'Error getting progression suggestions: {str(e)}'})
+
+@app.route('/apply_progression', methods=['POST'])
+def apply_progression():
+    """Apply approved progression changes to weekly plan"""
+    try:
+        data = request.json
+        changes = data.get('changes', [])
+        
+        if not changes:
+            return jsonify({'success': False, 'error': 'No changes provided'})
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        applied_count = 0
+        for change in changes:
+            exercise_name = change.get('exercise_name', '').lower()
+            new_sets = change.get('sets')
+            new_reps = change.get('reps') 
+            new_weight = change.get('weight')
+            
+            if exercise_name and (new_sets or new_reps or new_weight):
+                # Update the weekly plan
+                update_parts = []
+                values = []
+                
+                if new_sets:
+                    update_parts.append('sets = ?')
+                    values.append(new_sets)
+                if new_reps:
+                    update_parts.append('reps = ?')
+                    values.append(new_reps)
+                if new_weight:
+                    update_parts.append('weight = ?')
+                    values.append(new_weight)
+                
+                values.append(exercise_name)
+                
+                cursor.execute(f'''
+                    UPDATE weekly_plan 
+                    SET {', '.join(update_parts)}
+                    WHERE exercise_name = ?
+                ''', values)
+                
+                if cursor.rowcount > 0:
+                    applied_count += 1
+
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Applied {applied_count} progression changes to your weekly plan!'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/add_to_plan', methods=['POST'])
 def add_to_plan():
     try:

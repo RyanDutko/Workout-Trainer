@@ -5,58 +5,75 @@
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-chart-line me-2"></i>AI Progression Suggestions</h1>
+    <h1 class="h2"><i class="fas fa-chart-line me-2"></i>AI Progression Management</h1>
 </div>
 
 <div class="row">
-    <div class="col-md-8 mx-auto">
-        <div class="card">
+    <div class="col-md-10 mx-auto">
+        <!-- Instructions Card -->
+        <div class="card mb-4">
             <div class="card-body">
-                <p class="lead">Get personalized progression suggestions based on your weekly plan and workout history.</p>
-                
-                <button id="getProgressionBtn" class="btn btn-primary btn-lg w-100">
-                    <i class="fas fa-robot me-2"></i>Get AI Progression Tips
+                <h6><i class="fas fa-info-circle me-2"></i>How This Works</h6>
+                <p class="mb-0">
+                    1. Get AI-powered progression suggestions based on your current plan and workout history<br>
+                    2. Review and approve/reject each suggestion<br>
+                    3. Approved changes automatically update your weekly plan<br>
+                    4. Your logging buttons will reflect the new targets immediately
+                </p>
+            </div>
+        </div>
+
+        <!-- Get Suggestions -->
+        <div class="card mb-4">
+            <div class="card-body text-center">
+                <button id="getProgressionBtn" class="btn btn-primary btn-lg">
+                    <i class="fas fa-robot me-2"></i>Get AI Progression Suggestions
                 </button>
                 
-                <div id="loadingSpinner" class="text-center mt-4" style="display: none;">
+                <div id="loadingSpinner" class="mt-4" style="display: none;">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <p class="mt-2">Getting personalized suggestions from AI...</p>
-                </div>
-                
-                <div id="progressionResults" class="mt-4" style="display: none;">
-                    <div class="card">
-                        <div class="card-header bg-success text-white">
-                            <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Comprehensive Progression Analysis</h6>
-                        </div>
-                        <div class="card-body">
-                            <div id="suggestions" class="suggestions-content" style="white-space: pre-wrap; line-height: 1.6;"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="errorMessage" class="alert alert-danger mt-4" style="display: none;">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    <span id="errorText"></span>
+                    <p class="mt-2">Analyzing your progress and generating suggestions...</p>
                 </div>
             </div>
         </div>
-        
-        <!-- Tips Card -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h6><i class="fas fa-info-circle me-2"></i>How Progression Works</h6>
+
+        <!-- Suggestions Review -->
+        <div id="suggestionsSection" style="display: none;">
+            <div class="card">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-clipboard-check me-2"></i>Review Progression Suggestions</h6>
+                    <div>
+                        <button class="btn btn-light btn-sm me-2" onclick="selectAllSuggestions()">Select All</button>
+                        <button class="btn btn-outline-light btn-sm" onclick="clearAllSuggestions()">Clear All</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="rawSuggestions" class="mb-4 p-3 bg-light rounded" style="white-space: pre-wrap; font-family: monospace; font-size: 0.9em;"></div>
+                    
+                    <div id="parsedSuggestions">
+                        <!-- Parsed suggestions will appear here -->
+                    </div>
+                    
+                    <div class="text-center mt-4">
+                        <button id="applySuggestionsBtn" class="btn btn-success btn-lg" onclick="applySelectedSuggestions()" disabled>
+                            <i class="fas fa-check me-2"></i>Apply Selected Changes to Weekly Plan
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <ul class="mb-0">
-                    <li>AI analyzes your current weekly plan and workout history</li>
-                    <li>Considers your injuries, fitness level, and training experience</li>
-                    <li>Provides specific weight/rep increases for each exercise</li>
-                    <li>Suggests when to add sets or change rep ranges</li>
-                    <li>Takes into account your personal goals and limitations</li>
-                </ul>
-            </div>
+        </div>
+
+        <!-- Success/Error Messages -->
+        <div id="successMessage" class="alert alert-success mt-4" style="display: none;">
+            <i class="fas fa-check-circle me-2"></i>
+            <span id="successText"></span>
+        </div>
+
+        <div id="errorMessage" class="alert alert-danger mt-4" style="display: none;">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <span id="errorText"></span>
         </div>
     </div>
 </div>
@@ -64,17 +81,21 @@
 
 {% block scripts %}
 <script>
+let currentSuggestions = [];
+
 document.getElementById('getProgressionBtn').addEventListener('click', function() {
     const btn = this;
     const spinner = document.getElementById('loadingSpinner');
-    const results = document.getElementById('progressionResults');
-    const error = document.getElementById('errorMessage');
+    const suggestionsSection = document.getElementById('suggestionsSection');
+    const errorMessage = document.getElementById('errorMessage');
+    const successMessage = document.getElementById('successMessage');
     
     // Show loading state
     btn.disabled = true;
     spinner.style.display = 'block';
-    results.style.display = 'none';
-    error.style.display = 'none';
+    suggestionsSection.style.display = 'none';
+    errorMessage.style.display = 'none';
+    successMessage.style.display = 'none';
     
     fetch('/get_progression', {
         method: 'POST',
@@ -88,22 +109,178 @@ document.getElementById('getProgressionBtn').addEventListener('click', function(
         btn.disabled = false;
         
         if (data.error) {
-            error.style.display = 'block';
+            errorMessage.style.display = 'block';
             document.getElementById('errorText').textContent = data.error;
         } else {
-            results.style.display = 'block';
-            // Format the suggestions with proper line breaks
-            const formattedSuggestions = data.suggestions.replace(/\n/g, '<br>');
-            document.getElementById('suggestions').innerHTML = formattedSuggestions;
+            // Show raw suggestions
+            document.getElementById('rawSuggestions').textContent = data.suggestions;
+            
+            // Parse suggestions
+            parseSuggestions(data.suggestions);
+            suggestionsSection.style.display = 'block';
         }
     })
     .catch(err => {
         spinner.style.display = 'none';
         btn.disabled = false;
-        error.style.display = 'block';
+        errorMessage.style.display = 'block';
         document.getElementById('errorText').textContent = 'Failed to get progression suggestions. Please try again.';
         console.error('Error:', err);
     });
 });
+
+function parseSuggestions(rawText) {
+    const lines = rawText.split('\n');
+    const suggestions = [];
+    
+    for (let line of lines) {
+        // Look for lines that start with "• " and contain ":"
+        if (line.trim().startsWith('• ') && line.includes(':')) {
+            const cleanLine = line.trim().substring(2); // Remove "• "
+            const colonIndex = cleanLine.indexOf(':');
+            if (colonIndex > 0) {
+                const exerciseName = cleanLine.substring(0, colonIndex).trim();
+                const suggestion = cleanLine.substring(colonIndex + 1).trim();
+                
+                suggestions.push({
+                    exercise: exerciseName,
+                    suggestion: suggestion,
+                    selected: false
+                });
+            }
+        }
+    }
+    
+    currentSuggestions = suggestions;
+    renderSuggestions();
+}
+
+function renderSuggestions() {
+    const container = document.getElementById('parsedSuggestions');
+    
+    if (currentSuggestions.length === 0) {
+        container.innerHTML = '<p class="text-muted">No specific progression suggestions found. The AI may have provided general advice instead.</p>';
+        return;
+    }
+    
+    let html = '<h6 class="mb-3">Select which progressions to apply:</h6>';
+    
+    currentSuggestions.forEach((suggestion, index) => {
+        html += `
+            <div class="card mb-2">
+                <div class="card-body">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="suggestion${index}" 
+                               onchange="toggleSuggestion(${index})">
+                        <label class="form-check-label" for="suggestion${index}">
+                            <strong>${suggestion.exercise}</strong>: ${suggestion.suggestion}
+                        </label>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    updateApplyButton();
+}
+
+function toggleSuggestion(index) {
+    currentSuggestions[index].selected = document.getElementById(`suggestion${index}`).checked;
+    updateApplyButton();
+}
+
+function selectAllSuggestions() {
+    currentSuggestions.forEach((suggestion, index) => {
+        suggestion.selected = true;
+        document.getElementById(`suggestion${index}`).checked = true;
+    });
+    updateApplyButton();
+}
+
+function clearAllSuggestions() {
+    currentSuggestions.forEach((suggestion, index) => {
+        suggestion.selected = false;
+        document.getElementById(`suggestion${index}`).checked = false;
+    });
+    updateApplyButton();
+}
+
+function updateApplyButton() {
+    const btn = document.getElementById('applySuggestionsBtn');
+    const selectedCount = currentSuggestions.filter(s => s.selected).length;
+    
+    btn.disabled = selectedCount === 0;
+    btn.innerHTML = selectedCount > 0 
+        ? `<i class="fas fa-check me-2"></i>Apply ${selectedCount} Selected Changes to Weekly Plan`
+        : `<i class="fas fa-check me-2"></i>Apply Selected Changes to Weekly Plan`;
+}
+
+function applySelectedSuggestions() {
+    const selectedSuggestions = currentSuggestions.filter(s => s.selected);
+    
+    if (selectedSuggestions.length === 0) {
+        alert('Please select at least one suggestion to apply');
+        return;
+    }
+    
+    // For now, we'll parse the suggestions manually
+    // This is a simplified approach - you might want to enhance this
+    const changes = selectedSuggestions.map(s => {
+        const suggestion = s.suggestion.toLowerCase();
+        let parsedChange = { exercise_name: s.exercise.toLowerCase() };
+        
+        // Try to extract weight changes
+        const weightMatch = suggestion.match(/(\d+)\s*(lbs?|kg)/);
+        if (weightMatch) {
+            parsedChange.weight = weightMatch[0];
+        }
+        
+        // Try to extract rep changes  
+        const repMatch = suggestion.match(/(\d+)\s*reps?/);
+        if (repMatch) {
+            parsedChange.reps = repMatch[1];
+        }
+        
+        return parsedChange;
+    });
+    
+    const btn = document.getElementById('applySuggestionsBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Applying changes...';
+    
+    fetch('/apply_progression', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ changes: changes })
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        
+        if (data.success) {
+            document.getElementById('successMessage').style.display = 'block';
+            document.getElementById('successText').textContent = data.message;
+            
+            // Clear suggestions after successful application
+            document.getElementById('suggestionsSection').style.display = 'none';
+            currentSuggestions = [];
+        } else {
+            document.getElementById('errorMessage').style.display = 'block';
+            document.getElementById('errorText').textContent = data.error || 'Failed to apply changes';
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        document.getElementById('errorMessage').style.display = 'block';
+        document.getElementById('errorText').textContent = 'Error applying changes';
+        console.error('Error:', err);
+    });
+}
 </script>
 {% endblock %}
