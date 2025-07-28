@@ -852,8 +852,66 @@ def chat():
                     exercise, sets, reps, weight, date, notes = workout
                     workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
 
-                # Build focused prompt for history queries
-                chat_prompt = f"""Answer this workout history question:
+                # For progression queries about specific days, be more targeted
+                if is_progression_query:
+                    # Extract the day mentioned (friday, monday, etc.)
+                    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                    mentioned_day = None
+                    for day in days:
+                        if day in message_lower:
+                            mentioned_day = day
+                            break
+                    
+                    if mentioned_day:
+                        # Filter workouts to only include exercises from that specific day
+                        day_specific_workouts = []
+                        for workout in recent_workouts:
+                            exercise, sets, reps, weight, date, notes = workout
+                            try:
+                                workout_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+                                workout_day = workout_date.strftime('%A').lower()
+                                if workout_day == mentioned_day:
+                                    day_specific_workouts.append(workout)
+                            except:
+                                continue
+                        
+                        if day_specific_workouts:
+                            # Use only exercises from the specific day for progression tips
+                            specific_workout_data = ""
+                            for workout in day_specific_workouts:
+                                exercise, sets, reps, weight, date, notes = workout
+                                specific_workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
+                            
+                            chat_prompt = f"""Provide progression tips for {mentioned_day.title()}'s workout:
+
+{user_message}
+
+{mentioned_day.title()}'s workout history (ONLY include exercises from this list):
+{specific_workout_data}
+
+IMPORTANT: Only provide progression tips for exercises that appear in the {mentioned_day.title()} workout history above. Do not include exercises from other days."""
+                        else:
+                            chat_prompt = f"""Answer this workout progression question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and provide progression suggestions."""
+                    else:
+                        # General progression query without specific day
+                        chat_prompt = f"""Answer this workout progression question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and provide progression suggestions."""
+                else:
+                    # Regular history query
+                    chat_prompt = f"""Answer this workout history question:
 
 {user_message}
 
@@ -864,12 +922,8 @@ Answer directly and concisely."""
             else:
                 chat_prompt = f"User asked: {user_message}\n\nNo recent workout data found. Let them know no workouts are logged yet."
 
-            if is_progression_query:
-                # Use regular response with more tokens for progression queries
-                response = get_grok_response(chat_prompt, include_context=False)
-            else:
-                # Use regular response with more tokens for history queries to prevent truncation
-                response = get_grok_response(chat_prompt, include_context=False)
+            # Use regular response with more tokens for both history and progression queries
+            response = get_grok_response(chat_prompt, include_context=False)
 
         # For complex workout questions, use full context
         elif needs_workout_context and len(user_message.split()) > 3:
@@ -1014,7 +1068,66 @@ def chat_stream():
                 exercise, sets, reps, weight, date, notes = workout
                 workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
 
-            chat_prompt = f"""Answer this workout history question:
+            # For progression queries about specific days, be more targeted
+            if is_progression_query:
+                # Extract the day mentioned (friday, monday, etc.)
+                days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                mentioned_day = None
+                for day in days:
+                    if day in message_lower:
+                        mentioned_day = day
+                        break
+                
+                if mentioned_day:
+                    # Filter workouts to only include exercises from that specific day
+                    day_specific_workouts = []
+                    for workout in recent_workouts:
+                        exercise, sets, reps, weight, date, notes = workout
+                        try:
+                            workout_date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+                            workout_day = workout_date.strftime('%A').lower()
+                            if workout_day == mentioned_day:
+                                day_specific_workouts.append(workout)
+                        except:
+                            continue
+                    
+                    if day_specific_workouts:
+                        # Use only exercises from the specific day for progression tips
+                        specific_workout_data = ""
+                        for workout in day_specific_workouts:
+                            exercise, sets, reps, weight, date, notes = workout
+                            specific_workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
+                        
+                        chat_prompt = f"""Provide progression tips for {mentioned_day.title()}'s workout:
+
+{user_message}
+
+{mentioned_day.title()}'s workout history (ONLY include exercises from this list):
+{specific_workout_data}
+
+IMPORTANT: Only provide progression tips for exercises that appear in the {mentioned_day.title()} workout history above. Do not include exercises from other days."""
+                    else:
+                        chat_prompt = f"""Answer this workout progression question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and provide progression suggestions."""
+                else:
+                    # General progression query without specific day
+                    chat_prompt = f"""Answer this workout progression question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and provide progression suggestions."""
+            else:
+                # Regular history query
+                chat_prompt = f"""Answer this workout history question:
 
 {user_message}
 
