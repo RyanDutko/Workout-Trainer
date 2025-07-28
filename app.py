@@ -816,14 +816,14 @@ def chat():
         
         needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
 
-        # For history queries or complex workout questions, use full context
-        if is_history_query or (needs_workout_context and len(user_message.split()) > 3):
-            # Build comprehensive prompt with workout data
-            chat_prompt = f"""You are a professional personal trainer with access to the user's workout history. 
+        # For history queries, provide focused data lookup
+        if is_history_query:
+            # Build focused prompt for history queries
+            chat_prompt = f"""You are a personal trainer. Answer this question directly and concisely.
 
 User question: {user_message}
 
-Here is their recent workout data to help answer their question:"""
+Recent workout data:"""
 
             # Get workout data for context
             conn = get_db_connection()
@@ -834,22 +834,55 @@ Here is their recent workout data to help answer their question:"""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes
                 FROM workouts 
                 ORDER BY date_logged DESC 
-                LIMIT 30
+                LIMIT 20
             """)
             recent_workouts = cursor.fetchall()
             
             if recent_workouts:
-                chat_prompt += "\n\nRecent workout logs:\n"
+                chat_prompt += "\n"
                 for workout in recent_workouts:
                     exercise, sets, reps, weight, date, notes = workout
-                    chat_prompt += f"• {date}: {exercise} {sets}x{reps}@{weight}"
+                    chat_prompt += f"{date}: {exercise} {sets}x{reps}@{weight}"
                     if notes:
                         chat_prompt += f" ({notes})"
                     chat_prompt += "\n"
+                    
+                chat_prompt += "\nPlease answer the user's question directly. Be concise and only mention the specific workouts they asked about. No introductions or extra explanations."
+            else:
+                chat_prompt += "\nNo recent workout data found."
             
             conn.close()
             
-            # Use full context Grok response
+            # Use fast response for history queries to keep them concise
+            response = get_grok_response_fast(chat_prompt)
+            
+        # For complex workout questions, use full context
+        elif needs_workout_context and len(user_message.split()) > 3:
+            # Build comprehensive prompt with workout data for complex questions
+            chat_prompt = f"""You are a professional personal trainer. 
+
+User question: {user_message}
+
+Recent workout context:"""
+
+            # Get workout data for context
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged
+                FROM workouts 
+                ORDER BY date_logged DESC 
+                LIMIT 10
+            """)
+            recent_workouts = cursor.fetchall()
+            
+            if recent_workouts:
+                chat_prompt += "\n" + ", ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]}" for w in recent_workouts[:5]])
+            
+            conn.close()
+            
+            # Use full context Grok response for complex questions
             response = get_grok_response(chat_prompt, include_context=False)
             
         else:
