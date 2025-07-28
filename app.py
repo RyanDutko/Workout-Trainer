@@ -797,55 +797,31 @@ def chat():
     if request.method == 'POST':
         user_message = request.form['message']
         
-        # Build enhanced context for chat
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Determine if this is a workout-related question that needs context
+        workout_keywords = [
+            'workout', 'exercise', 'plan', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+            'bench', 'squat', 'deadlift', 'press', 'curl', 'extension', 'row', 'pullup', 'pushup',
+            'progression', 'weight', 'reps', 'sets', 'volume', 'training', 'muscle', 'strength',
+            'schedule', 'routine', 'program', 'split', 'session', 'lift', 'lifting'
+        ]
         
-        # Get user's chat preferences
-        cursor.execute("""
-            SELECT chat_response_style, chat_progression_detail 
-            FROM user_background WHERE user_id = 1
-        """)
-        chat_prefs = cursor.fetchone()
-        if chat_prefs:
-            response_style, progression_detail = chat_prefs
-        else:
-            response_style = "exercise_by_exercise_breakdown"
-            progression_detail = "include_specific_progression_notes_per_exercise"
+        message_lower = user_message.lower()
+        needs_workout_context = any(keyword in message_lower for keyword in workout_keywords)
         
-        # Enhanced prompt for better responses
-        chat_prompt = f"""You are a professional personal trainer having a conversation with your client. 
+        # Build basic chat prompt
+        chat_prompt = f"""You are a professional personal trainer having a conversation with your client.
 
-IMPORTANT RESPONSE GUIDELINES:
-- Response Style: {response_style}
-- Progression Detail: {progression_detail}
-- Tone: Professional, direct, and informative - NO motivational language or "gym bro" speak
-- When showing workout plans, break down each exercise individually with progression notes
-- Be concise and technical, avoid excessive enthusiasm or cheerleading
-- If asked about specific days, show exercise-by-exercise breakdown with progression suggestions for each
-- ALWAYS reference their recent workout performance data when available - do not say "no recent data"
-- Focus on facts, numbers, and practical advice rather than motivation
+RESPONSE GUIDELINES:
+- Be conversational and helpful
+- Keep responses concise unless specifically asked for detailed information
+- If asked about workouts, provide specific exercise breakdowns with progression notes
+- Be professional but friendly
+- Don't assume they want their full workout plan unless they specifically ask for it
 
-User Question: {user_message}
+User: {user_message}"""
 
-RESPONSE FORMAT for workout plan questions:
-If they ask about a specific day's plan, format like this:
-
-**Monday Workout Plan:**
-
-**Exercise 1: [Exercise Name]**
-- Current: [sets]x[reps]@[weight] 
-- Progression Note: [specific advice based on their recent performance data]
-
-**Exercise 2: [Exercise Name]**
-- Current: [sets]x[reps]@[weight]
-- Progression Note: [specific advice based on their recent performance data]
-
-Continue this format for all exercises in that day."""
-
-        conn.close()
-        
-        response = get_grok_response(chat_prompt, include_context=True)
+        # Only include full context for workout-related questions
+        response = get_grok_response(chat_prompt, include_context=needs_workout_context)
         return jsonify({'response': response})
     
     return render_template('chat.html')
