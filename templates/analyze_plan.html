@@ -1,0 +1,181 @@
+
+{% extends "base.html" %}
+
+{% block title %}Analyze Plan - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-brain me-2"></i>Tell Grok About Your Plan</h1>
+    <small class="text-muted">Help Grok understand the "why" behind your workout plan</small>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-lightbulb me-2"></i>Plan Philosophy & Context</h5>
+            </div>
+            <div class="card-body">
+                <form id="planContextForm">
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Overall Training Philosophy</strong></label>
+                        <textarea class="form-control" name="philosophy" rows="3" 
+                                  placeholder="e.g., Focus on compound movements for strength, with accessories for weak points. Monday is heavy day, Friday is light/pump day..."></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Weekly Structure Reasoning</strong></label>
+                        <textarea class="form-control" name="weekly_structure" rows="3" 
+                                  placeholder="e.g., Monday starts strong after weekend rest, Wednesday maintains momentum, Friday is lighter because of weekend plans..."></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Progression Strategy</strong></label>
+                        <textarea class="form-control" name="progression_strategy" rows="3" 
+                                  placeholder="e.g., Increase weight when all sets hit top rep range, never progress warmup exercises, focus on form before weight..."></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Special Considerations</strong></label>
+                        <textarea class="form-control" name="special_considerations" rows="3" 
+                                  placeholder="e.g., Avoid overhead pressing due to shoulder history, Friday exercises are just activation/blood flow..."></textarea>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Overall Reasoning</strong></label>
+                        <textarea class="form-control" name="reasoning" rows="4" 
+                                  placeholder="Explain the complete thought process behind this plan - what are you trying to achieve and why is it structured this way?"></textarea>
+                    </div>
+
+                    <h6 class="mb-3"><i class="fas fa-dumbbell me-2"></i>Exercise-Specific Context</h6>
+                    <div id="exerciseContext">
+                        <!-- Will be populated via JavaScript -->
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save me-2"></i>Save Plan Context
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-info-circle me-2"></i>Why This Matters</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Better Progressions:</strong> Grok will understand which exercises should progress aggressively vs. conservatively.</p>
+                <p><strong>Smarter Suggestions:</strong> Recommendations will align with your actual training philosophy.</p>
+                <p><strong>Context-Aware Chat:</strong> Grok can explain why certain exercises are programmed the way they are.</p>
+                <p><strong>Future Plans:</strong> This context will help if you ever want to modify or rebuild your plan.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Load current weekly plan and create exercise context fields
+async function loadExerciseContext() {
+    try {
+        const response = await fetch('/api/weekly_plan');
+        const planData = await response.json();
+        
+        const container = document.getElementById('exerciseContext');
+        let exerciseHtml = '';
+        
+        Object.keys(planData).forEach(day => {
+            planData[day].forEach(exercise => {
+                exerciseHtml += `
+                    <div class="border rounded p-3 mb-3">
+                        <h6>${exercise.exercise_name} (${day.charAt(0).toUpperCase() + day.slice(1)})</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Purpose</label>
+                                <input type="text" class="form-control" name="exercise_purpose_${exercise.exercise_name}" 
+                                       placeholder="e.g., main chest builder, warmup, weak point work">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Progression Logic</label>
+                                <select class="form-select" name="exercise_progression_${exercise.exercise_name}">
+                                    <option value="normal">Normal progression</option>
+                                    <option value="aggressive">Aggressive progression</option>
+                                    <option value="slow">Conservative progression</option>
+                                    <option value="maintain">Maintain (no progression)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label">Special Notes</label>
+                            <input type="text" class="form-control" name="exercise_notes_${exercise.exercise_name}" 
+                                   placeholder="Any special considerations for this exercise">
+                        </div>
+                    </div>
+                `;
+            });
+        });
+        
+        container.innerHTML = exerciseHtml;
+    } catch (error) {
+        console.error('Error loading exercises:', error);
+    }
+}
+
+document.getElementById('planContextForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const data = {
+        philosophy: formData.get('philosophy'),
+        weekly_structure: formData.get('weekly_structure'),
+        progression_strategy: formData.get('progression_strategy'),
+        special_considerations: formData.get('special_considerations'),
+        reasoning: formData.get('reasoning'),
+        exercises: []
+    };
+    
+    // Collect exercise-specific data
+    const exerciseInputs = document.querySelectorAll('[name^="exercise_"]');
+    const exerciseData = {};
+    
+    exerciseInputs.forEach(input => {
+        const match = input.name.match(/exercise_(\w+)_(.+)/);
+        if (match) {
+            const [, field, exerciseName] = match;
+            if (!exerciseData[exerciseName]) {
+                exerciseData[exerciseName] = { name: exerciseName };
+            }
+            exerciseData[exerciseName][field] = input.value;
+        }
+    });
+    
+    data.exercises = Object.values(exerciseData);
+    
+    try {
+        const response = await fetch('/save_plan_context', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            alert('✅ Plan context saved! Grok now understands your training philosophy.');
+            window.location.href = '/';
+        } else {
+            alert('Error: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error saving context: ' + error.message);
+    }
+});
+
+// Load exercise context on page load
+loadExerciseContext();
+</script>
+{% endblock %}

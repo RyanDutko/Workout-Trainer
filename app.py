@@ -459,6 +459,63 @@ def progression():
 def analytics():
     return render_template('analytics.html')
 
+@app.route('/analyze_plan')
+def analyze_plan():
+    return render_template('analyze_plan.html')
+
+@app.route('/save_plan_context', methods=['POST'])
+def save_plan_context():
+    """Save the reasoning and context behind the current workout plan"""
+    try:
+        data = request.json
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO plan_context
+            (user_id, plan_philosophy, training_style, weekly_structure, 
+             progression_strategy, special_considerations, created_by_ai, 
+             creation_reasoning, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, ?, FALSE, ?, ?, ?)
+        ''', (
+            data.get('philosophy'),
+            data.get('training_style'), 
+            data.get('weekly_structure'),
+            data.get('progression_strategy'),
+            data.get('special_considerations'),
+            data.get('reasoning'),
+            datetime.now().strftime('%Y-%m-%d'),
+            datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        # Also store exercise-specific context
+        exercises = data.get('exercises', [])
+        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+        
+        for exercise in exercises:
+            cursor.execute('''
+                INSERT INTO exercise_metadata
+                (user_id, exercise_name, exercise_type, primary_purpose, 
+                 progression_logic, ai_notes, created_date)
+                VALUES (1, ?, ?, ?, ?, ?, ?)
+            ''', (
+                exercise['name'],
+                exercise.get('type', 'working_set'),
+                exercise.get('purpose', ''),
+                exercise.get('progression_logic', 'normal'),
+                exercise.get('notes', ''),
+                datetime.now().strftime('%Y-%m-%d')
+            ))
+
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Plan context saved successfully!'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/api/weekly_plan')
 def api_weekly_plan():
     """API endpoint to get weekly plan data for progression interface"""
