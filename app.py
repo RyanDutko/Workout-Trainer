@@ -857,8 +857,15 @@ Answer directly and concisely."""
             else:
                 chat_prompt = f"User asked: {user_message}\n\nNo recent workout data found. Let them know no workouts are logged yet."
 
-            # Use fast response for history queries to keep them concise
-            response = get_grok_response_fast(chat_prompt)
+            # Check if this is a progression/tips query that needs more tokens
+            is_progression_query = any(word in message_lower for word in ['progression', 'tips', 'progress', 'increase', 'advance', 'improve', 'next'])
+            
+            if is_progression_query:
+                # Use regular response with more tokens for progression queries
+                response = get_grok_response(chat_prompt, include_context=False)
+            else:
+                # Use fast response for simple history queries to keep them concise
+                response = get_grok_response_fast(chat_prompt)
 
         # For complex workout questions, use full context
         elif needs_workout_context and len(user_message.split()) > 3:
