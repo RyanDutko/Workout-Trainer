@@ -254,20 +254,24 @@ function loadPlanForDate(dateStr) {
         </div>
     `;
 
+    // Ensure we have a valid date string
+    if (!dateStr || dateStr === '') {
+        dateStr = document.getElementById('date').value;
+    }
+
     fetch(`/get_plan/${dateStr}`)
         .then(response => response.json())
         .then(data => {
             planDayName.textContent = data.day_name;
 
-            if (data.plan && data.plan.length > 0) {
+            if (data.exercises && data.exercises.length > 0) {
                 let planHtml = '<div class="row">';
-                data.plan.forEach(exercise => {
-                    const [day, exercise_name, sets, reps, weight, order, notes] = exercise;
+                data.exercises.forEach(exercise => {
                     planHtml += `
                         <div class="col-md-6 mb-2">
-                            <button class="btn btn-outline-success btn-sm w-100" onclick="openDetailedLog('${exercise_name}', ${sets}, '${reps}', '${weight}')">
-                                <strong>${exercise_name.charAt(0).toUpperCase() + exercise_name.slice(1)}</strong><br>
-                                <small>${sets}x${reps} @ ${weight}</small>
+                            <button class="btn btn-outline-success btn-sm w-100" onclick="openDetailedLog('${exercise.exercise_name}', ${exercise.sets}, '${exercise.reps}', '${exercise.weight}')">
+                                <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong><br>
+                                <small>${exercise.sets}x${exercise.reps} @ ${exercise.weight}</small>
                             </button>
                         </div>
                     `;

@@ -177,9 +177,10 @@ def dashboard():
     
     # Get today's day of week
     today = datetime.now().strftime('%A')
+    today_lowercase = today.lower()
     
     # Get today's plan
-    cursor.execute('SELECT * FROM weekly_plan WHERE day_of_week = ? ORDER BY id', (today,))
+    cursor.execute('SELECT * FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (today_lowercase,))
     today_plan = cursor.fetchall()
     
     # Get recent workouts
@@ -420,8 +421,19 @@ def save_workout():
 
 @app.route('/get_plan/<day>')
 def get_plan(day):
-    if not day:
+    if not day or day == '':
         return jsonify({'exercises': [], 'day_name': 'Unknown'})
+    
+    # Convert date string to day name if it's a date
+    try:
+        # If it's a date string like "2025-01-27", convert to day name
+        if '-' in day and len(day) == 10:
+            date_obj = datetime.strptime(day, '%Y-%m-%d')
+            day = date_obj.strftime('%A').lower()
+        else:
+            day = day.lower()
+    except:
+        day = day.lower()
         
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
