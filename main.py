@@ -718,7 +718,6 @@ def insert_log(entry, date_logged):
 
             # Check if this exceeds baseline and update if so
             update_baseline_if_exceeded(
-```python
                 single_entry.get("exercise_name", "Unknown"),
                 single_entry.get("sets", 1),
                 single_entry.get("reps", "Unknown"),
