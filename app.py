@@ -415,6 +415,37 @@ def progression():
 def analytics():
     return render_template('analytics.html')
 
+@app.route('/api/weekly_plan')
+def api_weekly_plan():
+    """API endpoint to get weekly plan data for progression interface"""
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+        FROM weekly_plan 
+        ORDER BY day_of_week, exercise_order
+    ''')
+    
+    plan_data = cursor.fetchall()
+    conn.close()
+    
+    # Organize by day
+    plan_by_day = {}
+    for day, exercise, sets, reps, weight, order in plan_data:
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+        
+        plan_by_day[day].append({
+            'exercise_name': exercise,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'order': order
+        })
+    
+    return jsonify(plan_by_day)
+
 @app.route('/get_progression', methods=['POST'])
 def get_progression():
     """Get AI progression suggestions for review and approval"""
@@ -453,9 +484,9 @@ def get_progression():
 
 Please provide progression suggestions in THIS EXACT FORMAT (this is crucial for parsing):
 • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
-• Exercise Name: specific actionable change
+• Exercise Name: stay at current weight - brief reason why (e.g., "focus on form first", "recent increase needs time")
 
-Then end with: "Ask for my reasoning on any of these progressions if you'd like more detail."
+For each exercise, either suggest a progression OR suggest staying at current weight with a brief reason.
 
 Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
 
