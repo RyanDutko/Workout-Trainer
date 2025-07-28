@@ -868,8 +868,8 @@ Answer directly and concisely."""
                 # Use regular response with more tokens for progression queries
                 response = get_grok_response(chat_prompt, include_context=False)
             else:
-                # Use fast response for simple history queries to keep them concise
-                response = get_grok_response_fast(chat_prompt)
+                # Use regular response with more tokens for history queries to prevent truncation
+                response = get_grok_response(chat_prompt, include_context=False)
 
         # For complex workout questions, use full context
         elif needs_workout_context and len(user_message.split()) > 3:
@@ -1034,8 +1034,8 @@ User: {user_message}"""
             from openai import OpenAI
             client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
-            # Adjust token limit based on query type
-            max_tokens = 800 if is_progression_query else 400
+            # Adjust token limit based on query type - increase for both history and progression queries
+            max_tokens = 800 if (is_progression_query or is_history_query) else 400
             
             response = client.chat.completions.create(
                 model="grok-4-0709",
