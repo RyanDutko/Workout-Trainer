@@ -824,40 +824,38 @@ def chat():
 
         # For history queries, provide focused data lookup
         if is_history_query:
-            # Build focused prompt for history queries
-            chat_prompt = f"""You are a personal trainer. Answer this question directly and concisely.
-
-User question: {user_message}
-
-Recent workout data:"""
-
             # Get workout data for context
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Get recent workouts with dates for history queries
+            # Get recent workouts with dates for history queries - limit to 10 for efficiency
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes
                 FROM workouts 
                 ORDER BY date_logged DESC 
-                LIMIT 20
+                LIMIT 10
             """)
             recent_workouts = cursor.fetchall()
+            conn.close()
 
             if recent_workouts:
-                chat_prompt += "\n"
+                # Build concise workout data string
+                workout_data = ""
                 for workout in recent_workouts:
                     exercise, sets, reps, weight, date, notes = workout
-                    chat_prompt += f"{date}: {exercise} {sets}x{reps}@{weight}"
-                    if notes:
-                        chat_prompt += f" ({notes})"
-                    chat_prompt += "\n"
+                    workout_data += f"{date}: {exercise} {sets}x{reps}@{weight}\n"
 
-                chat_prompt += "\nPlease answer the user's question directly. Be concise and only mention the specific workouts they asked about. No introductions or extra explanations."
+                # Build focused prompt for history queries
+                chat_prompt = f"""Answer this workout history question:
+
+{user_message}
+
+Recent workouts:
+{workout_data}
+
+Answer directly and concisely."""
             else:
-                chat_prompt += "\nNo recent workout data found."
-
-            conn.close()
+                chat_prompt = f"User asked: {user_message}\n\nNo recent workout data found. Let them know no workouts are logged yet."
 
             # Use fast response for history queries to keep them concise
             response = get_grok_response_fast(chat_prompt)
@@ -924,7 +922,7 @@ def get_grok_response_fast(prompt):
                 {"role": "user", "content": prompt}
             ],
             temperature=0.3,  # Lower temperature for faster, more focused responses
-            max_tokens=200,   # Limit tokens for speed
+            max_tokens=400,   # Increased tokens to allow for proper responses
             timeout=15        # Increased timeout to 15 seconds
         )
 
