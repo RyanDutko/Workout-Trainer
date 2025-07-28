@@ -282,7 +282,9 @@ def chat_stream():
 
 @app.route('/log_workout')
 def log_workout():
-    return render_template('log_workout.html')
+    today = datetime.now().strftime('%Y-%m-%d')
+    today_name = datetime.now().strftime('%A')
+    return render_template('log_workout.html', today=today, today_name=today_name)
 
 @app.route('/history')
 def history():

@@ -256,7 +256,7 @@ function loadPlanForDate(dateStr) {
 
     // Ensure we have a valid date string
     if (!dateStr || dateStr === '') {
-        dateStr = document.getElementById('date').value;
+        dateStr = document.getElementById('date').value || '{{ today }}';
     }
 
     fetch(`/get_plan/${dateStr}`)
@@ -296,6 +296,10 @@ document.getElementById('date').addEventListener('change', function() {
 // Load initial plan on page load
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('date');
+    // Ensure we have today's date if the input is empty
+    if (!dateInput.value) {
+        dateInput.value = '{{ today }}';
+    }
     loadPlanForDate(dateInput.value);
 });
 
