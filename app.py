@@ -144,7 +144,63 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
 
 @app.route('/')
 def dashboard():
-    return render_template('dashboard.html')
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    # Get today's day of week
+    today = datetime.now().strftime('%A')
+    
+    # Get today's plan
+    cursor.execute('SELECT * FROM weekly_plan WHERE day_of_week = ? ORDER BY order_index', (today,))
+    today_plan = cursor.fetchall()
+    
+    # Get recent workouts
+    cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
+    recent_workouts = cursor.fetchall()
+    
+    # Calculate stats
+    from collections import namedtuple
+    Stats = namedtuple('Stats', ['week_volume', 'month_volume', 'week_workouts', 'latest_weight', 'weight_date'])
+    
+    # Week volume
+    week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    cursor.execute('SELECT SUM(CAST(weight AS REAL) * sets * CAST(reps AS REAL)) FROM workouts WHERE date_logged >= ?', (week_ago,))
+    week_volume = cursor.fetchone()[0] or 0
+    
+    # Month volume
+    month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    cursor.execute('SELECT SUM(CAST(weight AS REAL) * sets * CAST(reps AS REAL)) FROM workouts WHERE date_logged >= ?', (month_ago,))
+    month_volume = cursor.fetchone()[0] or 0
+    
+    # Week workouts count
+    cursor.execute('SELECT COUNT(DISTINCT date_logged) FROM workouts WHERE date_logged >= ?', (week_ago,))
+    week_workouts = cursor.fetchone()[0] or 0
+    
+    # Get latest weight (placeholder - you might want to add a weights table later)
+    latest_weight = None
+    weight_date = None
+    
+    stats = Stats(
+        week_volume=int(week_volume),
+        month_volume=int(month_volume),
+        week_workouts=week_workouts,
+        latest_weight=latest_weight,
+        weight_date=weight_date
+    )
+    
+    # Check if user needs onboarding
+    cursor.execute('SELECT onboarding_completed FROM user_background WHERE user_id = 1')
+    bg_result = cursor.fetchone()
+    needs_onboarding = not bg_result or not bg_result[0]
+    
+    conn.close()
+    
+    return render_template('dashboard.html', 
+                         today=today,
+                         today_plan=today_plan, 
+                         recent_workouts=recent_workouts,
+                         stats=stats,
+                         needs_onboarding=needs_onboarding)
 
 @app.route('/chat')
 def chat():
