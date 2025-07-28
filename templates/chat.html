@@ -86,6 +86,7 @@ chatForm.addEventListener('submit', function(e) {
     .then(response => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
         
         function readStream() {
             reader.read().then(({ done, value }) => {
@@ -94,14 +95,18 @@ chatForm.addEventListener('submit', function(e) {
                     return;
                 }
                 
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
+                // Accumulate chunks in buffer
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                
+                // Keep the last incomplete line in buffer
+                buffer = lines.pop() || '';
                 
                 for (const line of lines) {
                     if (line.trim() && line.startsWith('data: ')) {
                         try {
                             const jsonStr = line.slice(6).trim();
-                            if (jsonStr) {
+                            if (jsonStr && jsonStr !== '') {
                                 const data = JSON.parse(jsonStr);
                                 if (data.content) {
                                     appendToStreamingMessage(aiMessageId, data.content);
@@ -115,12 +120,16 @@ chatForm.addEventListener('submit', function(e) {
                                 }
                             }
                         } catch (e) {
-                            console.log('Skipping malformed chunk:', line);
+                            console.log('Skipping malformed chunk:', line, 'Error:', e.message);
                         }
                     }
                 }
                 
                 readStream();
+            }).catch(error => {
+                console.error('Stream reading error:', error);
+                updateStreamingMessage(aiMessageId, 'Connection error occurred.');
+                finalizeStreamingMessage(aiMessageId);
             });
         }
         
