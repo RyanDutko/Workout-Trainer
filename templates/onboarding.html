@@ -1,0 +1,220 @@
+
+{% extends "base.html" %}
+
+{% block title %}Get Started - Personal Trainer{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header text-center">
+                    <h3><i class="fas fa-rocket me-2"></i>Let's Build Your Perfect Workout Plan</h3>
+                    <p class="text-muted">Answer a few questions and I'll create a personalized training program just for you</p>
+                </div>
+                <div class="card-body">
+                    <form id="onboardingForm">
+                        <!-- Basic Info -->
+                        <div class="section mb-4">
+                            <h5><i class="fas fa-user me-2"></i>Basic Information</h5>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Age</label>
+                                    <input type="number" class="form-control" name="age" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Gender</label>
+                                    <select class="form-select" name="gender" required>
+                                        <option value="">Select...</option>
+                                        <option value="male">Male</option>
+                                        <option value="female">Female</option>
+                                        <option value="prefer_not_to_say">Prefer not to say</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Height</label>
+                                    <input type="text" class="form-control" name="height" placeholder="e.g., 5'10&quot; or 178cm" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Current Weight</label>
+                                    <input type="text" class="form-control" name="current_weight" placeholder="e.g., 180lbs or 82kg" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fitness Background -->
+                        <div class="section mb-4">
+                            <h5><i class="fas fa-dumbbell me-2"></i>Fitness Background</h5>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Current Fitness Level</label>
+                                    <select class="form-select" name="fitness_level" required>
+                                        <option value="">Select...</option>
+                                        <option value="beginner">Beginner (0-1 years)</option>
+                                        <option value="intermediate">Intermediate (1-3 years)</option>
+                                        <option value="advanced">Advanced (3+ years)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Years Training</label>
+                                    <input type="number" class="form-control" name="years_training" min="0" max="50" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Goals -->
+                        <div class="section mb-4">
+                            <h5><i class="fas fa-target me-2"></i>Your Goals</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Primary Goal</label>
+                                <select class="form-select" name="primary_goal" required>
+                                    <option value="">Select...</option>
+                                    <option value="build_muscle">Build Muscle</option>
+                                    <option value="lose_weight">Lose Weight</option>
+                                    <option value="get_stronger">Get Stronger</option>
+                                    <option value="improve_endurance">Improve Endurance</option>
+                                    <option value="general_fitness">General Fitness</option>
+                                    <option value="sport_specific">Sport-Specific Training</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Secondary Goals (Optional)</label>
+                                <input type="text" class="form-control" name="secondary_goals" placeholder="e.g., improve posture, better flexibility">
+                            </div>
+                        </div>
+
+                        <!-- Training Setup -->
+                        <div class="section mb-4">
+                            <h5><i class="fas fa-calendar me-2"></i>Training Setup</h5>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Training Frequency</label>
+                                    <select class="form-select" name="training_frequency" required>
+                                        <option value="">Select...</option>
+                                        <option value="2-3_times_week">2-3 times per week</option>
+                                        <option value="4-5_times_week">4-5 times per week</option>
+                                        <option value="6+_times_week">6+ times per week</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Session Length</label>
+                                    <select class="form-select" name="time_per_session" required>
+                                        <option value="">Select...</option>
+                                        <option value="30-45_minutes">30-45 minutes</option>
+                                        <option value="45-60_minutes">45-60 minutes</option>
+                                        <option value="60-90_minutes">60-90 minutes</option>
+                                        <option value="90+_minutes">90+ minutes</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Available Equipment</label>
+                                <select class="form-select" name="available_equipment" required>
+                                    <option value="">Select...</option>
+                                    <option value="full_gym">Full Gym Access</option>
+                                    <option value="home_gym">Home Gym (barbells, dumbbells, rack)</option>
+                                    <option value="basic_home">Basic Home Setup (dumbbells, bands)</option>
+                                    <option value="bodyweight_only">Bodyweight Only</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Preferred Training Style</label>
+                                <select class="form-select" name="preferred_training_style" required>
+                                    <option value="">Select...</option>
+                                    <option value="powerlifting">Powerlifting (heavy compound lifts)</option>
+                                    <option value="bodybuilding">Bodybuilding (muscle building focus)</option>
+                                    <option value="functional">Functional Training</option>
+                                    <option value="mixed">Mixed Approach</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Limitations -->
+                        <div class="section mb-4">
+                            <h5><i class="fas fa-exclamation-triangle me-2"></i>Important Considerations</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Past Injuries (Optional)</label>
+                                <textarea class="form-control" name="injuries_history" rows="2" placeholder="e.g., lower back injury 2019, knee surgery"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Current Limitations or Pain (Optional)</label>
+                                <textarea class="form-control" name="current_limitations" rows="2" placeholder="e.g., tight shoulders, can't squat deep"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Biggest Fitness Challenges</label>
+                                <input type="text" class="form-control" name="biggest_challenges" placeholder="e.g., consistency, motivation, plateau" required>
+                            </div>
+                        </div>
+
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-magic me-2"></i>Generate My Perfect Plan
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h5>Creating Your Perfect Workout Plan...</h5>
+                <p class="text-muted">This may take 30-60 seconds as I analyze your profile and design a custom program.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('onboardingForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // Show loading modal
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+    
+    // Collect form data
+    const formData = new FormData(this);
+    const data = {};
+    formData.forEach((value, key) => {
+        data[key] = value;
+    });
+    
+    try {
+        const response = await fetch('/generate_ai_plan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            loadingModal.hide();
+            
+            // Show success and redirect
+            alert('🎉 Your personalized workout plan has been created! Redirecting to your dashboard...');
+            window.location.href = '/';
+        } else {
+            loadingModal.hide();
+            alert('Error creating plan: ' + result.error);
+        }
+    } catch (error) {
+        loadingModal.hide();
+        alert('Error: ' + error.message);
+    }
+});
+</script>
+{% endblock %}

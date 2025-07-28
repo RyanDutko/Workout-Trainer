@@ -33,11 +33,44 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         day_of_week TEXT NOT NULL,
         exercise_name TEXT NOT NULL,
-        sets INTEGER,
-        reps TEXT,
-        weight TEXT,
-        order_index INTEGER DEFAULT 1,
-        notes TEXT
+        target_sets INTEGER,
+        target_reps TEXT,
+        target_weight TEXT,
+        exercise_order INTEGER DEFAULT 1,
+        notes TEXT,
+        exercise_type TEXT DEFAULT 'working_set',
+        progression_rate TEXT DEFAULT 'normal',
+        created_by TEXT DEFAULT 'user'
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS plan_context (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER DEFAULT 1,
+        plan_philosophy TEXT,
+        training_style TEXT,
+        weekly_structure TEXT,
+        progression_strategy TEXT,
+        special_considerations TEXT,
+        created_by_ai BOOLEAN DEFAULT FALSE,
+        creation_reasoning TEXT,
+        created_date TEXT,
+        updated_date TEXT
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS exercise_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER DEFAULT 1,
+        exercise_name TEXT NOT NULL,
+        exercise_type TEXT,
+        primary_purpose TEXT,
+        progression_logic TEXT,
+        related_exercises TEXT,
+        ai_notes TEXT,
+        created_date TEXT
     )
     ''')
 
@@ -92,11 +125,22 @@ def init_db():
     )
     ''')
 
-    # Add order_index column if it doesn't exist (for existing databases)
-    try:
-        cursor.execute('ALTER TABLE weekly_plan ADD COLUMN order_index INTEGER DEFAULT 1')
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    # Add missing columns if they don't exist (for existing databases)
+    columns_to_add = [
+        ('target_sets', 'INTEGER DEFAULT 3'),
+        ('target_reps', 'TEXT DEFAULT "8-10"'),
+        ('target_weight', 'TEXT DEFAULT "0lbs"'),
+        ('exercise_order', 'INTEGER DEFAULT 1'),
+        ('exercise_type', 'TEXT DEFAULT "working_set"'),
+        ('progression_rate', 'TEXT DEFAULT "normal"'),
+        ('created_by', 'TEXT DEFAULT "user"')
+    ]
+    
+    for column_name, column_def in columns_to_add:
+        try:
+            cursor.execute(f'ALTER TABLE weekly_plan ADD COLUMN {column_name} {column_def}')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
 
@@ -477,18 +521,39 @@ def get_progression():
         for exercise_name, target_sets, target_reps, target_weight in planned_exercises:
             plan_text += f"• {exercise_name}: {target_sets}x{target_reps}@{target_weight}\n"
 
-        # Create progression prompt for Grok
+        # Get plan context and exercise metadata
+        cursor.execute('SELECT plan_philosophy, progression_strategy, creation_reasoning FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        context_result = cursor.fetchone()
+        plan_context = ""
+        if context_result:
+            philosophy, strategy, reasoning = context_result
+            plan_context = f"\n\nPLAN CONTEXT:\nPhilosophy: {philosophy}\nProgression Strategy: {strategy}\nOriginal AI Reasoning: {reasoning[:200]}..."
+
+        # Get exercise metadata
+        cursor.execute('SELECT exercise_name, exercise_type, primary_purpose, progression_logic FROM exercise_metadata')
+        metadata_results = cursor.fetchall()
+        exercise_context = ""
+        if metadata_results:
+            exercise_context = "\n\nEXERCISE CONTEXT:\n"
+            for name, ex_type, purpose, logic in metadata_results:
+                exercise_context += f"• {name}: {ex_type} - {purpose} (progression: {logic})\n"
+
+        # Create enhanced progression prompt
         progression_prompt = f"""Based on this weekly workout plan, provide specific progression suggestions:
 
-{plan_text}
+{plan_text}{plan_context}{exercise_context}
+
+IMPORTANT CONTEXT RULES:
+- Warmup/activation exercises should rarely get weight increases
+- Exercises marked as "slow" progression need conservative changes
+- "Maintain" exercises should not progress in weight
+- Consider the overall training philosophy when suggesting changes
 
 Please provide progression suggestions in THIS EXACT FORMAT (this is crucial for parsing):
 • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
-• Exercise Name: stay at current weight - brief reason why (e.g., "focus on form first", "recent increase needs time")
+• Exercise Name: stay at current weight - brief reason why (e.g., "warmup exercise", "focus on form first")
 
-For each exercise, either suggest a progression OR suggest staying at current weight with a brief reason.
-
-Keep suggestions practical and progressive (small weight increases, rep adjustments, etc.). Be concise and specific with numbers."""
+For each exercise, either suggest a progression OR suggest staying at current weight with a brief reason."""
 
         # Get Grok's response with full context
         response = get_grok_response_with_context(progression_prompt, user_background)
@@ -703,6 +768,172 @@ def delete_exercise():
 
         return jsonify({'success': True})
     except Exception as e:
+
+
+@app.route('/onboarding')
+def onboarding():
+    return render_template('onboarding.html')
+
+@app.route('/generate_ai_plan', methods=['POST'])
+def generate_ai_plan():
+    """Generate a complete workout plan using AI based on user input"""
+    try:
+        data = request.json
+        
+        # Store user background first
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Insert user background
+        cursor.execute('''
+            INSERT OR REPLACE INTO user_background 
+            (user_id, age, gender, height, current_weight, fitness_level, years_training,
+             primary_goal, secondary_goals, injuries_history, current_limitations,
+             training_frequency, available_equipment, time_per_session, preferred_training_style,
+             biggest_challenges, onboarding_completed, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, ?)
+        ''', (
+            data.get('age'), data.get('gender'), data.get('height'), data.get('current_weight'),
+            data.get('fitness_level'), data.get('years_training'), data.get('primary_goal'),
+            data.get('secondary_goals'), data.get('injuries_history'), data.get('current_limitations'),
+            data.get('training_frequency'), data.get('available_equipment'), data.get('time_per_session'),
+            data.get('preferred_training_style'), data.get('biggest_challenges'),
+            datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        # Create AI prompt for plan generation
+        plan_prompt = f"""Create a complete weekly workout plan based on this user profile:
+
+Age: {data.get('age')}, Gender: {data.get('gender')}, Height: {data.get('height')}, Weight: {data.get('current_weight')}
+Fitness Level: {data.get('fitness_level')} ({data.get('years_training')} years training)
+Primary Goal: {data.get('primary_goal')}
+Secondary Goals: {data.get('secondary_goals', 'None')}
+Injuries/Limitations: {data.get('injuries_history', 'None')} / {data.get('current_limitations', 'None')}
+Training Frequency: {data.get('training_frequency')}
+Available Equipment: {data.get('available_equipment')}
+Session Length: {data.get('time_per_session')}
+Preferred Style: {data.get('preferred_training_style')}
+Biggest Challenges: {data.get('biggest_challenges')}
+
+Please respond with:
+1. PLAN_PHILOSOPHY: A brief explanation of your training approach for this user
+2. WEEKLY_STRUCTURE: How you've organized their week and why
+3. PROGRESSION_STRATEGY: Your approach to progressive overload for them
+4. WORKOUT_PLAN: The actual weekly plan in this EXACT format:
+
+monday:
+exercise_name|sets|reps|weight|type|progression_rate|purpose
+example: bench press|4|8-10|185lbs|working_set|normal|primary chest builder
+
+tuesday:
+(continue for each day with exercises)
+
+Use these exercise types:
+- warmup: Light movement prep
+- activation: Muscle activation/mobility
+- working_set: Main strength/hypertrophy work
+- accessory: Supporting/isolation work
+- cooldown: Recovery/stretching
+
+Use these progression rates:
+- slow: Conservative progression (injuries/limitations)
+- normal: Standard progression
+- aggressive: Faster progression (experienced lifters)
+- maintain: No progression needed (warmup/mobility work)
+
+Be specific with weights based on their experience level."""
+
+        # Get AI response
+        ai_response = get_grok_response_with_context(plan_prompt)
+        
+        # Parse the AI response
+        lines = ai_response.split('\n')
+        plan_philosophy = ""
+        weekly_structure = ""
+        progression_strategy = ""
+        workout_data = {}
+        current_day = None
+        
+        for line in lines:
+            if line.strip().startswith('PLAN_PHILOSOPHY:'):
+                plan_philosophy = line.replace('PLAN_PHILOSOPHY:', '').strip()
+            elif line.strip().startswith('WEEKLY_STRUCTURE:'):
+                weekly_structure = line.replace('WEEKLY_STRUCTURE:', '').strip()
+            elif line.strip().startswith('PROGRESSION_STRATEGY:'):
+                progression_strategy = line.replace('PROGRESSION_STRATEGY:', '').strip()
+            elif line.strip().lower().endswith(':') and line.strip().lower().replace(':', '') in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+                current_day = line.strip().lower().replace(':', '')
+                workout_data[current_day] = []
+            elif current_day and '|' in line and not line.strip().startswith('exercise_name'):
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) >= 6:
+                    workout_data[current_day].append({
+                        'exercise_name': parts[0],
+                        'sets': int(parts[1]) if parts[1].isdigit() else 3,
+                        'reps': parts[2],
+                        'weight': parts[3],
+                        'exercise_type': parts[4],
+                        'progression_rate': parts[5],
+                        'purpose': parts[6] if len(parts) > 6 else ""
+                    })
+
+        # Store plan context
+        cursor.execute('''
+            INSERT OR REPLACE INTO plan_context
+            (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy,
+             created_by_ai, creation_reasoning, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, TRUE, ?, ?, ?)
+        ''', (
+            plan_philosophy, data.get('preferred_training_style'), weekly_structure, 
+            progression_strategy, ai_response, datetime.now().strftime('%Y-%m-%d'), 
+            datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        # Clear existing plan and insert new one
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week IN ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")')
+        cursor.execute('DELETE FROM exercise_metadata')
+
+        # Insert new plan with metadata
+        for day, exercises in workout_data.items():
+            for i, exercise in enumerate(exercises, 1):
+                cursor.execute('''
+                    INSERT INTO weekly_plan
+                    (day_of_week, exercise_name, target_sets, target_reps, target_weight,
+                     exercise_order, exercise_type, progression_rate, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ai')
+                ''', (
+                    day, exercise['exercise_name'], exercise['sets'], exercise['reps'],
+                    exercise['weight'], i, exercise['exercise_type'], exercise['progression_rate']
+                ))
+
+                # Store exercise metadata
+                cursor.execute('''
+                    INSERT INTO exercise_metadata
+                    (user_id, exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date)
+                    VALUES (1, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    exercise['exercise_name'], exercise['exercise_type'], exercise.get('purpose', ''),
+                    exercise['progression_rate'], f"AI-generated for {data.get('primary_goal')}", 
+                    datetime.now().strftime('%Y-%m-%d')
+                ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'AI-generated workout plan created successfully!',
+            'plan_summary': {
+                'philosophy': plan_philosophy,
+                'structure': weekly_structure,
+                'progression': progression_strategy
+            }
+        })
+
+    except Exception as e:
+        print(f"Error generating AI plan: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/update_profile', methods=['POST'])
