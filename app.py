@@ -239,8 +239,7 @@ def chat():
 def chat_stream():
     def generate():
         try:
-            data = request.json
-            user_message = data.get('message', '')
+            user_message = request.form.get('message', '')
             
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
