@@ -49,7 +49,9 @@ def init_db():
         notes TEXT,
         exercise_type TEXT DEFAULT 'working_set',
         progression_rate TEXT DEFAULT 'normal',
-        created_by TEXT DEFAULT 'user'
+        created_by TEXT DEFAULT 'user',
+        is_complex BOOLEAN DEFAULT FALSE,
+        complex_structure TEXT
     )
     ''')
 

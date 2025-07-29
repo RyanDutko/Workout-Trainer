@@ -29,6 +29,9 @@
                                         {% if exercise.notes %}
                                             <br><small class="text-info">{{ exercise.notes }}</small>
                                         {% endif %}
+                                        {% if 'burnout' in exercise.exercise.lower() or 'rounds' in exercise.exercise.lower() %}
+                                            <br><small class="badge bg-warning text-dark">Complex Exercise</small>
+                                        {% endif %}</small>
                                     </div>
                                     <div class="d-flex flex-column gap-1">
                                         <div>
