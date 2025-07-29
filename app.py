@@ -1090,17 +1090,15 @@ def evolve_plan():
             # Special handling for context completion requests
             print("🔧 Detected context completion request")
 
-            # Get existing exercise metadata to see what we already have
-            existing_exercises = set(row[2] for row in current_exercise_metadata) if current_exercise_metadata else set()
-            plan_exercises = set(row[1] for row in current_plan)
-            
-            print(f"📊 Existing context for: {existing_exercises}")
-            print(f"📊 Plan exercises: {plan_exercises}")
-            
-            missing_exercises = plan_exercises - existing_exercises
-            print(f"📊 Missing context for {len(missing_exercises)} exercises: {missing_exercises}")
+            # Clear ALL existing exercise metadata to avoid duplicates
+            cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+            print("🧹 Cleared all existing exercise metadata to avoid duplicates")
 
-            # Add context for ALL exercises that don't have it
+            # Get all exercises from current plan
+            plan_exercises = set(row[1] for row in current_plan)
+            print(f"📊 Processing {len(plan_exercises)} exercises from weekly plan")
+
+            # Add context for ALL exercises in the plan
             updated_count = 0
             for day, exercise_name, sets, reps, weight, order in current_plan:
                 if exercise_name in missing_exercises:
@@ -1172,9 +1170,11 @@ def evolve_plan():
             conn.commit()
             conn.close()
 
+            print(f"✅ Successfully added context for all {updated_count} exercises")
+            
             return jsonify({
                 'success': True,
-                'summary': f"Updated context for ALL {updated_count} exercises based on your plan philosophy. All exercises now have proper context for intelligent progressions.",
+                'summary': f"Added context for all {updated_count} exercises from your weekly plan. Cleared duplicates first to ensure clean data.",
                 'changes_count': updated_count
             })
 

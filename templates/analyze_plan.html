@@ -315,7 +315,7 @@ document.querySelectorAll('input[name="analysisMode"]').forEach(radio => {
         document.getElementById('evolutionAnalysisSection').style.display = 'none';
         document.getElementById('aiAnalysisSection').style.display = 'none';
         document.getElementById('manualAnalysisSection').style.display = 'none';
-        
+
         if (this.value === 'evolution') {
             document.getElementById('evolutionAnalysisSection').style.display = 'block';
             loadCurrentPlanSummary();
@@ -348,7 +348,7 @@ async function startAIAnalysis() {
     try {
         const contextResponse = await fetch('/get_stored_context');
         const contextData = await contextResponse.json();
-        
+
         if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
             const confirmed = confirm(
                 "⚠️ WARNING: You already have stored plan analysis!\n\n" +
@@ -358,7 +358,7 @@ async function startAIAnalysis() {
                 "Are you sure you want to overwrite this and start fresh?\n\n" +
                 "💡 TIP: Consider using the 'Edit Context' button instead to modify your existing analysis."
             );
-            
+
             if (!confirmed) {
                 return; // User cancelled
             }
@@ -446,11 +446,11 @@ async function sendChatMessage() {
         // Build conversation context for AI analysis
         const messages = document.getElementById('chatMessages').children;
         let conversationHistory = '';
-        
+
         for (let msg of messages) {
             conversationHistory += msg.textContent + '\n\n';
         }
-        
+
         // Include the current message in context
         const contextualMessage = `CONTEXT: We are in an AI workout plan analysis session. Here's our conversation so far:
 
@@ -693,25 +693,25 @@ async function loadCurrentPlanSummary() {
     try {
         const contextResponse = await fetch('/get_stored_context');
         const contextData = await contextResponse.json();
-        
+
         const planResponse = await fetch('/api/weekly_plan');
         const planData = await planResponse.json();
-        
+
         let summary = '';
-        
+
         if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
             summary += `<strong>Philosophy:</strong> ${contextData.plan_context.plan_philosophy.substring(0, 120)}...<br>`;
         }
-        
+
         const totalExercises = Object.values(planData).reduce((sum, day) => sum + day.length, 0);
         summary += `<strong>Structure:</strong> ${Object.keys(planData).length} training days, ${totalExercises} exercises<br>`;
-        
+
         if (contextData.exercise_metadata) {
             summary += `<strong>Context:</strong> ${contextData.exercise_metadata.length} exercises with AI context`;
         }
-        
+
         document.getElementById('currentPlanSummary').innerHTML = summary || 'No current plan found';
-        
+
     } catch (error) {
         document.getElementById('currentPlanSummary').innerHTML = '<span class="text-danger">Error loading plan</span>';
     }
@@ -730,7 +730,7 @@ async function sendEvolutionMessage() {
         // Get current context for the conversation
         const contextResponse = await fetch('/get_stored_context');
         const contextData = await contextResponse.json();
-        
+
         const planResponse = await fetch('/api/weekly_plan');
         const planData = await planResponse.json();
 
@@ -811,8 +811,7 @@ function addEvolutionMessage(sender, message) {
 
 function scrollEvolutionToBottom() {
     const chatMessages = document.getElementById('evolutionChatMessages');
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
+    chatMessages.scrollTop = chatMessages.scrollHeight;}
 
 function enableEvolutionInput() {
     document.getElementById('evolutionChatInput').disabled = false;
@@ -937,11 +936,15 @@ async function loadStoredContext() {
                 <div class="row">
                     <div class="col-12">
                         <h6><i class="fas fa-dumbbell me-2"></i>Exercise Context (${data.exercise_metadata.length} exercises)</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Exercise</th>
+                        <div class="mb-2">
+                            <button class="btn btn-sm btn-outline-primary" onclick="toggleExerciseDetails()">
+                                <i class="fas fa-eye me-1"></i>View All Exercise Details
+                            </button>
+                        </div>
+                        <div id="exerciseDetails" style="display: none;">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <tr><th>Exercise</th>
                                         <th>Type</th>
                                         <th>Purpose</th>
                                         <th>Progression</th>
@@ -998,7 +1001,7 @@ document.addEventListener('click', function(e) {
         // Switch to manual mode and populate with current data
         document.getElementById('manualMode').checked = true;
         document.getElementById('manualMode').dispatchEvent(new Event('change'));
-        
+
         // Load current context into manual form
         populateManualFormWithStoredData();
     }
@@ -1033,9 +1036,18 @@ async function populateManualFormWithStoredData() {
 
         // Scroll to manual section
         document.getElementById('manualAnalysisSection').scrollIntoView({ behavior: 'smooth' });
-        
+
     } catch (error) {
         alert('Error loading data for editing: ' + error.message);
+    }
+}
+
+function toggleExerciseDetails() {
+    var x = document.getElementById("exerciseDetails");
+    if (x.style.display === "none") {
+        x.style.display = "block";
+    } else {
+        x.style.display = "none";
     }
 }
 </script>
