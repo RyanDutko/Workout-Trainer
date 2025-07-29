@@ -557,7 +557,7 @@ def history():
 
 @app.route('/weekly_plan')
 def weekly_plan():
-    conn = sqlite3.connect('workout_logs.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Check what columns actually exist
@@ -566,9 +566,9 @@ def weekly_plan():
 
     # Use the correct column names based on what exists
     if 'target_sets' in columns:
-        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes FROM weekly_plan ORDER BY day_of_week, exercise_order')
     else:
-        cursor.execute('SELECT day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, "") FROM weekly_plan ORDER BY day_of_week, order_index')
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, "") FROM weekly_plan ORDER BY day_of_week, order_index')
 
     plan_data = cursor.fetchall()
     conn.close()
@@ -576,10 +576,11 @@ def weekly_plan():
     # Organize plan by day
     plan_by_day = {}
     for row in plan_data:
-        day, exercise, sets, reps, weight, order, notes = row
+        id, day, exercise, sets, reps, weight, order, notes = row
         if day not in plan_by_day:
             plan_by_day[day] = []
         plan_by_day[day].append({
+            'id': id,
             'exercise': exercise,
             'sets': sets,
             'reps': reps,
@@ -779,75 +780,215 @@ Please be concise but capture the key insights from our discussion."""
                 CASE day_of_week 
                     WHEN 'monday' THEN 1 
                     WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3                    WHEN that.
-                    WHEN 'thursday' THEN 4 
-                    WHEN 'friday' THEN 5 
-                    WHEN 'saturday' THEN 6 
-                    WHEN 'sunday' THEN 7 
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
                 END, exercise_order
         ''')
         all_exercises = cursor.fetchall()
 
         print(f"📊 Processing {len(all_exercises)} exercises from weekly plan")  # Debug log
 
-        # Create exercise metadata based on the conversation insights and exercise patterns
+        # Group exercises by name to detect variations
+        exercise_groups = {}
         for day, exercise_name, sets, reps, weight, order in all_exercises:
-            # Determine exercise purpose and progression logic based on conversation context
-            purpose = "General hypertrophy"
-            progression_logic = "normal"
-            notes = f"Day {order} on {day.title()}"
+            if exercise_name not in exercise_groups:
+                exercise_groups[exercise_name] = []
+            exercise_groups[exercise_name].append({
+                'day': day,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': order
+            })
 
-            # Apply specific logic based on the conversation insights
+        created_contexts = 0
+
+        # Process each exercise group
+        for exercise_name, instances in exercise_groups.items():
             exercise_lower = exercise_name.lower()
 
-            # Midsection/core focus exercises
-            if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'leg lift', 'back extension']):
-                purpose = "Midsection hypertrophy for loose skin tightening"
-                progression_logic = "aggressive"  # Treated like main lifts
-                notes += " - Core work treated as main lift"
+            # Check if this exercise has significantly different variations across days
+            if len(instances) > 1:
+                # Extract numeric values for comparison
+                variations = []
+                for instance in instances:
+                    try:
+                        weight_num = float(re.search(r'(\d+\.?\d*)', str(instance['weight'])).group(1)) if instance['weight'] != 'bodyweight' else 0
+                        reps_num = int(re.search(r'(\d+)', str(instance['reps'])).group(1)) if instance['reps'].isdigit() else 10
+                        volume = weight_num * instance['sets'] * reps_num
+                        variations.append({
+                            'day': instance['day'],
+                            'sets': instance['sets'],
+                            'reps': instance['reps'],
+                            'weight': instance['weight'],
+                            'volume': volume,
+                            'weight_num': weight_num
+                        })
+                    except:
+                        variations.append({
+                            'day': instance['day'],
+                            'sets': instance['sets'],
+                            'reps': instance['reps'],
+                            'weight': instance['weight'],
+                            'volume': 0,
+                            'weight_num': 0
+                        })
 
-            # Lower chest specific exercises
-            elif any(word in exercise_lower for word in ['low to high', 'lower to upper', 'incline']):
-                purpose = "Lower chest development for midsection support"
-                progression_logic = "normal"
-                notes += " - Lower chest emphasis"
+                # Sort by volume to identify light vs heavy versions
+                variations.sort(key=lambda x: x['volume'])
 
-            # Compound movements
-            elif any(word in exercise_lower for word in ['press', 'row', 'glute drive', 'leg press']):
-                purpose = "Compound strength and mass building"
-                progression_logic = "aggressive"  # 5-10lb jumps
-                notes += " - Main compound lift"
+                # If there's a significant difference (>20% volume difference), create separate contexts
+                if len(variations) >= 2:
+                    volume_diff = (variations[-1]['volume'] - variations[0]['volume']) / max(variations[0]['volume'], 1)
 
-            # Isolation exercises
-            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'extension']):
-                purpose = "Isolation and muscle refinement"
-                progression_logic = "slow"  # 2.5-5lb or rep progression
-                notes += " - Isolation work"
+                    if volume_diff > 0.2:  # 20% difference threshold
+                        # Create separate contexts for light and heavy versions
+                        for i, variation in enumerate(variations):
+                            suffix = ""
+                            if i == 0:
+                                suffix = " (Light)"
+                            elif i == len(variations) - 1:
+                                suffix = " (Heavy)"
+                            else:
+                                suffix = f" (Day {i+1})"
 
-            # Bodyweight exercises
-            elif any(word in exercise_lower for word in ['pushup', 'pull up', 'bodyweight']):
-                purpose = "Bodyweight strength and joint-friendly progression"
-                progression_logic = "slow"  # Rep → tempo → weight
-                notes += " - Bodyweight progression"
+                            context_name = f"{exercise_name}{suffix}"
 
-            # Back work (currently reduced volume)
-            elif any(word in exercise_lower for word in ['row', 'pull', 'rear delt']):
-                purpose = "Back development with injury consideration"
-                progression_logic = "slow"  # Cautious due to mid-back tightness
-                notes += " - Conservative due to back tightness"
+                            # Determine purpose and progression based on exercise type
+                            if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                                purpose = "Midsection hypertrophy for loose skin tightening"
+                                progression_logic = "aggressive"
+                                notes = "Core work treated as main lift per plan philosophy"
+                            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                                purpose = "Compound strength and mass building"
+                                progression_logic = "aggressive"
+                                notes = "Main compound movement"
+                            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                                purpose = "Lower body isolation and hypertrophy"
+                                progression_logic = "aggressive"
+                                notes = "Machine-based isolation for joint safety"
+                            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                                purpose = "Upper body isolation hypertrophy"
+                                progression_logic = "slow"
+                                notes = "Isolation exercise for targeted growth"
+                            elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                                purpose = "Bodyweight strength and control"
+                                progression_logic = "slow"
+                                notes = "Bodyweight progression: reps → tempo → weight"
+                            elif 'finisher' in exercise_lower:
+                                purpose = "High-rep endurance and muscle pump"
+                                progression_logic = "maintain"
+                                notes = "High-rep finisher work"
+                            else:
+                                purpose = "Hypertrophy and strength development"
+                                progression_logic = "normal"
+                                notes = "General hypertrophy and strength work"
 
-            cursor.execute('''
-                INSERT INTO exercise_metadata
-                (user_id, exercise_name, exercise_type, primary_purpose, 
-                 progression_logic, ai_notes, created_date)
-                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
-            ''', (
-                exercise_name,
-                purpose,
-                progression_logic,
-                notes,
-                datetime.now().strftime('%Y-%m-%d')
-            ))
+                            cursor.execute('''
+                                INSERT INTO exercise_metadata
+                                (user_id, exercise_name, exercise_type, primary_purpose,
+                                 progression_logic, ai_notes, created_date)
+                                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                            ''', (
+                                context_name,
+                                purpose,
+                                progression_logic,
+                                notes,
+                                datetime.now().strftime('%Y-%m-%d')
+                            ))
+                            created_contexts += 1
+
+                    else:
+                        # Similar variations, create one context
+                        if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                            purpose = "Midsection hypertrophy for loose skin tightening"
+                            progression_logic = "aggressive"
+                            notes = "Core work treated as main lift per plan philosophy"
+                        elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                            purpose = "Compound strength and mass building"
+                            progression_logic = "aggressive"
+                            notes = "Main compound movement"
+                        elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                            purpose = "Lower body isolation and hypertrophy"
+                            progression_logic = "aggressive"
+                            notes = "Machine-based isolation for joint safety"
+                        elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                            purpose = "Upper body isolation hypertrophy"
+                            progression_logic = "slow"
+                            notes = "Isolation exercise for targeted growth"
+                        elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                            purpose = "Bodyweight strength and control"
+                            progression_logic = "slow"
+                            notes = "Bodyweight progression: reps → tempo → weight"
+                        elif 'finisher' in exercise_lower:
+                            purpose = "High-rep endurance and muscle pump"
+                            progression_logic = "maintain"
+                            notes = "High-rep finisher work"
+                        else:
+                            purpose = "Hypertrophy and strength development"
+                            progression_logic = "normal"
+                            notes = "General hypertrophy and strength work"
+
+                        cursor.execute('''
+                            INSERT INTO exercise_metadata
+                            (user_id, exercise_name, exercise_type, primary_purpose,
+                             progression_logic, ai_notes, created_date)
+                            VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                        ''', (
+                            exercise_name,
+                            purpose,
+                            progression_logic,
+                            notes,
+                            datetime.now().strftime('%Y-%m-%d')
+                        ))
+                        created_contexts += 1
+            else:
+                # Single instance of the exercise
+                if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                    purpose = "Midsection hypertrophy for loose skin tightening"
+                    progression_logic = "aggressive"
+                    notes = "Core work treated as main lift per plan philosophy"
+                elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                    purpose = "Compound strength and mass building"
+                    progression_logic = "aggressive"
+                    notes = "Main compound movement"
+                elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                    purpose = "Lower body isolation and hypertrophy"
+                    progression_logic = "aggressive"
+                    notes = "Machine-based isolation for joint safety"
+                elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                    purpose = "Upper body isolation hypertrophy"
+                    progression_logic = "slow"
+                    notes = "Isolation exercise for targeted growth"
+                elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                    purpose = "Bodyweight strength and control"
+                    progression_logic = "slow"
+                    notes = "Bodyweight progression: reps → tempo → weight"
+                elif 'finisher' in exercise_lower:
+                    purpose = "High-rep endurance and muscle pump"
+                    progression_logic = "maintain"
+                    notes = "High-rep finisher work"
+                else:
+                    purpose = "Hypertrophy and strength development"
+                    progression_logic = "normal"
+                    notes = "General hypertrophy and strength work"
+
+                cursor.execute('''
+                    INSERT INTO exercise_metadata
+                    (user_id, exercise_name, exercise_type, primary_purpose,
+                     progression_logic, ai_notes, created_date)
+                    VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                ''', (
+                    exercise_name,
+                    purpose,
+                    progression_logic,
+                    notes,
+                    datetime.now().strftime('%Y-%m-%d')
+                ))
+                created_contexts += 1
 
         conn.commit()
         conn.close()
@@ -1060,21 +1201,21 @@ def cleanup_exercise_duplicates():
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get all unique exercise names from weekly plan
         cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan ORDER BY exercise_name')
         unique_exercises = [row[0] for row in cursor.fetchall()]
-        
+
         print(f"📊 Found {len(unique_exercises)} unique exercises in weekly plan")
-        
+
         # Clear ALL existing exercise metadata to start fresh
         cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
         print("🧹 Cleared all existing exercise metadata")
-        
+
         # Add exactly one metadata entry for each unique exercise
         for exercise_name in unique_exercises:
             exercise_lower = exercise_name.lower()
-            
+
             # Determine purpose and progression based on exercise type
             if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
                 purpose = "Midsection hypertrophy for loose skin tightening"
@@ -1104,7 +1245,7 @@ def cleanup_exercise_duplicates():
                 purpose = "Hypertrophy and strength development"
                 progression_logic = "normal"
                 notes = "General hypertrophy and strength work"
-            
+
             cursor.execute('''
                 INSERT INTO exercise_metadata
                 (user_id, exercise_name, exercise_type, primary_purpose, 
@@ -1117,23 +1258,23 @@ def cleanup_exercise_duplicates():
                 notes,
                 datetime.now().strftime('%Y-%m-%d')
             ))
-        
+
         conn.commit()
-        
+
         # Verify the count
         cursor.execute('SELECT COUNT(*) FROM exercise_metadata WHERE user_id = 1')
         final_count = cursor.fetchone()[0]
-        
+
         conn.close()
-        
+
         print(f"✅ Successfully created {final_count} unique exercise metadata entries")
-        
+
         return jsonify({
             'success': True,
             'message': f'Cleaned up duplicates! Now have exactly {final_count} exercise contexts (one per unique exercise).',
             'exercise_count': final_count
         })
-        
+
     except Exception as e:
         print(f"Error cleaning up duplicates: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
@@ -1521,12 +1662,12 @@ def add_to_plan():
         cursor = conn.cursor()
 
         # Get next order index for this day
-        cursor.execute('SELECT MAX(order_index) FROM weekly_plan WHERE day_of_week = ?', (day,))
+        cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day,))
         result = cursor.fetchone()
         order_index = (result[0] or 0) + 1
 
         cursor.execute('''
-            INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, order_index)
+            INSERT INTO weekly_plan (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (day, exercise, sets, reps, weight, order_index))
 
@@ -1537,7 +1678,33 @@ def add_to_plan():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
+@app.route('/edit_exercise', methods=['POST'])
+def edit_exercise():
+    try:
+        data = request.json
+        exercise_id = data.get('id')
+        day = data.get('day')
+        exercise = data.get('exercise')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        notes = data.get('notes')
 
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET day_of_week = ?, exercise_name = ?, target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
+            WHERE id = ?
+        ''', (day, exercise, sets, reps, weight, notes, exercise_id))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_plan/<day>')
 def get_plan(day):
@@ -1563,7 +1730,7 @@ def get_plan(day):
     columns = [col[1] for col in cursor.fetchall()]
 
     # Always use the correct column names based on actual table structure
-    cursor.execute('SELECT exercise_name, target_sets, target_reps, target_weight FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (day,))
+    cursor.execute('SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (day,))
 
     exercises = cursor.fetchall()
     conn.close()
@@ -1571,10 +1738,13 @@ def get_plan(day):
     exercise_list = []
     for exercise in exercises:
         exercise_list.append({
-            'exercise_name': exercise[0],
-            'sets': exercise[1],
-            'reps': exercise[2],
-            'weight': exercise[3]
+            'id': exercise[0],
+            'exercise_name': exercise[1],
+            'sets': exercise[2],
+            'reps': exercise[3],
+            'weight': exercise[4],
+            'order': exercise[5],
+            'notes': exercise[6] if len(exercise) > 6 else ''
         })
 
     return jsonify({'exercises': exercise_list, 'day_name': day.title()})
@@ -1801,7 +1971,7 @@ def reorder_exercise():
         cursor = conn.cursor()
 
         # Get current exercise order
-        cursor.execute('SELECT order_index FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
         result = cursor.fetchone()
         if not result:
             return jsonify({'success': False, 'error': 'Exercise not found'})
@@ -1811,16 +1981,16 @@ def reorder_exercise():
         if direction == 'up' and current_order > 1:
             new_order = current_order - 1
             # Swap with exercise above
-            cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND order_index = ?', (current_order, day, new_order))
-            cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+            cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, new_order))
+            cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
         elif direction == 'down':
-            cursor.execute('SELECT MAX(order_index) FROM weekly_plan WHERE day_of_week = ?', (day,))
+            cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day,))
             max_order = cursor.fetchone()[0]
             if current_order < max_order:
                 new_order = current_order + 1
                 # Swap with exercise below
-                cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND order_index = ?', (current_order, day, new_order))
-                cursor.execute('UPDATE weekly_plan SET order_index = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, new_order))
+                cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
 
         conn.commit()
         conn.close()
