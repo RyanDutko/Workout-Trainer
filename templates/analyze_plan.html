@@ -529,16 +529,24 @@ document.getElementById('planContextForm').addEventListener('submit', async func
     }
 });
 
-// Load exercise context on page load
-loadExerciseContext();
+// Load exercise context on page load when manual mode is active
+if (document.getElementById('manualMode').checked) {
+    loadExerciseContext();
+}
 
-// Load stored context when section is expanded
-document.getElementById('refreshContextBtn').addEventListener('click', loadStoredContext);
+// Load stored context when section what expanded
+const refreshBtn = document.getElementById('refreshContextBtn');
+if (refreshBtn) {
+    refreshBtn.addEventListener('click', loadStoredContext);
+}
 
 // Auto-load when collapse is shown
-document.getElementById('storedContextSection').addEventListener('shown.bs.collapse', function() {
-    loadStoredContext();
-});
+const contextSection = document.getElementById('storedContextSection');
+if (contextSection) {
+    contextSection.addEventListener('shown.bs.collapse', function() {
+        loadStoredContext();
+    });
+}
 
 async function loadStoredContext() {
     document.getElementById('storedContextDisplay').innerHTML = `
@@ -645,13 +653,16 @@ async function loadStoredContext() {
     }
 }
 
-document.getElementById('editStoredContextBtn').addEventListener('click', function() {
-    // Switch to manual mode and populate with current data
-    document.getElementById('manualMode').checked = true;
-    document.getElementById('manualMode').dispatchEvent(new Event('change'));
-    
-    // Load current context into manual form
-    populateManualFormWithStoredData();
+// Add event listener for edit button when it's created
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id === 'editStoredContextBtn') {
+        // Switch to manual mode and populate with current data
+        document.getElementById('manualMode').checked = true;
+        document.getElementById('manualMode').dispatchEvent(new Event('change'));
+        
+        // Load current context into manual form
+        populateManualFormWithStoredData();
+    }
 });
 
 async function populateManualFormWithStoredData() {

@@ -286,13 +286,23 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     context_info += f" - {perf_context}"
                 context_info += "\n"
         
-        # Include current weekly plan
+        # Include current weekly plan with context
         cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY exercise_name')
         planned_exercises = cursor.fetchall()
         if planned_exercises:
-            context_info += "\nCurrent Targets:\n"
+            context_info += "\nCurrent Weekly Plan:\n"
             for day, exercise, sets, reps, weight in planned_exercises:
                 context_info += f"• {exercise}: {sets}x{reps}@{weight} ({day})\n"
+        
+        # Include plan philosophy and reasoning
+        cursor.execute('SELECT plan_philosophy, progression_strategy FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        plan_context_result = cursor.fetchone()
+        if plan_context_result:
+            philosophy, progression_strategy = plan_context_result
+            if philosophy:
+                context_info += f"\nPlan Philosophy: {philosophy}\n"
+            if progression_strategy:
+                context_info += f"Progression Strategy: {progression_strategy}\n"
     
     elif query_intent == 'exercise_specific':
         # Find the specific exercise mentioned and get its history
@@ -332,14 +342,31 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Include recent workout summary
         context_info += "\n=== RECENT HISTORY ===\n"
         cursor.execute("""
-            SELECT exercise_name, sets, reps, weight, date_logged, notes
+            SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
             FROM workouts 
             ORDER BY date_logged DESC 
             LIMIT 20
         """)
         recent_logs = cursor.fetchall()
         if recent_logs:
-            context_info += "Recent workouts: " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_logs[:10]])
+            context_info += "Recent workouts:\n"
+            for w in recent_logs[:10]:
+                context_info += f"• {w[0]}: {w[1]}x{w[2]}@{w[3]} ({w[4]})"
+                if w[6]:  # substitution_reason
+                    context_info += f" [SUBSTITUTED: {w[6]}]"
+                context_info += "\n"
+        
+        # Include weekly plan for comparison
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week')
+        planned_exercises = cursor.fetchall()
+        if planned_exercises:
+            context_info += "\nWeekly Plan for Reference:\n"
+            current_day = ""
+            for day, exercise, sets, reps, weight in planned_exercises:
+                if day != current_day:
+                    context_info += f"\n{day.title()}:\n"
+                    current_day = day
+                context_info += f"  • {exercise}: {sets}x{reps}@{weight}\n"
     
     elif query_intent == 'general':
         # Minimal context for general chat
@@ -676,28 +703,46 @@ def extract_plan_context():
         data = request.json
         conversation = data.get('conversation', '')
         
-        # Use Grok to extract structured data from conversation
-        response = get_grok_response_with_context(conversation)
+        # Create a more specific prompt for extraction
+        extraction_prompt = f"""Please analyze this conversation about my workout plan and extract the following information in the exact format shown:
+
+TRAINING_PHILOSOPHY: [brief summary of the overall training approach discussed]
+WEEKLY_STRUCTURE: [reasoning behind how the week is organized]  
+PROGRESSION_STRATEGY: [approach to progressive overload and advancement]
+SPECIAL_CONSIDERATIONS: [any limitations, injuries, or special notes mentioned]
+REASONING: [overall reasoning behind the plan design]
+
+For each exercise mentioned, also provide:
+EXERCISE_CONTEXT: [exercise_name|purpose|progression_type|notes]
+
+Here's the conversation to analyze:
+{conversation}
+
+Please be concise but capture the key insights from our discussion."""
         
-        # Parse Grok's structured response
+        # Use Grok to extract structured data from conversation
+        response = get_grok_response_with_context(extraction_prompt)
+        
+        # Parse Grok's structured response - look for fields anywhere in the response
         lines = response.split('\n')
         extracted_data = {}
         exercises = []
         
         for line in lines:
-            if line.startswith('TRAINING_PHILOSOPHY:'):
-                extracted_data['philosophy'] = line.replace('TRAINING_PHILOSOPHY:', '').strip()
-            elif line.startswith('WEEKLY_STRUCTURE:'):
-                extracted_data['weekly_structure'] = line.replace('WEEKLY_STRUCTURE:', '').strip()
-            elif line.startswith('PROGRESSION_STRATEGY:'):
-                extracted_data['progression_strategy'] = line.replace('PROGRESSION_STRATEGY:', '').strip()
-            elif line.startswith('SPECIAL_CONSIDERATIONS:'):
-                extracted_data['special_considerations'] = line.replace('SPECIAL_CONSIDERATIONS:', '').strip()
-            elif line.startswith('REASONING:'):
-                extracted_data['reasoning'] = line.replace('REASONING:', '').strip()
-            elif line.startswith('EXERCISE_CONTEXT:'):
+            line = line.strip()
+            if 'TRAINING_PHILOSOPHY:' in line or 'PLAN_PHILOSOPHY:' in line:
+                extracted_data['philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'WEEKLY_STRUCTURE:' in line:
+                extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'PROGRESSION_STRATEGY:' in line:
+                extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'SPECIAL_CONSIDERATIONS:' in line:
+                extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'REASONING:' in line:
+                extracted_data['reasoning'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'EXERCISE_CONTEXT:' in line:
                 # Parse exercise context: exercise_name|purpose|progression_type|notes
-                context_line = line.replace('EXERCISE_CONTEXT:', '').strip()
+                context_line = line.split('EXERCISE_CONTEXT:', 1)[1].strip() if 'EXERCISE_CONTEXT:' in line else ''
                 parts = context_line.split('|')
                 if len(parts) >= 3:
                     exercises.append({
@@ -706,6 +751,17 @@ def extract_plan_context():
                         'progression_logic': parts[2].strip(),
                         'notes': parts[3].strip() if len(parts) > 3 else ''
                     })
+        
+        # If we didn't get structured fields, try to extract from natural language
+        if not any(extracted_data.values()):
+            # Extract from natural language response as fallback
+            response_lower = response.lower()
+            if 'philosophy' in response_lower or 'approach' in response_lower:
+                # Extract a reasonable section as philosophy
+                sentences = response.split('. ')
+                extracted_data['philosophy'] = '. '.join(sentences[:2]) + '.' if sentences else response[:200]
+            
+            extracted_data['reasoning'] = response  # Store full response as reasoning
         
         # Save to database
         conn = sqlite3.connect('workout_logs.db')
