@@ -96,9 +96,14 @@
                         <li>Training Philosophy</li>
                         <li>Weekly Structure</li>
                         <li>Progression Strategy</li>
-                        <li>Exercise-specific context</li>
+                        <li>Exercise-specific context (ALL exercises)</li>
                         <li>Special considerations</li>
                     </ul>
+                </div>
+
+                <div class="alert alert-warning mt-3 small">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>Important:</strong> Starting AI Analysis will overwrite any existing context. Check "View Stored Context" first!
                 </div>
 
                 <!-- Current Context Section -->
@@ -243,6 +248,29 @@ document.getElementById('chatInput').addEventListener('keypress', function(e) {
 document.getElementById('finishAnalysisBtn').addEventListener('click', saveAIAnalysis);
 
 async function startAIAnalysis() {
+    // Check if user already has stored context and warn them
+    try {
+        const contextResponse = await fetch('/get_stored_context');
+        const contextData = await contextResponse.json();
+        
+        if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
+            const confirmed = confirm(
+                "⚠️ WARNING: You already have stored plan analysis!\n\n" +
+                "Starting a new AI analysis will COMPLETELY REPLACE your existing context:\n" +
+                `• Current Philosophy: ${contextData.plan_context.plan_philosophy.substring(0, 100)}...\n` +
+                `• ${contextData.exercise_metadata ? contextData.exercise_metadata.length : 0} exercise contexts\n\n` +
+                "Are you sure you want to overwrite this and start fresh?\n\n" +
+                "💡 TIP: Consider using the 'Edit Context' button instead to modify your existing analysis."
+            );
+            
+            if (!confirmed) {
+                return; // User cancelled
+            }
+        }
+    } catch (error) {
+        console.log('Could not check existing context, proceeding with analysis');
+    }
+
     document.getElementById('startAnalysisBtn').style.display = 'none';
     document.getElementById('chatContainer').style.display = 'block';
 

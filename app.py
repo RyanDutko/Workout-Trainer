@@ -771,7 +771,7 @@ Please be concise but capture the key insights from our discussion."""
         # Clear existing exercise metadata
         cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
         
-        # Get all exercises from weekly plan in proper order
+        # Get ALL exercises from weekly plan in proper day/order structure
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
             FROM weekly_plan 
@@ -787,6 +787,8 @@ Please be concise but capture the key insights from our discussion."""
                 END, exercise_order
         ''')
         all_exercises = cursor.fetchall()
+        
+        print(f"📊 Processing {len(all_exercises)} exercises from weekly plan")  # Debug log
         
         # Create exercise metadata based on the conversation insights and exercise patterns
         for day, exercise_name, sets, reps, weight, order in all_exercises:
