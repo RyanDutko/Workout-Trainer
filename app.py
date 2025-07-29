@@ -1054,6 +1054,90 @@ def get_last_week_weight():
         print(f"Error getting last week weight: {str(e)}")
         return jsonify({'error': str(e)})
 
+@app.route('/cleanup_exercise_duplicates', methods=['POST'])
+def cleanup_exercise_duplicates():
+    """Clean up duplicate exercise metadata and ensure exactly one entry per unique exercise"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get all unique exercise names from weekly plan
+        cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan ORDER BY exercise_name')
+        unique_exercises = [row[0] for row in cursor.fetchall()]
+        
+        print(f"📊 Found {len(unique_exercises)} unique exercises in weekly plan")
+        
+        # Clear ALL existing exercise metadata to start fresh
+        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+        print("🧹 Cleared all existing exercise metadata")
+        
+        # Add exactly one metadata entry for each unique exercise
+        for exercise_name in unique_exercises:
+            exercise_lower = exercise_name.lower()
+            
+            # Determine purpose and progression based on exercise type
+            if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                purpose = "Midsection hypertrophy for loose skin tightening"
+                progression_logic = "aggressive"
+                notes = "Core work treated as main lift per plan philosophy"
+            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                purpose = "Compound strength and mass building"
+                progression_logic = "aggressive"
+                notes = "Main compound movement"
+            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                purpose = "Lower body isolation and hypertrophy"
+                progression_logic = "aggressive"
+                notes = "Machine-based isolation for joint safety"
+            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                purpose = "Upper body isolation hypertrophy"
+                progression_logic = "slow"
+                notes = "Isolation exercise for targeted growth"
+            elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                purpose = "Bodyweight strength and control"
+                progression_logic = "slow"
+                notes = "Bodyweight progression: reps → tempo → weight"
+            elif 'finisher' in exercise_lower:
+                purpose = "High-rep endurance and muscle pump"
+                progression_logic = "maintain"
+                notes = "High-rep finisher work"
+            else:
+                purpose = "Hypertrophy and strength development"
+                progression_logic = "normal"
+                notes = "General hypertrophy and strength work"
+            
+            cursor.execute('''
+                INSERT INTO exercise_metadata
+                (user_id, exercise_name, exercise_type, primary_purpose, 
+                 progression_logic, ai_notes, created_date)
+                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+            ''', (
+                exercise_name,
+                purpose,
+                progression_logic,
+                notes,
+                datetime.now().strftime('%Y-%m-%d')
+            ))
+        
+        conn.commit()
+        
+        # Verify the count
+        cursor.execute('SELECT COUNT(*) FROM exercise_metadata WHERE user_id = 1')
+        final_count = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        print(f"✅ Successfully created {final_count} unique exercise metadata entries")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Cleaned up duplicates! Now have exactly {final_count} exercise contexts (one per unique exercise).',
+            'exercise_count': final_count
+        })
+        
+    except Exception as e:
+        print(f"Error cleaning up duplicates: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/evolve_plan', methods=['POST'])
 def evolve_plan():
     """Evolve the workout plan based on conversation while preserving existing context"""

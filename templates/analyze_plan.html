@@ -1043,12 +1043,38 @@ async function populateManualFormWithStoredData() {
 }
 
 function toggleExerciseDetails() {
-    var x = document.getElementById("exerciseDetails");
-    if (x.style.display === "none") {
-        x.style.display = "block";
-    } else {
-        x.style.display = "none";
-    }
-}
+            const details = document.getElementById('exerciseDetails');
+            if (details.style.display === 'none') {
+                details.style.display = 'block';
+            } else {
+                details.style.display = 'none';
+            }
+        }
+
+        function cleanupDuplicates() {
+            if (!confirm('This will remove all duplicate exercise contexts and create exactly one entry per unique exercise. Continue?')) {
+                return;
+            }
+
+            fetch('/cleanup_exercise_duplicates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload(); // Refresh to show updated counts
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error cleaning up duplicates');
+            });
+        }
 </script>
 {% endblock %}
