@@ -779,7 +779,8 @@ Please be concise but capture the key insights from our discussion."""
                 CASE day_of_week 
                     WHEN 'monday' THEN 1 
                     WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3                    WHEN 'thursday' THEN 4 
+                    WHEN 'wednesday' THEN 3                    WHEN that.
+                    WHEN 'thursday' THEN 4 
                     WHEN 'friday' THEN 5 
                     WHEN 'saturday' THEN 6 
                     WHEN 'sunday' THEN 7 
@@ -1100,8 +1101,12 @@ def evolve_plan():
 
             # Add context for ALL exercises in the plan
             updated_count = 0
+            processed_exercises = set()  # Track processed exercises to avoid duplicates
+
             for day, exercise_name, sets, reps, weight, order in current_plan:
-                if exercise_name in missing_exercises:
+                # Only process each unique exercise name once to avoid duplicates in metadata
+                if exercise_name not in processed_exercises:
+                    processed_exercises.add(exercise_name)
                 # Determine purpose based on exercise name and current philosophy
                     exercise_lower = exercise_name.lower()
 
@@ -1110,43 +1115,43 @@ def evolve_plan():
                         purpose = "Midsection hypertrophy for loose skin tightening"
                         progression_logic = "aggressive"
                         notes = "Core work treated as main lift per plan philosophy"
-                    
+
                     # Compound movements (presses, rows, major lifts)
                     elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
                         purpose = "Compound strength and mass building"
                         progression_logic = "aggressive"
                         notes = "Main compound movement"
-                    
+
                     # Machine/isolation leg work
                     elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
                         purpose = "Lower body isolation and hypertrophy"
                         progression_logic = "aggressive"
                         notes = "Machine-based isolation for joint safety"
-                    
+
                     # Upper body isolation (curls, raises, flys)
                     elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
                         purpose = "Upper body isolation hypertrophy"
                         progression_logic = "slow"
                         notes = "Isolation exercise for targeted growth"
-                    
+
                     # Bodyweight exercises
                     elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
                         purpose = "Bodyweight strength and control"
                         progression_logic = "slow"
                         notes = "Bodyweight progression: reps → tempo → weight"
-                    
+
                     # Tricep work
                     elif any(word in exercise_lower for word in ['tricep', 'pushdown', 'dip']):
                         purpose = "Tricep isolation and strength"
                         progression_logic = "slow"
                         notes = "Isolation tricep work"
-                    
+
                     # Finisher/endurance work
                     elif 'finisher' in exercise_lower:
                         purpose = "High-rep endurance and muscle pump"
                         progression_logic = "maintain"
                         notes = "High-rep finisher work"
-                    
+
                     # Default categorization
                     else:
                         purpose = "Hypertrophy and strength development"
@@ -1171,7 +1176,7 @@ def evolve_plan():
             conn.close()
 
             print(f"✅ Successfully added context for all {updated_count} exercises")
-            
+
             return jsonify({
                 'success': True,
                 'summary': f"Added context for all {updated_count} exercises from your weekly plan. Cleared duplicates first to ensure clean data.",
