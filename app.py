@@ -28,7 +28,12 @@ def init_db():
         reps TEXT,
         weight TEXT,
         notes TEXT,
-        date_logged TEXT DEFAULT (datetime('now', 'localtime'))
+        date_logged TEXT DEFAULT (datetime('now', 'localtime')),
+        substitution_reason TEXT,
+        performance_context TEXT,
+        environmental_factors TEXT,
+        difficulty_rating INTEGER,
+        gym_location TEXT
     )
     ''')
 
@@ -75,6 +80,17 @@ def init_db():
         related_exercises TEXT,
         ai_notes TEXT,
         created_date TEXT
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS exercise_relationships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        primary_exercise TEXT NOT NULL,
+        related_exercise TEXT NOT NULL,
+        relationship_type TEXT NOT NULL,
+        relevance_score REAL DEFAULT 1.0,
+        created_date TEXT DEFAULT (datetime('now', 'localtime'))
     )
     ''')
 
@@ -139,6 +155,21 @@ def init_db():
         ('progression_rate', 'TEXT DEFAULT "normal"'),
         ('created_by', 'TEXT DEFAULT "user"')
     ]
+
+    # Add context columns to workouts table
+    workout_columns_to_add = [
+        ('substitution_reason', 'TEXT'),
+        ('performance_context', 'TEXT'),
+        ('environmental_factors', 'TEXT'),
+        ('difficulty_rating', 'INTEGER'),
+        ('gym_location', 'TEXT')
+    ]
+    
+    for column_name, column_def in workout_columns_to_add:
+        try:
+            cursor.execute(f'ALTER TABLE workouts ADD COLUMN {column_name} {column_def}')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     
     for column_name, column_def in columns_to_add:
         try:
@@ -147,6 +178,28 @@ def init_db():
             pass  # Column already exists
 
     cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
+
+    # Seed exercise relationships if empty
+    cursor.execute('SELECT COUNT(*) FROM exercise_relationships')
+    if cursor.fetchone()[0] == 0:
+        relationships = [
+            ('bench press', 'dumbbell press', 'substitute', 0.9),
+            ('bench press', 'incline press', 'variation', 0.8),
+            ('bench press', 'push ups', 'bodyweight_version', 0.7),
+            ('squats', 'leg press', 'substitute', 0.8),
+            ('squats', 'goblet squats', 'variation', 0.7),
+            ('deadlifts', 'Romanian deadlifts', 'variation', 0.8),
+            ('deadlifts', 'rack pulls', 'variation', 0.7),
+            ('overhead press', 'dumbbell shoulder press', 'substitute', 0.9),
+            ('pull ups', 'lat pulldowns', 'substitute', 0.8),
+            ('rows', 'dumbbell rows', 'variation', 0.9),
+        ]
+        
+        for primary, related, rel_type, score in relationships:
+            cursor.execute('''
+                INSERT INTO exercise_relationships (primary_exercise, related_exercise, relationship_type, relevance_score)
+                VALUES (?, ?, ?, ?)
+            ''', (primary, related, rel_type, score))
 
     # Add sample weekly plan if empty
     cursor.execute('SELECT COUNT(*) FROM weekly_plan')
@@ -172,57 +225,142 @@ def init_db():
     conn.commit()
     conn.close()
 
-def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
-    """Context-aware Grok response that responds naturally like Grok would"""
-    try:
-        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+def analyze_query_intent(prompt):
+    """Analyze the query to determine what type of context to include"""
+    prompt_lower = prompt.lower()
+    
+    # Progression-related queries
+    if any(word in prompt_lower for word in ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance']):
+        return 'progression'
+    
+    # Exercise-specific queries
+    exercise_names = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull']
+    if any(exercise in prompt_lower for exercise in exercise_names):
+        return 'exercise_specific'
+    
+    # General fitness chat
+    if any(word in prompt_lower for word in ['hello', 'hi', 'how are', 'what can', 'help']):
+        return 'general'
+    
+    # Historical queries
+    if any(word in prompt_lower for word in ['did', 'last', 'history', 'previous', 'ago']):
+        return 'historical'
+    
+    return 'general'
 
-        # Always build full context but let Grok decide how to use it
-        context_info = ""
-
-        # Add user background context
-        if user_background:
-            if user_background.get('primary_goal'):
-                context_info += f"User's Primary Goal: {user_background['primary_goal']}\n"
-            if user_background.get('fitness_level'):
-                context_info += f"Fitness Level: {user_background['fitness_level']}\n"
-            if user_background.get('training_frequency'):
-                context_info += f"Training Frequency: {user_background['training_frequency']}\n"
-
-        # Add weekly plan context
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week, exercise_order')
+def build_smart_context(prompt, query_intent, user_background=None):
+    """Build context based on query intent to avoid overwhelming Grok"""
+    context_info = ""
+    
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    # Always include basic user info if available
+    if user_background:
+        if user_background.get('primary_goal'):
+            context_info += f"User's Goal: {user_background['primary_goal']}\n"
+        if user_background.get('fitness_level'):
+            context_info += f"Fitness Level: {user_background['fitness_level']}\n"
+    
+    if query_intent == 'progression':
+        # Include recent performance and related exercises
+        context_info += "\n=== PROGRESSION CONTEXT ===\n"
+        
+        # Get recent workouts for trend analysis
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
+            FROM workouts 
+            WHERE date_logged >= date('now', '-14 days')
+            ORDER BY exercise_name, date_logged DESC
+        """)
+        recent_logs = cursor.fetchall()
+        
+        if recent_logs:
+            context_info += "Recent Performance (last 2 weeks):\n"
+            for log in recent_logs[:15]:  # Limit to most relevant
+                exercise, sets, reps, weight, date, sub_reason, perf_context = log
+                context_info += f"• {exercise}: {sets}x{reps}@{weight} ({date})"
+                if sub_reason:
+                    context_info += f" - Substituted: {sub_reason}"
+                if perf_context:
+                    context_info += f" - {perf_context}"
+                context_info += "\n"
+        
+        # Include current weekly plan
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY exercise_name')
         planned_exercises = cursor.fetchall()
-
         if planned_exercises:
-            context_info += "\nWeekly Plan:\n"
-            current_day = ""
+            context_info += "\nCurrent Targets:\n"
             for day, exercise, sets, reps, weight in planned_exercises:
-                if day != current_day:
-                    if current_day != "":
-                        context_info += "\n"
-                    context_info += f"{day.title()}: "
-                    current_day = day
-                else:
-                    context_info += ", "
-                context_info += f"{exercise} {sets}x{reps}@{weight}"
-            context_info += "\n"
-
-        # Get recent workout data
+                context_info += f"• {exercise}: {sets}x{reps}@{weight} ({day})\n"
+    
+    elif query_intent == 'exercise_specific':
+        # Find the specific exercise mentioned and get its history
+        context_info += "\n=== EXERCISE-SPECIFIC CONTEXT ===\n"
+        
+        # Extract exercise name from prompt (simple approach)
+        exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull']
+        mentioned_exercise = None
+        for keyword in exercise_keywords:
+            if keyword in prompt.lower():
+                mentioned_exercise = keyword
+                break
+        
+        if mentioned_exercise:
+            # Get history for this exercise and related ones
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
+                FROM workouts 
+                WHERE LOWER(exercise_name) LIKE ?
+                ORDER BY date_logged DESC
+                LIMIT 10
+            """, (f'%{mentioned_exercise}%',))
+            
+            exercise_history = cursor.fetchall()
+            if exercise_history:
+                context_info += f"Recent {mentioned_exercise} history:\n"
+                for log in exercise_history:
+                    exercise, sets, reps, weight, date, sub_reason, perf_context = log
+                    context_info += f"• {date}: {sets}x{reps}@{weight}"
+                    if sub_reason:
+                        context_info += f" (sub: {sub_reason})"
+                    if perf_context:
+                        context_info += f" - {perf_context}"
+                    context_info += "\n"
+    
+    elif query_intent == 'historical':
+        # Include recent workout summary
+        context_info += "\n=== RECENT HISTORY ===\n"
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, notes
             FROM workouts 
             ORDER BY date_logged DESC 
-            LIMIT 50
+            LIMIT 20
         """)
-        recent_workout_logs = cursor.fetchall()
-        if recent_workout_logs:
-            context_info += "\nRecent Workouts (last 50 entries): " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_workout_logs])
+        recent_logs = cursor.fetchall()
+        if recent_logs:
+            context_info += "Recent workouts: " + "; ".join([f"{w[0]} {w[1]}x{w[2]}@{w[3]} ({w[4]})" for w in recent_logs[:10]])
+    
+    elif query_intent == 'general':
+        # Minimal context for general chat
+        context_info += "\n=== BASIC INFO ===\n"
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
+        recent_count = cursor.fetchone()[0]
+        context_info += f"Workouts this week: {recent_count}\n"
+    
+    conn.close()
+    return context_info
 
-        conn.close()
+def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
+    """Context-aware Grok response with smart context selection"""
+    try:
+        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
-        # Build final prompt with context
+        # Analyze query intent and build appropriate context
+        query_intent = analyze_query_intent(prompt)
+        context_info = build_smart_context(prompt, query_intent, user_background)
+
+        # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
 
         response = client.chat.completions.create(
@@ -878,6 +1016,13 @@ def save_workout():
         notes = data.get('notes', '')
         date = data.get('date')
         
+        # New context fields
+        substitution_reason = data.get('substitution_reason', '')
+        performance_context = data.get('performance_context', '')
+        environmental_factors = data.get('environmental_factors', '')
+        difficulty_rating = data.get('difficulty_rating')
+        gym_location = data.get('gym_location', '')
+        
         if not all([exercise_name, sets, reps, weight, date]):
             return jsonify({'status': 'error', 'message': 'Missing required fields'})
         
@@ -885,9 +1030,13 @@ def save_workout():
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (exercise_name, sets, reps, weight, date, notes))
+            INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes,
+                                substitution_reason, performance_context, environmental_factors,
+                                difficulty_rating, gym_location)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, reps, weight, date, notes,
+              substitution_reason, performance_context, environmental_factors,
+              difficulty_rating, gym_location))
         
         conn.commit()
         conn.close()

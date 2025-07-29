@@ -10,7 +10,7 @@
             <div class="card-body p-4">
                 <h2 class="mb-4"><i class="fas fa-dumbbell me-2 text-primary"></i>Log Workout</h2>
                 <p class="text-muted mb-4">Choose your logging method:</p>
-                
+
                 <div class="row g-3">
                     <div class="col-md-6">
                         <div class="card h-100 border-primary" style="cursor: pointer;" onclick="selectMode('live')">
@@ -406,11 +406,11 @@ let selectedWorkoutDate = '';
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     setupWorkoutStatusListeners();
-    
+
     // Set today's date for post-workout form
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('postWorkoutDate').value = today;
-    
+
     // Setup post-workout form handler
     document.getElementById('postWorkoutForm').addEventListener('submit', handlePostWorkoutSubmit);
 });
@@ -418,7 +418,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Mode selection functions
 function selectMode(mode) {
     document.getElementById('mode-selection').style.display = 'none';
-    
+
     if (mode === 'live') {
         document.getElementById('workout-not-started').style.display = 'block';
         loadTodaysPlan(); // Only load plan when live mode is selected
@@ -433,10 +433,10 @@ function backToModeSelection() {
     document.getElementById('workout-not-started').style.display = 'none';
     document.getElementById('workout-active').style.display = 'none';
     document.getElementById('post-workout-mode').style.display = 'none';
-    
+
     // Show mode selection
     document.getElementById('mode-selection').style.display = 'block';
-    
+
     // Stop live clock if it's running
     if (clockInterval) {
         clearInterval(clockInterval);
@@ -447,14 +447,14 @@ function backToModeSelection() {
 // Post-workout logging functions
 function handlePostWorkoutSubmit(e) {
     e.preventDefault();
-    
+
     const exerciseName = document.getElementById('postExerciseName').value;
     const sets = parseInt(document.getElementById('postSets').value);
     const reps = document.getElementById('postReps').value;
     const weight = document.getElementById('postWeight').value;
     const notes = document.getElementById('postNotes').value;
     const date = document.getElementById('postWorkoutDate').value;
-    
+
     // Create workout data
     const workoutData = {
         exercise_name: exerciseName,
@@ -462,9 +462,14 @@ function handlePostWorkoutSubmit(e) {
         reps: reps,
         weight: weight,
         notes: notes,
-        date: date
+        date: date,
+            substitution_reason: document.getElementById('substitutionReason').value,
+            performance_context: document.getElementById('performanceContext').value,
+            environmental_factors: document.getElementById('environmentalFactors').value,
+            difficulty_rating: document.getElementById('difficultyRating').value ? parseInt(document.getElementById('difficultyRating').value) : null,
+            gym_location: '' // Can be added later if needed
     };
-    
+
     // Submit to server
     fetch('/save_workout', {
         method: 'POST',
@@ -476,14 +481,14 @@ function handlePostWorkoutSubmit(e) {
         if (data.status === 'success') {
             // Add to recently logged list
             addToRecentlyLogged(workoutData);
-            
+
             // Clear form for next entry
             document.getElementById('postExerciseName').value = '';
             document.getElementById('postSets').value = '';
             document.getElementById('postReps').value = '';
             document.getElementById('postWeight').value = '';
             document.getElementById('postNotes').value = '';
-            
+
             // Show success message
             showSuccessMessage('Exercise logged successfully!');
         } else {
@@ -505,10 +510,10 @@ function addAnotherExercise() {
 function addToRecentlyLogged(workoutData) {
     const recentSection = document.getElementById('recentlyLogged');
     const recentList = document.getElementById('recentLogsList');
-    
+
     // Show the recent section
     recentSection.style.display = 'block';
-    
+
     // Create new list item
     const listItem = document.createElement('div');
     listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
@@ -519,10 +524,10 @@ function addToRecentlyLogged(workoutData) {
         </div>
         <small class="text-muted">${workoutData.date}</small>
     `;
-    
+
     // Add to top of list
     recentList.insertBefore(listItem, recentList.firstChild);
-    
+
     // Keep only last 5 entries
     while (recentList.children.length > 5) {
         recentList.removeChild(recentList.lastChild);
@@ -537,10 +542,10 @@ function showSuccessMessage(message) {
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    
+
     const form = document.getElementById('postWorkoutForm');
     form.appendChild(alertDiv);
-    
+
     // Auto-remove after 3 seconds
     setTimeout(() => {
         if (alertDiv.parentNode) {
@@ -775,8 +780,7 @@ function logCurrentExercise() {
             const reps = document.getElementById(`set${i}Reps`).value;
             if (!reps || reps === '') {
                 allSetsHaveReps = false;
-                break;
-            }
+                break;            }
             setReps.push(parseInt(reps));
         }
 
@@ -873,7 +877,7 @@ function loadPostWorkoutPlan() {
             // Show plan preview
             const previewContainer = document.getElementById('postPlanPreview');
             const beginBtn = document.getElementById('beginPostBtn');
-            
+
             if (postWorkoutPlan.length > 0) {
                 let previewHtml = '<div class="list-group list-group-flush">';
                 postWorkoutPlan.forEach((exercise, index) => {
@@ -1039,7 +1043,12 @@ function logCurrentPostExercise() {
         weight: exercise.weight,
         notes: notes,
         status: workoutStatus,
-        date: selectedWorkoutDate
+        date: selectedWorkoutDate,
+            substitution_reason: document.getElementById('substitutionReason').value,
+            performance_context: document.getElementById('performanceContext').value,
+            environmental_factors: document.getElementById('environmentalFactors').value,
+            difficulty_rating: document.getElementById('difficultyRating').value ? parseInt(document.getElementById('difficultyRating').value) : null,
+            gym_location: '' // Can be added later if needed
     };
 
     if (workoutStatus === 'skipped') {
