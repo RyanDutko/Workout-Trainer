@@ -43,7 +43,14 @@
                                             </button>
                                         </div>
                                         <div>
-                                            <button class="btn btn-sm btn-outline-primary" onclick="editExercise({{ exercise.id }}, '{{ day }}', '{{ exercise.exercise }}', {{ exercise.sets }}, '{{ exercise.reps }}', '{{ exercise.weight }}', '{{ exercise.notes }}')">
+                                            <button class="btn btn-sm btn-outline-primary edit-btn"
+                                                    data-id="{{ exercise.id }}"
+                                                    data-day="{{ day }}"
+                                                    data-exercise="{{ exercise.exercise }}"
+                                                    data-sets="{{ exercise.sets }}"
+                                                    data-reps="{{ exercise.reps }}"
+                                                    data-weight="{{ exercise.weight }}"
+                                                    data-notes="{{ exercise.notes }}">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-danger" onclick="deleteExercise('{{ day }}', '{{ exercise.exercise }}')">
@@ -199,17 +206,30 @@ function moveExercise(day, exercise, direction) {
     });
 }
 
-function editExercise(id, day, exercise, sets, reps, weight, notes) {
-    document.getElementById('editId').value = id;
-    document.getElementById('editDay').value = day;
-    document.getElementById('editExerciseName').value = exercise;
-    document.getElementById('editSets').value = sets;
-    document.getElementById('editReps').value = reps;
-    document.getElementById('editWeight').value = weight;
-    document.getElementById('editNotes').value = notes || '';
-    
-    new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
-}
+// Add event listeners for edit buttons
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.edit-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const day = this.getAttribute('data-day');
+            const exercise = this.getAttribute('data-exercise');
+            const sets = this.getAttribute('data-sets');
+            const reps = this.getAttribute('data-reps');
+            const weight = this.getAttribute('data-weight');
+            const notes = this.getAttribute('data-notes') || '';
+            
+            document.getElementById('editId').value = id;
+            document.getElementById('editDay').value = day;
+            document.getElementById('editExerciseName').value = exercise;
+            document.getElementById('editSets').value = sets;
+            document.getElementById('editReps').value = reps;
+            document.getElementById('editWeight').value = weight;
+            document.getElementById('editNotes').value = notes;
+            
+            new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
+        });
+    });
+});
 
 function deleteExercise(day, exercise) {
     if (confirm(`Are you sure you want to delete "${exercise}" from ${day}?`)) {
