@@ -69,6 +69,9 @@
                             <button id="finishAnalysisBtn" class="btn btn-success" style="display: none;">
                                 <i class="fas fa-check me-2"></i>Save Analysis Results
                             </button>
+                            <div class="mt-2">
+                                <small class="text-muted">Continue the conversation, then click "Save Analysis Results" when you're satisfied with the discussion.</small>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -344,7 +347,10 @@ async function sendChatMessage() {
                         }
                         if (data.done) {
                             enableChatInput();
-                            checkIfAnalysisComplete();
+                            // Show save button after Grok's initial analysis
+                            if (document.getElementById('chatMessages').children.length >= 2) {
+                                document.getElementById('finishAnalysisBtn').style.display = 'inline-block';
+                            }
                         }
                     } catch (e) {}
                 }
@@ -385,12 +391,18 @@ function disableChatInput() {
 function checkIfAnalysisComplete() {
     // Show finish button after a few exchanges
     const messages = document.getElementById('chatMessages').children.length;
-    if (messages >= 6) { // 3+ exchanges
+    if (messages >= 4) { // 2+ exchanges (Grok's initial response + your response)
         document.getElementById('finishAnalysisBtn').style.display = 'inline-block';
     }
 }
 
 async function saveAIAnalysis() {
+    // Show loading state
+    const saveBtn = document.getElementById('finishAnalysisBtn');
+    const originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing Analysis...';
+    saveBtn.disabled = true;
+
     // Get the full conversation
     const messages = document.getElementById('chatMessages').children;
     let conversation = '';
@@ -424,13 +436,19 @@ ${conversation}`;
 
         const result = await response.json();
         if (result.success) {
-            alert('✅ AI Analysis complete! Your plan context has been saved.');
+            alert('✅ AI Analysis complete! Your plan context has been saved.\n\nGrok now understands your training philosophy and can provide much better progression advice!');
             window.location.href = '/';
         } else {
             alert('Error saving analysis: ' + result.error);
+            // Restore button
+            saveBtn.innerHTML = originalText;
+            saveBtn.disabled = false;
         }
     } catch (error) {
         alert('Error: ' + error.message);
+        // Restore button
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
     }
 }
 
