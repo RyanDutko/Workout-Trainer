@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 # Database initialization
 def init_db():
-    conn = sqlite3.connect('workout_logs.db')
+    conn = sqlite3.connect('workout_logs.db', timeout=5.0)
     cursor = conn.cursor()
 
     # Create tables if they don't exist
@@ -1208,4 +1208,4 @@ if __name__ == '__main__':
     init_db()
     print("🌐 Starting Flask web server...")
     print("🔗 Access your web app at: http://localhost:5000")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)
