@@ -1088,38 +1088,67 @@ def evolve_plan():
             # Special handling for context completion requests
             print("🔧 Detected context completion request")
 
-            # Get existing exercise metadata to see what's missing
-            current_exercise_names = set(row[0] for row in current_exercise_metadata) if current_exercise_metadata else set()
+            # Get ALL exercises from weekly plan (we want to update ALL of them)
             plan_exercise_names = set(row[1] for row in current_plan)
-            missing_exercises = plan_exercise_names - current_exercise_names
+            
+            print(f"📊 Processing ALL {len(plan_exercise_names)} exercises from weekly plan for context updates")
 
-            print(f"📊 Found {len(missing_exercises)} exercises needing context: {missing_exercises}")
+            # Clear ALL existing exercise metadata to rebuild it properly
+            cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
 
-            # Create context for all exercises based on plan philosophy
+            # Create context for ALL exercises based on plan philosophy and exercise patterns
+            updated_count = 0
             for day, exercise_name, sets, reps, weight, order in current_plan:
                 # Determine purpose based on exercise name and current philosophy
                 exercise_lower = exercise_name.lower()
 
-                if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension']):
+                # Core/midsection exercises (treated as main lifts per philosophy)
+                if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
                     purpose = "Midsection hypertrophy for loose skin tightening"
                     progression_logic = "aggressive"
                     notes = "Core work treated as main lift per plan philosophy"
-                elif any(word in exercise_lower for word in ['press', 'row', 'glute drive', 'leg press']):
+                
+                # Compound movements (presses, rows, major lifts)
+                elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
                     purpose = "Compound strength and mass building"
                     progression_logic = "aggressive"
                     notes = "Main compound movement"
-                elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'extension']):
-                    purpose = "Isolation hypertrophy work"
+                
+                # Machine/isolation leg work
+                elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                    purpose = "Lower body isolation and hypertrophy"
+                    progression_logic = "aggressive"
+                    notes = "Machine-based isolation for joint safety"
+                
+                # Upper body isolation (curls, raises, flys)
+                elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                    purpose = "Upper body isolation hypertrophy"
                     progression_logic = "slow"
                     notes = "Isolation exercise for targeted growth"
-                elif any(word in exercise_lower for word in ['pushup', 'pull up']):
-                    purpose = "Bodyweight strength progression"
+                
+                # Bodyweight exercises
+                elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                    purpose = "Bodyweight strength and control"
                     progression_logic = "slow"
-                    notes = "Bodyweight exercise progression"
+                    notes = "Bodyweight progression: reps → tempo → weight"
+                
+                # Tricep work
+                elif any(word in exercise_lower for word in ['tricep', 'pushdown', 'dip']):
+                    purpose = "Tricep isolation and strength"
+                    progression_logic = "slow"
+                    notes = "Isolation tricep work"
+                
+                # Finisher/endurance work
+                elif 'finisher' in exercise_lower:
+                    purpose = "High-rep endurance and muscle pump"
+                    progression_logic = "maintain"
+                    notes = "High-rep finisher work"
+                
+                # Default categorization
                 else:
                     purpose = "Hypertrophy and strength development"
                     progression_logic = "normal"
-                    notes = f"Exercise on {day.title()}"
+                    notes = f"General hypertrophy work on {day.title()}"
 
                 cursor.execute('''
                     INSERT OR REPLACE INTO exercise_metadata
@@ -1133,14 +1162,15 @@ def evolve_plan():
                     notes,
                     datetime.now().strftime('%Y-%m-%d')
                 ))
+                updated_count += 1
 
             conn.commit()
             conn.close()
 
             return jsonify({
                 'success': True,
-                'summary': f"Updated context for {len(missing_exercises)} exercises based on your plan philosophy. All exercises now have proper context for intelligent progressions.",
-                'changes_count': len(missing_exercises)
+                'summary': f"Updated context for ALL {updated_count} exercises based on your plan philosophy. All exercises now have proper context for intelligent progressions.",
+                'changes_count': updated_count
             })
 
         # Regular plan evolution logic for structural changes
