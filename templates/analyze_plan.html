@@ -16,10 +16,16 @@
             </div>
             <div class="card-body">
                 <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="analysisMode" id="aiMode" value="ai" checked>
+                    <input type="radio" class="btn-check" name="analysisMode" id="evolutionMode" value="evolution" checked>
+                    <label class="btn btn-outline-success" for="evolutionMode">
+                        <i class="fas fa-sync-alt me-2"></i>Plan Evolution
+                        <small class="d-block">Modify your existing plan with Grok (preserves context)</small>
+                    </label>
+
+                    <input type="radio" class="btn-check" name="analysisMode" id="aiMode" value="ai">
                     <label class="btn btn-outline-primary" for="aiMode">
-                        <i class="fas fa-comments me-2"></i>AI Conversation
-                        <small class="d-block">Let Grok analyze your plan and ask smart questions</small>
+                        <i class="fas fa-comments me-2"></i>Fresh Analysis
+                        <small class="d-block">Start completely fresh (overwrites everything)</small>
                     </label>
 
                     <input type="radio" class="btn-check" name="analysisMode" id="manualMode" value="manual">
@@ -27,7 +33,84 @@
                         <i class="fas fa-keyboard me-2"></i>Manual Entry
                         <small class="d-block">Fill out all fields yourself (expert mode)</small>
                     </label>
+                </div></div>
+</div>
+
+<!-- Plan Evolution Mode -->
+<div id="evolutionAnalysisSection" class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-sync-alt me-2"></i>Plan Evolution Chat</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    <strong>Smart Plan Updates!</strong> Tell Grok what you want to change about your current plan. Examples:
+                    <ul class="mb-0 mt-2">
+                        <li>"I want to increase leg mass faster without losing midsection focus"</li>
+                        <li>"Add more upper body volume on Wednesdays"</li>
+                        <li>"Replace bench press with dumbbell press due to shoulder issues"</li>  
+                        <li>"I need more back work but keep everything else the same"</li>
+                    </ul>
                 </div>
+
+                <div id="evolutionChatContainer">
+                    <div id="evolutionChatMessages" class="border rounded p-3 mb-3" style="height: 400px; overflow-y: auto; background-color: #f8f9fa;">
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-comments fa-3x mb-3"></i>
+                            <p>Start a conversation about how you want to evolve your plan...</p>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <input type="text" id="evolutionChatInput" class="form-control" placeholder="e.g., I want to add more leg volume for faster mass gains...">
+                        <button id="sendEvolutionChatBtn" class="btn btn-success">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+
+                    <div class="text-center mt-3">
+                        <button id="applyEvolutionBtn" class="btn btn-success" style="display: none;">
+                            <i class="fas fa-magic me-2"></i>Apply Plan Changes
+                        </button>
+                        <div class="mt-2">
+                            <small class="text-muted">Discuss your changes, then apply them to your plan when ready.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-info-circle me-2"></i>How Plan Evolution Works</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>🧠 Context Aware:</strong> Grok knows your current plan and philosophy</p>
+                <p><strong>🎯 Targeted Changes:</strong> Only modifies what you want to change</p>
+                <p><strong>🔄 Preserves Progress:</strong> Keeps working elements intact</p>
+                <p><strong>📝 Smart Updates:</strong> Updates context to reflect new goals</p>
+
+                <div class="mt-3 p-3 bg-light rounded">
+                    <h6>Current Plan Summary:</h6>
+                    <div id="currentPlanSummary">
+                        <div class="text-center">
+                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            <small class="d-block mt-1">Loading...</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3 small">
+                    <i class="fas fa-shield-alt me-1"></i>
+                    <strong>Safe Updates:</strong> Your original plan is preserved. You can always revert changes.
+                </div>
+            </div>
+        </div>
+    </div>
             </div>
         </div>
     </div>
@@ -228,11 +311,17 @@ let analysisComplete = false;
 // Mode switching
 document.querySelectorAll('input[name="analysisMode"]').forEach(radio => {
     radio.addEventListener('change', function() {
-        if (this.value === 'ai') {
+        // Hide all sections first
+        document.getElementById('evolutionAnalysisSection').style.display = 'none';
+        document.getElementById('aiAnalysisSection').style.display = 'none';
+        document.getElementById('manualAnalysisSection').style.display = 'none';
+        
+        if (this.value === 'evolution') {
+            document.getElementById('evolutionAnalysisSection').style.display = 'block';
+            loadCurrentPlanSummary();
+        } else if (this.value === 'ai') {
             document.getElementById('aiAnalysisSection').style.display = 'block';
-            document.getElementById('manualAnalysisSection').style.display = 'none';
         } else {
-            document.getElementById('aiAnalysisSection').style.display = 'none';
             document.getElementById('manualAnalysisSection').style.display = 'block';
             loadExerciseContext(); // Load manual form
         }
@@ -246,6 +335,13 @@ document.getElementById('chatInput').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') sendChatMessage();
 });
 document.getElementById('finishAnalysisBtn').addEventListener('click', saveAIAnalysis);
+
+// Plan Evolution handlers
+document.getElementById('sendEvolutionChatBtn').addEventListener('click', sendEvolutionMessage);
+document.getElementById('evolutionChatInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') sendEvolutionMessage();
+});
+document.getElementById('applyEvolutionBtn').addEventListener('click', applyPlanEvolution);
 
 async function startAIAnalysis() {
     // Check if user already has stored context and warn them
@@ -592,9 +688,189 @@ document.getElementById('planContextForm').addEventListener('submit', async func
     }
 });
 
+// Plan Evolution Functions
+async function loadCurrentPlanSummary() {
+    try {
+        const contextResponse = await fetch('/get_stored_context');
+        const contextData = await contextResponse.json();
+        
+        const planResponse = await fetch('/api/weekly_plan');
+        const planData = await planResponse.json();
+        
+        let summary = '';
+        
+        if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
+            summary += `<strong>Philosophy:</strong> ${contextData.plan_context.plan_philosophy.substring(0, 120)}...<br>`;
+        }
+        
+        const totalExercises = Object.values(planData).reduce((sum, day) => sum + day.length, 0);
+        summary += `<strong>Structure:</strong> ${Object.keys(planData).length} training days, ${totalExercises} exercises<br>`;
+        
+        if (contextData.exercise_metadata) {
+            summary += `<strong>Context:</strong> ${contextData.exercise_metadata.length} exercises with AI context`;
+        }
+        
+        document.getElementById('currentPlanSummary').innerHTML = summary || 'No current plan found';
+        
+    } catch (error) {
+        document.getElementById('currentPlanSummary').innerHTML = '<span class="text-danger">Error loading plan</span>';
+    }
+}
+
+async function sendEvolutionMessage() {
+    const input = document.getElementById('evolutionChatInput');
+    const message = input.value.trim();
+    if (!message) return;
+
+    addEvolutionMessage('You', message);
+    input.value = '';
+    disableEvolutionInput();
+
+    try {
+        // Get current context for the conversation
+        const contextResponse = await fetch('/get_stored_context');
+        const contextData = await contextResponse.json();
+        
+        const planResponse = await fetch('/api/weekly_plan');
+        const planData = await planResponse.json();
+
+        // Build context-aware prompt
+        let contextualMessage = `PLAN EVOLUTION REQUEST: The user wants to modify their existing workout plan. Here's their current setup:
+
+CURRENT PHILOSOPHY: ${contextData.plan_context?.plan_philosophy || 'Not set'}
+CURRENT WEEKLY STRUCTURE: ${contextData.plan_context?.weekly_structure || 'Not set'}
+
+CURRENT WEEKLY PLAN:`;
+
+        Object.keys(planData).forEach(day => {
+            contextualMessage += `\n${day.toUpperCase()}: `;
+            contextualMessage += planData[day].map(ex => `${ex.exercise_name} ${ex.sets}x${ex.reps}@${ex.weight}`).join(', ');
+        });
+
+        if (contextData.exercise_metadata) {
+            contextualMessage += `\n\nEXERCISE CONTEXT:\n`;
+            contextData.exercise_metadata.forEach(ex => {
+                contextualMessage += `• ${ex.exercise_name}: ${ex.primary_purpose} (${ex.progression_logic})\n`;
+            });
+        }
+
+        contextualMessage += `\n\nUSER REQUEST: ${message}
+
+Please discuss this modification request. Focus on what changes would be needed while preserving what's working. Ask clarifying questions if needed, but keep the existing plan structure in mind.`;
+
+        const response = await fetch('/chat_stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'message=' + encodeURIComponent(contextualMessage)
+        });
+
+        const reader = response.body.getReader();
+        let aiMessage = '';
+        let messageDiv = addEvolutionMessage('Grok', '');
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.content) {
+                            aiMessage += data.content;
+                            messageDiv.innerHTML = `<strong>Grok:</strong> ${aiMessage}`;
+                            scrollEvolutionToBottom();
+                        }
+                        if (data.done) {
+                            enableEvolutionInput();
+                            // Show apply button after conversation starts
+                            document.getElementById('applyEvolutionBtn').style.display = 'inline-block';
+                        }
+                    } catch (e) {}
+                }
+            }
+        }
+    } catch (error) {
+        addEvolutionMessage('System', 'Error sending message. Please try again.');
+        enableEvolutionInput();
+    }
+}
+
+function addEvolutionMessage(sender, message) {
+    const chatMessages = document.getElementById('evolutionChatMessages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'mb-2 p-2 rounded ' + (sender === 'You' ? 'bg-success text-white ms-5' : 'bg-white me-5');
+    messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
+    chatMessages.appendChild(messageDiv);
+    scrollEvolutionToBottom();
+    return messageDiv;
+}
+
+function scrollEvolutionToBottom() {
+    const chatMessages = document.getElementById('evolutionChatMessages');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function enableEvolutionInput() {
+    document.getElementById('evolutionChatInput').disabled = false;
+    document.getElementById('sendEvolutionChatBtn').disabled = false;
+    document.getElementById('evolutionChatInput').focus();
+}
+
+function disableEvolutionInput() {
+    document.getElementById('evolutionChatInput').disabled = true;
+    document.getElementById('sendEvolutionChatBtn').disabled = true;
+}
+
+async function applyPlanEvolution() {
+    const applyBtn = document.getElementById('applyEvolutionBtn');
+    const originalText = applyBtn.innerHTML;
+    applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Applying Changes...';
+    applyBtn.disabled = true;
+
+    // Get the full evolution conversation
+    const messages = document.getElementById('evolutionChatMessages').children;
+    let conversation = '';
+
+    for (let msg of messages) {
+        if (msg.textContent.trim()) {
+            conversation += msg.textContent + '\n\n';
+        }
+    }
+
+    try {
+        const response = await fetch('/evolve_plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conversation: conversation })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            alert(`✅ Plan Evolution Complete!\n\n${result.summary}\n\nYour plan has been updated while preserving existing context.`);
+            window.location.href = '/';
+        } else {
+            alert('Error applying changes: ' + result.error);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        applyBtn.innerHTML = originalText;
+        applyBtn.disabled = false;
+    }
+}
+
 // Load exercise context on page load when manual mode is active
 if (document.getElementById('manualMode').checked) {
     loadExerciseContext();
+}
+
+// Load evolution mode by default
+if (document.getElementById('evolutionMode').checked) {
+    loadCurrentPlanSummary();
 }
 
 // Load stored context when section what expanded

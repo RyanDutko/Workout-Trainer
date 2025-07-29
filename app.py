@@ -1054,6 +1054,168 @@ def get_last_week_weight():
         print(f"Error getting last week weight: {str(e)}")
         return jsonify({'error': str(e)})
 
+@app.route('/evolve_plan', methods=['POST'])
+def evolve_plan():
+    """Evolve the workout plan based on conversation while preserving existing context"""
+    try:
+        data = request.json
+        conversation = data.get('conversation', '')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get current context to preserve
+        cursor.execute('SELECT * FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        current_context = cursor.fetchone()
+        
+        cursor.execute('SELECT * FROM exercise_metadata WHERE user_id = 1')
+        current_exercise_metadata = cursor.fetchall()
+        
+        # Get current weekly plan
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        current_plan = cursor.fetchall()
+        
+        # Build comprehensive prompt for plan evolution
+        evolution_prompt = f"""Based on this conversation about modifying the user's workout plan, provide specific changes while preserving what's working.
+
+CURRENT PLAN CONTEXT:
+Philosophy: {current_context[2] if current_context else 'Not set'}
+Weekly Structure: {current_context[4] if current_context else 'Not set'}
+Progression Strategy: {current_context[5] if current_context else 'Not set'}
+
+CURRENT WEEKLY PLAN:"""
+
+        # Add current plan structure
+        current_day = ""
+        for day, exercise, sets, reps, weight, order in current_plan:
+            if day != current_day:
+                evolution_prompt += f"\n{day.upper()}: "
+                current_day = day
+            evolution_prompt += f"{exercise} {sets}x{reps}@{weight}, "
+
+        evolution_prompt += f"""
+
+CONVERSATION:
+{conversation}
+
+Please provide ONLY the specific changes needed in this format:
+
+PHILOSOPHY_UPDATE: [how to update the philosophy to reflect new goals, or KEEP_SAME if no change]
+WEEKLY_STRUCTURE_UPDATE: [how to update structure reasoning, or KEEP_SAME if no change]
+
+PLAN_CHANGES:
+ADD: day|exercise_name|sets|reps|weight|order_position|purpose
+MODIFY: exercise_name|new_sets|new_reps|new_weight|new_purpose
+REMOVE: exercise_name
+KEEP: [list exercises that should stay exactly the same]
+
+Focus only on what needs to change based on the conversation. Preserve everything else."""
+        
+        # Get AI response for evolution
+        response = get_grok_response_with_context(evolution_prompt)
+        
+        # Parse the evolution response
+        lines = response.split('\n')
+        philosophy_update = None
+        structure_update = None
+        plan_changes = {'ADD': [], 'MODIFY': [], 'REMOVE': []}
+        
+        current_section = None
+        for line in lines:
+            line = line.strip()
+            if 'PHILOSOPHY_UPDATE:' in line:
+                philosophy_update = line.split(':', 1)[1].strip()
+            elif 'WEEKLY_STRUCTURE_UPDATE:' in line:
+                structure_update = line.split(':', 1)[1].strip()
+            elif line == 'PLAN_CHANGES:':
+                current_section = 'PLAN_CHANGES'
+            elif current_section == 'PLAN_CHANGES':
+                if line.startswith('ADD:'):
+                    parts = line.replace('ADD:', '').strip().split('|')
+                    if len(parts) >= 6:
+                        plan_changes['ADD'].append(parts)
+                elif line.startswith('MODIFY:'):
+                    parts = line.replace('MODIFY:', '').strip().split('|')
+                    plan_changes['MODIFY'].append(parts)
+                elif line.startswith('REMOVE:'):
+                    exercise = line.replace('REMOVE:', '').strip()
+                    plan_changes['REMOVE'].append(exercise)
+        
+        # Apply philosophy updates if needed
+        if philosophy_update and philosophy_update != 'KEEP_SAME' and current_context:
+            new_philosophy = philosophy_update if 'KEEP_SAME' not in philosophy_update else current_context[2]
+            new_structure = structure_update if structure_update and 'KEEP_SAME' not in structure_update else current_context[4]
+            
+            cursor.execute('''
+                UPDATE plan_context 
+                SET plan_philosophy = ?, weekly_structure = ?, updated_date = ?
+                WHERE user_id = 1
+            ''', (new_philosophy, new_structure, datetime.now().strftime('%Y-%m-%d')))
+        
+        # Apply plan changes
+        changes_made = []
+        
+        # Remove exercises
+        for exercise_name in plan_changes['REMOVE']:
+            cursor.execute('DELETE FROM weekly_plan WHERE exercise_name = ?', (exercise_name,))
+            cursor.execute('DELETE FROM exercise_metadata WHERE exercise_name = ?', (exercise_name,))
+            changes_made.append(f"Removed {exercise_name}")
+        
+        # Modify exercises
+        for modify_data in plan_changes['MODIFY']:
+            if len(modify_data) >= 4:
+                exercise_name, new_sets, new_reps, new_weight = modify_data[:4]
+                new_purpose = modify_data[4] if len(modify_data) > 4 else None
+                
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET target_sets = ?, target_reps = ?, target_weight = ?
+                    WHERE exercise_name = ?
+                ''', (new_sets, new_reps, new_weight, exercise_name))
+                
+                if new_purpose:
+                    cursor.execute('''
+                        UPDATE exercise_metadata 
+                        SET primary_purpose = ?
+                        WHERE exercise_name = ?
+                    ''', (new_purpose, exercise_name))
+                
+                changes_made.append(f"Modified {exercise_name}: {new_sets}x{new_reps}@{new_weight}")
+        
+        # Add new exercises
+        for add_data in plan_changes['ADD']:
+            if len(add_data) >= 6:
+                day, exercise_name, sets, reps, weight, order, purpose = add_data[:7]
+                
+                cursor.execute('''
+                    INSERT INTO weekly_plan 
+                    (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (day.lower(), exercise_name, int(sets), reps, weight, int(order)))
+                
+                cursor.execute('''
+                    INSERT INTO exercise_metadata 
+                    (user_id, exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date)
+                    VALUES (1, ?, 'working_set', ?, 'normal', 'Added via plan evolution', ?)
+                ''', (exercise_name, purpose, datetime.now().strftime('%Y-%m-%d')))
+                
+                changes_made.append(f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}")
+        
+        conn.commit()
+        conn.close()
+        
+        summary = f"Applied {len(changes_made)} changes:\n" + "\n".join(changes_made) if changes_made else "No structural changes were needed based on the conversation."
+        
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'changes_count': len(changes_made)
+        })
+        
+    except Exception as e:
+        print(f"Plan evolution error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/apply_progression', methods=['POST'])
 def apply_progression():
     """Apply approved progression changes to weekly plan"""
