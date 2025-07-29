@@ -927,28 +927,7 @@ def add_to_plan():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)})
 
-@app.route('/save_workout', methods=['POST'])
-def save_workout():
-    try:
-        data = request.json
-        exercise_name = data.get('exercise_name')
-        sets = data.get('sets')
-        reps = data.get('reps')
-        weight = data.get('weight')
-        notes = data.get('notes', '')
 
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, notes)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (exercise_name, sets, reps, weight, notes))
-        conn.commit()
-        conn.close()
-
-        return jsonify({'status': 'success'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/get_plan/<day>')
 def get_plan(day):
