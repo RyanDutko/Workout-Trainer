@@ -1081,7 +1081,9 @@ def evolve_plan():
             'update the rest of my workout context',
             'fill in missing context',
             'update context fields',
-            'complete the exercise metadata'
+            'complete the exercise metadata',
+            'add all of my missing exercises into my workout contexts',
+            'missing exercises into my workout contexts'
         ])
 
         if is_context_update:
@@ -1089,7 +1091,7 @@ def evolve_plan():
             print("🔧 Detected context completion request")
 
             # Get existing exercise metadata to see what we already have
-            existing_exercises = set(row[0] for row in current_exercise_metadata) if current_exercise_metadata else set()
+            existing_exercises = set(row[2] for row in current_exercise_metadata) if current_exercise_metadata else set()
             plan_exercises = set(row[1] for row in current_plan)
             
             print(f"📊 Existing context for: {existing_exercises}")
@@ -1098,7 +1100,7 @@ def evolve_plan():
             missing_exercises = plan_exercises - existing_exercises
             print(f"📊 Missing context for {len(missing_exercises)} exercises: {missing_exercises}")
 
-            # Only add context for exercises that don't already have it
+            # Add context for ALL exercises that don't have it
             updated_count = 0
             for day, exercise_name, sets, reps, weight, order in current_plan:
                 if exercise_name in missing_exercises:
