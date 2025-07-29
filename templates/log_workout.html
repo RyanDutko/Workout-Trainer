@@ -75,59 +75,177 @@
                 <i class="fas fa-arrow-left me-1"></i>Back
             </button>
         </div>
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-4">
-                <form id="postWorkoutForm">
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="postExerciseName" class="form-label">Exercise Name</label>
-                            <input type="text" class="form-control" id="postExerciseName" required 
-                                   placeholder="e.g., Bench Press, Squats">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="postWorkoutDate" class="form-label">Date</label>
-                            <input type="date" class="form-control" id="postWorkoutDate" required>
+
+        <!-- Date Selection -->
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body p-3">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <label for="postWorkoutDate" class="form-label">Select Workout Date</label>
+                        <input type="date" class="form-control" id="postWorkoutDate" onchange="loadPostWorkoutPlan()">
+                    </div>
+                    <div class="col-md-6">
+                        <div id="postPlanInfo" class="text-muted">
+                            <span id="postWorkoutCount">0</span> exercises planned
                         </div>
                     </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label for="postSets" class="form-label">Sets</label>
-                            <input type="number" class="form-control" id="postSets" min="1" max="20" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="postReps" class="form-label">Reps</label>
-                            <input type="text" class="form-control" id="postReps" required 
-                                   placeholder="e.g., 8, 10-12, 8/6/4">
-                        </div>
-                        <div class="col-md-4">
-                            <label for="postWeight" class="form-label">Weight</label>
-                            <input type="text" class="form-control" id="postWeight" required 
-                                   placeholder="e.g., 185lbs, bodyweight">
+                </div>
+            </div>
+        </div>
+
+        <!-- Post-Workout Plan Preview (before starting) -->
+        <div id="post-workout-not-started">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <h3 class="mb-3 text-center">Ready to Log?</h3>
+
+                    <!-- Plan Preview -->
+                    <div id="postPlanPreview" class="mb-4">
+                        <div class="text-center text-muted">
+                            Select a date to see planned exercises
                         </div>
                     </div>
-                    
+
+                    <div class="text-center">
+                        <button class="btn btn-success btn-lg px-5" onclick="beginPostWorkout()" id="beginPostBtn" disabled>
+                            <i class="fas fa-edit me-2"></i>Begin Logging
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Post-Workout Logging (same as live workout interface) -->
+        <div id="post-workout-active" style="display: none;">
+            <!-- Exercise Header -->
+            <div class="row mb-3">
+                <div class="col-6">
+                    <small class="text-muted">Exercise <span id="postCurrentExerciseNum">1</span> of <span id="postTotalExercises">1</span></small>
+                </div>
+                <div class="col-6 text-end">
+                    <div class="badge bg-secondary fs-6" id="postSelectedDate">Today</div>
+                </div>
+            </div>
+
+            <!-- Current Exercise Card -->
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-body p-4">
+                    <h3 id="postExerciseName" class="text-center mb-3">Exercise Name</h3>
+                    <div class="text-center mb-4">
+                        <div class="badge bg-info fs-6" id="postExerciseTarget">3x10 @ 100lbs</div>
+                    </div>
+
+                    <!-- Workout Status Options -->
                     <div class="mb-4">
-                        <label for="postNotes" class="form-label">Notes (Optional)</label>
-                        <textarea class="form-control" id="postNotes" rows="3" 
-                                  placeholder="How did it feel? Any observations?"></textarea>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="postWorkoutStatus" id="postStatusCompleted" value="completed" checked>
+                            <label class="btn btn-outline-success" for="postStatusCompleted">Complete</label>
+
+                            <input type="radio" class="btn-check" name="postWorkoutStatus" id="postStatusSkipped" value="skipped">
+                            <label class="btn btn-outline-warning" for="postStatusSkipped">Skip</label>
+
+                            <input type="radio" class="btn-check" name="postWorkoutStatus" id="postStatusSubstituted" value="substituted">
+                            <label class="btn btn-outline-info" for="postStatusSubstituted">Substitute</label>
+                        </div>
                     </div>
-                    
+
+                    <!-- Skip Reason (hidden by default) -->
+                    <div id="postSkipReasonContainer" class="mb-3" style="display: none;">
+                        <label for="postSkipReason" class="form-label">Why skipping?</label>
+                        <select class="form-select" id="postSkipReason">
+                            <option value="">Select reason...</option>
+                            <option value="ran_out_of_time">Ran out of time</option>
+                            <option value="too_tired">Too tired/fatigued</option>
+                            <option value="machine_taken">Machine was taken</option>
+                            <option value="different_gym">At different gym</option>
+                            <option value="injury_concern">Injury concern</option>
+                            <option value="equipment_broken">Equipment broken</option>
+                            <option value="other">Other reason</option>
+                        </select>
+                    </div>
+
+                    <!-- Substitution (hidden by default) -->
+                    <div id="postSubstitutionContainer" class="mb-3" style="display: none;">
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <label for="postSubstitutedExercise" class="form-label">What did you do instead?</label>
+                                <input type="text" class="form-control" id="postSubstitutedExercise" placeholder="e.g., leg press, goblet squats">
+                            </div>
+                            <div class="col-12">
+                                <label for="postSubstitutionReason" class="form-label">Why substitute?</label>
+                                <select class="form-select" id="postSubstitutionReason">
+                                    <option value="">Select reason...</option>
+                                    <option value="machine_taken">Machine was taken</option>
+                                    <option value="different_gym">At different gym</option>
+                                    <option value="equipment_broken">Equipment broken</option>
+                                    <option value="felt_better">Felt better for my body</option>
+                                    <option value="injury_prevention">Injury prevention</option>
+                                    <option value="other">Other reason</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sets Logging -->
+                    <div id="postSetsSection" class="mb-4">
+                        <h6 class="mb-3">Log Your Sets:</h6>
+                        <div id="postSetsContainer">
+                            <!-- Sets will be populated here -->
+                        </div>
+
+                        <!-- Quick Fill -->
+                        <div class="mt-3">
+                            <small class="text-muted d-block mb-2">Quick fill all sets:</small>
+                            <div class="btn-group w-100" role="group">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="postQuickFillAllSets('planned')">As Planned</button>
+                                <button type="button" class="btn btn-outline-success btn-sm" onclick="postQuickFillAllSets('plus1')">+1 Rep</button>
+                                <button type="button" class="btn btn-outline-warning btn-sm" onclick="postQuickFillAllSets('minus1')">-1 Rep</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label for="postWorkoutNotes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="postWorkoutNotes" rows="2" placeholder="How did it feel? Easy, challenging, etc."></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-success btn-lg">
-                            <i class="fas fa-save me-2"></i>Log Exercise
+                        <button class="btn btn-success btn-lg" onclick="logCurrentPostExercise()">
+                            <i class="fas fa-check me-2"></i>Log & Continue
                         </button>
-                        <button type="button" class="btn btn-outline-primary" onclick="addAnotherExercise()">
-                            <i class="fas fa-plus me-2"></i>Log Another Exercise
-                        </button>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <button class="btn btn-outline-secondary w-100" onclick="previousPostExercise()" id="postPrevBtn">
+                                    <i class="fas fa-arrow-left me-1"></i>Previous
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-outline-danger w-100" onclick="endPostWorkout()">
+                                    <i class="fas fa-stop me-1"></i>Finish Logging
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </form>
-                
-                <!-- Recently Logged (for this session) -->
-                <div id="recentlyLogged" style="display: none;" class="mt-4">
-                    <h6>Recently Logged This Session:</h6>
-                    <div id="recentLogsList" class="list-group list-group-flush">
-                        <!-- Recent logs will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Post-Workout Complete State -->
+        <div id="post-workout-complete" style="display: none;">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center p-5">
+                    <i class="fas fa-clipboard-check fa-3x text-success mb-3"></i>
+                    <h2 class="text-success mb-3">Workout Logged!</h2>
+                    <p class="text-muted mb-4">All exercises logged successfully.</p>
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+                            <i class="fas fa-home me-2"></i>Back to Dashboard
+                        </a>
+                        <button class="btn btn-outline-secondary" onclick="startNewPostWorkout()">
+                            <i class="fas fa-plus me-2"></i>Log Another Day
+                        </button>
                     </div>
                 </div>
             </div>
@@ -280,6 +398,11 @@ let currentExerciseIndex = 0;
 let workoutStartTime = null;
 let clockInterval = null;
 
+// Post-workout state
+let postWorkoutPlan = [];
+let postCurrentExerciseIndex = 0;
+let selectedWorkoutDate = '';
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     setupWorkoutStatusListeners();
@@ -301,6 +424,7 @@ function selectMode(mode) {
         loadTodaysPlan(); // Only load plan when live mode is selected
     } else if (mode === 'post') {
         document.getElementById('post-workout-mode').style.display = 'block';
+        setupPostWorkoutStatusListeners();
     }
 }
 
@@ -731,6 +855,305 @@ function startNewWorkout() {
 
     // Reload plan
     loadTodaysPlan();
+}
+
+// Post-workout functions
+function loadPostWorkoutPlan() {
+    const selectedDate = document.getElementById('postWorkoutDate').value;
+    if (!selectedDate) return;
+
+    selectedWorkoutDate = selectedDate;
+
+    fetch(`/get_plan/${selectedDate}`)
+        .then(response => response.json())
+        .then(data => {
+            postWorkoutPlan = data.exercises || [];
+            document.getElementById('postWorkoutCount').textContent = postWorkoutPlan.length;
+
+            // Show plan preview
+            const previewContainer = document.getElementById('postPlanPreview');
+            const beginBtn = document.getElementById('beginPostBtn');
+            
+            if (postWorkoutPlan.length > 0) {
+                let previewHtml = '<div class="list-group list-group-flush">';
+                postWorkoutPlan.forEach((exercise, index) => {
+                    previewHtml += `
+                        <div class="list-group-item border-0 py-2">
+                            <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
+                            <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
+                        </div>
+                    `;
+                });
+                previewHtml += '</div>';
+                previewContainer.innerHTML = previewHtml;
+                beginBtn.disabled = false;
+            } else {
+                previewContainer.innerHTML = '<p class="text-muted">No exercises planned for this date.</p>';
+                beginBtn.disabled = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading plan:', error);
+            document.getElementById('postPlanPreview').innerHTML = '<p class="text-danger">Error loading plan</p>';
+        });
+}
+
+function beginPostWorkout() {
+    if (postWorkoutPlan.length === 0) {
+        alert('No workout plan for selected date.');
+        return;
+    }
+
+    postCurrentExerciseIndex = 0;
+
+    // Switch to post-workout logging view
+    document.getElementById('post-workout-not-started').style.display = 'none';
+    document.getElementById('post-workout-active').style.display = 'block';
+
+    // Load first exercise
+    loadCurrentPostExercise();
+}
+
+function loadCurrentPostExercise() {
+    if (postCurrentExerciseIndex >= postWorkoutPlan.length) {
+        completePostWorkout();
+        return;
+    }
+
+    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+    const totalExercises = postWorkoutPlan.length;
+
+    // Update header
+    document.getElementById('postCurrentExerciseNum').textContent = postCurrentExerciseIndex + 1;
+    document.getElementById('postTotalExercises').textContent = totalExercises;
+    document.getElementById('postSelectedDate').textContent = selectedWorkoutDate;
+
+    // Update exercise info
+    document.getElementById('postExerciseName').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
+    document.getElementById('postExerciseTarget').textContent = `${exercise.sets}x${exercise.reps} @ ${exercise.weight}`;
+
+    // Create set inputs
+    const setsContainer = document.getElementById('postSetsContainer');
+    setsContainer.innerHTML = '';
+
+    for (let i = 1; i <= exercise.sets; i++) {
+        setsContainer.innerHTML += `
+            <div class="row mb-2 align-items-center">
+                <div class="col-3">
+                    <span class="fw-bold">Set ${i}:</span>
+                </div>
+                <div class="col-5">
+                    <input type="number" class="form-control" id="postSet${i}Reps" 
+                           placeholder="${exercise.reps}" min="0" max="50">
+                </div>
+                <div class="col-4">
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="postSetReps(${i}, '${exercise.reps}')" title="As planned">
+                            ${exercise.reps}
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="postSetReps(${i}, ${parseInt(exercise.reps) + 1})" title="+1">
+                            +1
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Reset form state
+    document.getElementById('postStatusCompleted').checked = true;
+    document.getElementById('postWorkoutNotes').value = '';
+    document.getElementById('postSkipReasonContainer').style.display = 'none';
+    document.getElementById('postSubstitutionContainer').style.display = 'none';
+    document.getElementById('postSetsSection').style.display = 'block';
+
+    // Update previous button
+    const prevBtn = document.getElementById('postPrevBtn');
+    if (postCurrentExerciseIndex === 0) {
+        prevBtn.disabled = true;
+    } else {
+        prevBtn.disabled = false;
+    }
+}
+
+function setupPostWorkoutStatusListeners() {
+    document.querySelectorAll('input[name="postWorkoutStatus"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const skipContainer = document.getElementById('postSkipReasonContainer');
+            const substitutionContainer = document.getElementById('postSubstitutionContainer');
+            const setsSection = document.getElementById('postSetsSection');
+
+            if (this.value === 'skipped') {
+                skipContainer.style.display = 'block';
+                substitutionContainer.style.display = 'none';
+                setsSection.style.display = 'none';
+            } else if (this.value === 'substituted') {
+                skipContainer.style.display = 'none';
+                substitutionContainer.style.display = 'block';
+                setsSection.style.display = 'block';
+            } else {
+                skipContainer.style.display = 'none';
+                substitutionContainer.style.display = 'none';
+                setsSection.style.display = 'block';
+            }
+        });
+    });
+}
+
+function postSetReps(setNumber, reps) {
+    document.getElementById(`postSet${setNumber}Reps`).value = reps;
+}
+
+function postQuickFillAllSets(type) {
+    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+    const plannedReps = parseInt(exercise.reps);
+    let repsValue;
+
+    switch(type) {
+        case 'planned':
+            repsValue = plannedReps;
+            break;
+        case 'plus1':
+            repsValue = plannedReps + 1;
+            break;
+        case 'minus1':
+            repsValue = Math.max(1, plannedReps - 1);
+            break;
+    }
+
+    for (let i = 1; i <= exercise.sets; i++) {
+        document.getElementById(`postSet${i}Reps`).value = repsValue;
+    }
+}
+
+function logCurrentPostExercise() {
+    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+    const workoutStatus = document.querySelector('input[name="postWorkoutStatus"]:checked').value;
+    let notes = document.getElementById('postWorkoutNotes').value;
+
+    // Build workout data based on status
+    let workoutData = {
+        exercise_name: exercise.exercise_name,
+        sets: exercise.sets,
+        reps: exercise.reps,
+        weight: exercise.weight,
+        notes: notes,
+        status: workoutStatus,
+        date: selectedWorkoutDate
+    };
+
+    if (workoutStatus === 'skipped') {
+        const skipReason = document.getElementById('postSkipReason').value;
+        if (!skipReason) {
+            alert('Please select a reason for skipping this exercise');
+            return;
+        }
+        workoutData.skip_reason = skipReason;
+        workoutData.sets = 0;
+        workoutData.reps = 0;
+        workoutData.weight = 0;
+    } else if (workoutStatus === 'substituted') {
+        const substitutedExercise = document.getElementById('postSubstitutedExercise').value;
+        const substitutionReason = document.getElementById('postSubstitutionReason').value;
+
+        if (!substitutedExercise || !substitutionReason) {
+            alert('Please fill in what exercise you substituted and why');
+            return;
+        }
+
+        workoutData.exercise_name = substitutedExercise;
+        workoutData.original_exercise = exercise.exercise_name;
+        workoutData.substitution_reason = substitutionReason;
+    }
+
+    if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
+        // Collect actual reps performed
+        const setReps = [];
+        let allSetsHaveReps = true;
+
+        for (let i = 1; i <= exercise.sets; i++) {
+            const reps = document.getElementById(`postSet${i}Reps`).value;
+            if (!reps || reps === '') {
+                allSetsHaveReps = false;
+                break;
+            }
+            setReps.push(parseInt(reps));
+        }
+
+        if (!allSetsHaveReps) {
+            alert('Please fill in reps for all sets');
+            return;
+        }
+
+        workoutData.reps_performed = setReps;
+    }
+
+    // Use the simple save_workout endpoint for post-workout logging
+    const saveData = {
+        exercise_name: workoutData.exercise_name,
+        sets: workoutData.sets,
+        reps: workoutStatus === 'completed' || workoutStatus === 'substituted' ? workoutData.reps_performed.join('/') : '0',
+        weight: workoutData.weight,
+        notes: workoutData.notes + (workoutData.status !== 'completed' ? ` [${workoutData.status}]` : ''),
+        date: workoutData.date
+    };
+
+    // Log the exercise
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(saveData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Move to next exercise
+            postCurrentExerciseIndex++;
+            loadCurrentPostExercise();
+        } else {
+            alert('Error logging exercise: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging exercise');
+    });
+}
+
+function previousPostExercise() {
+    if (postCurrentExerciseIndex > 0) {
+        postCurrentExerciseIndex--;
+        loadCurrentPostExercise();
+    }
+}
+
+function completePostWorkout() {
+    // Switch to complete view
+    document.getElementById('post-workout-active').style.display = 'none';
+    document.getElementById('post-workout-complete').style.display = 'block';
+}
+
+function endPostWorkout() {
+    if (confirm('Are you sure you want to finish logging this workout?')) {
+        completePostWorkout();
+    }
+}
+
+function startNewPostWorkout() {
+    // Reset everything
+    postCurrentExerciseIndex = 0;
+    postWorkoutPlan = [];
+    selectedWorkoutDate = '';
+
+    // Show initial state
+    document.getElementById('post-workout-complete').style.display = 'none';
+    document.getElementById('post-workout-active').style.display = 'none';
+    document.getElementById('post-workout-not-started').style.display = 'block';
+
+    // Clear date input
+    document.getElementById('postWorkoutDate').value = '';
+    document.getElementById('postPlanPreview').innerHTML = '<div class="text-center text-muted">Select a date to see planned exercises</div>';
+    document.getElementById('beginPostBtn').disabled = true;
 }
 </script>
 {% endblock %}
