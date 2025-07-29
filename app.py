@@ -712,9 +712,6 @@ PROGRESSION_STRATEGY: [approach to progressive overload and advancement]
 SPECIAL_CONSIDERATIONS: [any limitations, injuries, or special notes mentioned]
 REASONING: [overall reasoning behind the plan design]
 
-For each exercise mentioned, also provide:
-EXERCISE_CONTEXT: [exercise_name|purpose|progression_type|notes]
-
 Here's the conversation to analyze:
 {conversation}
 
@@ -726,7 +723,6 @@ Please be concise but capture the key insights from our discussion."""
         # Parse Grok's structured response - look for fields anywhere in the response
         lines = response.split('\n')
         extracted_data = {}
-        exercises = []
         
         for line in lines:
             line = line.strip()
@@ -740,17 +736,6 @@ Please be concise but capture the key insights from our discussion."""
                 extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
             elif 'REASONING:' in line:
                 extracted_data['reasoning'] = line.split(':', 1)[1].strip() if ':' in line else ''
-            elif 'EXERCISE_CONTEXT:' in line:
-                # Parse exercise context: exercise_name|purpose|progression_type|notes
-                context_line = line.split('EXERCISE_CONTEXT:', 1)[1].strip() if 'EXERCISE_CONTEXT:' in line else ''
-                parts = context_line.split('|')
-                if len(parts) >= 3:
-                    exercises.append({
-                        'name': parts[0].strip(),
-                        'purpose': parts[1].strip(),
-                        'progression_logic': parts[2].strip(),
-                        'notes': parts[3].strip() if len(parts) > 3 else ''
-                    })
         
         # If we didn't get structured fields, try to extract from natural language
         if not any(extracted_data.values()):
@@ -782,19 +767,83 @@ Please be concise but capture the key insights from our discussion."""
             datetime.now().strftime('%Y-%m-%d')
         ))
 
-        # Clear and insert exercise metadata
+        # NOW GET ALL EXERCISES FROM WEEKLY PLAN AND CREATE METADATA
+        # Clear existing exercise metadata
         cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
-        for exercise in exercises:
+        
+        # Get all exercises from weekly plan in proper order
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+        all_exercises = cursor.fetchall()
+        
+        # Create exercise metadata based on the conversation insights and exercise patterns
+        for day, exercise_name, sets, reps, weight, order in all_exercises:
+            # Determine exercise purpose and progression logic based on conversation context
+            purpose = "General hypertrophy"
+            progression_logic = "normal"
+            notes = f"Day {order} on {day.title()}"
+            
+            # Apply specific logic based on the conversation insights
+            exercise_lower = exercise_name.lower()
+            
+            # Midsection/core focus exercises
+            if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'leg lift', 'back extension']):
+                purpose = "Midsection hypertrophy for loose skin tightening"
+                progression_logic = "aggressive"  # Treated like main lifts
+                notes += " - Core work treated as main lift"
+            
+            # Lower chest specific exercises
+            elif any(word in exercise_lower for word in ['low to high', 'lower to upper', 'incline']):
+                purpose = "Lower chest development for midsection support"
+                progression_logic = "normal"
+                notes += " - Lower chest emphasis"
+            
+            # Compound movements
+            elif any(word in exercise_lower for word in ['press', 'row', 'glute drive', 'leg press']):
+                purpose = "Compound strength and mass building"
+                progression_logic = "aggressive"  # 5-10lb jumps
+                notes += " - Main compound lift"
+            
+            # Isolation exercises
+            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'extension']):
+                purpose = "Isolation and muscle refinement"
+                progression_logic = "slow"  # 2.5-5lb or rep progression
+                notes += " - Isolation work"
+            
+            # Bodyweight exercises
+            elif any(word in exercise_lower for word in ['pushup', 'pull up', 'bodyweight']):
+                purpose = "Bodyweight strength and joint-friendly progression"
+                progression_logic = "slow"  # Rep → tempo → weight
+                notes += " - Bodyweight progression"
+            
+            # Back work (currently reduced volume)
+            elif any(word in exercise_lower for word in ['row', 'pull', 'rear delt']):
+                purpose = "Back development with injury consideration"
+                progression_logic = "slow"  # Cautious due to mid-back tightness
+                notes += " - Conservative due to back tightness"
+            
             cursor.execute('''
                 INSERT INTO exercise_metadata
                 (user_id, exercise_name, exercise_type, primary_purpose, 
                  progression_logic, ai_notes, created_date)
                 VALUES (1, ?, 'working_set', ?, ?, ?, ?)
             ''', (
-                exercise['name'],
-                exercise['purpose'],
-                exercise['progression_logic'],
-                exercise['notes'],
+                exercise_name,
+                purpose,
+                progression_logic,
+                notes,
                 datetime.now().strftime('%Y-%m-%d')
             ))
 
