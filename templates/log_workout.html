@@ -4,12 +4,49 @@
 
 {% block content %}
 <div class="container-fluid p-3">
-    <!-- Workout Not Started State -->
-    <div id="workout-not-started" class="text-center">
+    <!-- Logging Mode Selection -->
+    <div id="mode-selection" class="text-center">
         <div class="card border-0 shadow-sm">
             <div class="card-body p-4">
-                <h2 class="mb-3"><i class="fas fa-dumbbell me-2 text-primary"></i>Ready to Workout?</h2>
-                <p class="text-muted mb-4">Today's plan: <span id="workout-count">0</span> exercises</p>
+                <h2 class="mb-4"><i class="fas fa-dumbbell me-2 text-primary"></i>Log Workout</h2>
+                <p class="text-muted mb-4">Choose your logging method:</p>
+                
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card h-100 border-primary" style="cursor: pointer;" onclick="selectMode('live')">
+                            <div class="card-body text-center p-4">
+                                <i class="fas fa-stopwatch fa-3x text-primary mb-3"></i>
+                                <h5>Live Workout</h5>
+                                <p class="text-muted mb-0">Track exercises as you perform them with live clock and mobile-friendly interface</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card h-100 border-success" style="cursor: pointer;" onclick="selectMode('post')">
+                            <div class="card-body text-center p-4">
+                                <i class="fas fa-edit fa-3x text-success mb-3"></i>
+                                <h5>Log After Workout</h5>
+                                <p class="text-muted mb-0">Quick form to log completed exercises after your workout is done</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Workout Mode - Workout Not Started State -->
+    <div id="workout-not-started" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="fas fa-stopwatch me-2 text-primary"></i>Live Workout</h4>
+            <button class="btn btn-outline-secondary btn-sm" onclick="backToModeSelection()">
+                <i class="fas fa-arrow-left me-1"></i>Back
+            </button>
+        </div>
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h3 class="mb-3 text-center">Ready to Start?</h3>
+                <p class="text-muted mb-4 text-center">Today's plan: <span id="workout-count">0</span> exercises</p>
 
                 <!-- Today's Plan Preview -->
                 <div id="plan-preview" class="mb-4">
@@ -21,9 +58,78 @@
                     </div>
                 </div>
 
-                <button class="btn btn-primary btn-lg px-5" onclick="beginWorkout()">
-                    <i class="fas fa-play me-2"></i>Begin Workout
-                </button>
+                <div class="text-center">
+                    <button class="btn btn-primary btn-lg px-5" onclick="beginWorkout()">
+                        <i class="fas fa-play me-2"></i>Begin Workout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Post-Workout Logging Mode -->
+    <div id="post-workout-mode" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4><i class="fas fa-edit me-2 text-success"></i>Log After Workout</h4>
+            <button class="btn btn-outline-secondary btn-sm" onclick="backToModeSelection()">
+                <i class="fas fa-arrow-left me-1"></i>Back
+            </button>
+        </div>
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <form id="postWorkoutForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="postExerciseName" class="form-label">Exercise Name</label>
+                            <input type="text" class="form-control" id="postExerciseName" required 
+                                   placeholder="e.g., Bench Press, Squats">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="postWorkoutDate" class="form-label">Date</label>
+                            <input type="date" class="form-control" id="postWorkoutDate" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="postSets" class="form-label">Sets</label>
+                            <input type="number" class="form-control" id="postSets" min="1" max="20" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="postReps" class="form-label">Reps</label>
+                            <input type="text" class="form-control" id="postReps" required 
+                                   placeholder="e.g., 8, 10-12, 8/6/4">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="postWeight" class="form-label">Weight</label>
+                            <input type="text" class="form-control" id="postWeight" required 
+                                   placeholder="e.g., 185lbs, bodyweight">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="postNotes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="postNotes" rows="3" 
+                                  placeholder="How did it feel? Any observations?"></textarea>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="fas fa-save me-2"></i>Log Exercise
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="addAnotherExercise()">
+                            <i class="fas fa-plus me-2"></i>Log Another Exercise
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Recently Logged (for this session) -->
+                <div id="recentlyLogged" style="display: none;" class="mt-4">
+                    <h6>Recently Logged This Session:</h6>
+                    <div id="recentLogsList" class="list-group list-group-flush">
+                        <!-- Recent logs will appear here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -176,9 +282,148 @@ let clockInterval = null;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    loadTodaysPlan();
     setupWorkoutStatusListeners();
+    
+    // Set today's date for post-workout form
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('postWorkoutDate').value = today;
+    
+    // Setup post-workout form handler
+    document.getElementById('postWorkoutForm').addEventListener('submit', handlePostWorkoutSubmit);
 });
+
+// Mode selection functions
+function selectMode(mode) {
+    document.getElementById('mode-selection').style.display = 'none';
+    
+    if (mode === 'live') {
+        document.getElementById('workout-not-started').style.display = 'block';
+        loadTodaysPlan(); // Only load plan when live mode is selected
+    } else if (mode === 'post') {
+        document.getElementById('post-workout-mode').style.display = 'block';
+    }
+}
+
+function backToModeSelection() {
+    // Hide all mode-specific sections
+    document.getElementById('workout-not-started').style.display = 'none';
+    document.getElementById('workout-active').style.display = 'none';
+    document.getElementById('post-workout-mode').style.display = 'none';
+    
+    // Show mode selection
+    document.getElementById('mode-selection').style.display = 'block';
+    
+    // Stop live clock if it's running
+    if (clockInterval) {
+        clearInterval(clockInterval);
+        clockInterval = null;
+    }
+}
+
+// Post-workout logging functions
+function handlePostWorkoutSubmit(e) {
+    e.preventDefault();
+    
+    const exerciseName = document.getElementById('postExerciseName').value;
+    const sets = parseInt(document.getElementById('postSets').value);
+    const reps = document.getElementById('postReps').value;
+    const weight = document.getElementById('postWeight').value;
+    const notes = document.getElementById('postNotes').value;
+    const date = document.getElementById('postWorkoutDate').value;
+    
+    // Create workout data
+    const workoutData = {
+        exercise_name: exerciseName,
+        sets: sets,
+        reps: reps,
+        weight: weight,
+        notes: notes,
+        date: date
+    };
+    
+    // Submit to server
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workoutData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Add to recently logged list
+            addToRecentlyLogged(workoutData);
+            
+            // Clear form for next entry
+            document.getElementById('postExerciseName').value = '';
+            document.getElementById('postSets').value = '';
+            document.getElementById('postReps').value = '';
+            document.getElementById('postWeight').value = '';
+            document.getElementById('postNotes').value = '';
+            
+            // Show success message
+            showSuccessMessage('Exercise logged successfully!');
+        } else {
+            alert('Error logging exercise: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging exercise');
+    });
+}
+
+function addAnotherExercise() {
+    // Just clear the exercise name and focus on it
+    document.getElementById('postExerciseName').value = '';
+    document.getElementById('postExerciseName').focus();
+}
+
+function addToRecentlyLogged(workoutData) {
+    const recentSection = document.getElementById('recentlyLogged');
+    const recentList = document.getElementById('recentLogsList');
+    
+    // Show the recent section
+    recentSection.style.display = 'block';
+    
+    // Create new list item
+    const listItem = document.createElement('div');
+    listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+    listItem.innerHTML = `
+        <div>
+            <strong>${workoutData.exercise_name}</strong><br>
+            <small class="text-muted">${workoutData.sets}x${workoutData.reps} @ ${workoutData.weight}</small>
+        </div>
+        <small class="text-muted">${workoutData.date}</small>
+    `;
+    
+    // Add to top of list
+    recentList.insertBefore(listItem, recentList.firstChild);
+    
+    // Keep only last 5 entries
+    while (recentList.children.length > 5) {
+        recentList.removeChild(recentList.lastChild);
+    }
+}
+
+function showSuccessMessage(message) {
+    // Create and show a temporary success message
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const form = document.getElementById('postWorkoutForm');
+    form.appendChild(alertDiv);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
 
 function loadTodaysPlan() {
     const today = new Date().toISOString().split('T')[0];
