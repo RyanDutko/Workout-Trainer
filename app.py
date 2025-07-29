@@ -866,6 +866,37 @@ def apply_progression():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/save_workout', methods=['POST'])
+def save_workout():
+    """Save a single workout entry (for post-workout logging)"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name', '').lower()
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        notes = data.get('notes', '')
+        date = data.get('date')
+        
+        if not all([exercise_name, sets, reps, weight, date]):
+            return jsonify({'status': 'error', 'message': 'Missing required fields'})
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, reps, weight, date, notes))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Workout logged successfully'})
+        
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
 @app.route('/add_to_plan', methods=['POST'])
 def add_to_plan():
     try:
