@@ -11,8 +11,12 @@ import time
 app = Flask(__name__)
 
 # Database initialization
+def get_db_connection():
+    """Get a database connection with proper timeout"""
+    return sqlite3.connect('workout_logs.db', timeout=10.0)
+
 def init_db():
-    conn = sqlite3.connect('workout_logs.db', timeout=5.0)
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Create tables if they don't exist
@@ -253,7 +257,7 @@ STYLE: Be direct and cut unnecessary filler words. Get straight to the point whi
 
 @app.route('/')
 def dashboard():
-    conn = sqlite3.connect('workout_logs.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
 
     # Get today's day of week
