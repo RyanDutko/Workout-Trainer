@@ -756,7 +756,7 @@ CURRENT WEEKLY PLAN:`;
 
         contextualMessage += `\n\nUSER REQUEST: ${message}
 
-Please discuss this modification request. Focus on what changes would be needed while preserving what's working. Ask clarifying questions if needed, but keep the existing plan structure in mind.`;
+Please provide a brief, focused response about this modification. Be concise - don't list every exercise unless specifically asked. Focus on understanding the goal and providing a clear summary of what needs to change.`;
 
         const response = await fetch('/chat_stream', {
             method: 'POST',

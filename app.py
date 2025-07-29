@@ -1076,6 +1076,76 @@ def evolve_plan():
         current_plan = cursor.fetchall()
         
         # Build comprehensive prompt for plan evolution
+        # Check if this is a request to update missing exercise context
+        conversation_lower = conversation.lower()
+        is_context_update = any(phrase in conversation_lower for phrase in [
+            'update the rest of my workout context',
+            'fill in missing context',
+            'update context fields',
+            'complete the exercise metadata'
+        ])
+        
+        if is_context_update:
+            # Special handling for context completion requests
+            print("🔧 Detected context completion request")
+            
+            # Get existing exercise metadata to see what's missing
+            current_exercise_names = set(row[0] for row in current_exercise_metadata) if current_exercise_metadata else set()
+            plan_exercise_names = set(row[1] for row in current_plan)
+            missing_exercises = plan_exercise_names - current_exercise_names
+            
+            print(f"📊 Found {len(missing_exercises)} exercises needing context: {missing_exercises}")
+            
+            # Create context for missing exercises based on plan philosophy
+            for day, exercise_name, sets, reps, weight, order in current_plan:
+                if exercise_name in missing_exercises:
+                    # Determine purpose based on exercise name and current philosophy
+                    exercise_lower = exercise_name.lower()
+                    
+                    if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension']):
+                        purpose = "Midsection hypertrophy for loose skin tightening"
+                        progression_logic = "aggressive"
+                        notes = "Core work treated as main lift per plan philosophy"
+                    elif any(word in exercise_lower for word in ['press', 'row', 'glute drive', 'leg press']):
+                        purpose = "Compound strength and mass building"
+                        progression_logic = "aggressive"
+                        notes = "Main compound movement"
+                    elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'extension']):
+                        purpose = "Isolation hypertrophy work"
+                        progression_logic = "slow"
+                        notes = "Isolation exercise for targeted growth"
+                    elif any(word in exercise_lower for word in ['pushup', 'pull up']):
+                        purpose = "Bodyweight strength progression"
+                        progression_logic = "slow"
+                        notes = "Bodyweight exercise progression"
+                    else:
+                        purpose = "Hypertrophy and strength development"
+                        progression_logic = "normal"
+                        notes = f"Exercise on {day.title()}"
+                    
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO exercise_metadata
+                        (user_id, exercise_name, exercise_type, primary_purpose, 
+                         progression_logic, ai_notes, created_date)
+                        VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                    ''', (
+                        exercise_name,
+                        purpose,
+                        progression_logic,
+                        notes,
+                        datetime.now().strftime('%Y-%m-%d')
+                    ))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True,
+                'summary': f"Updated context for {len(missing_exercises)} exercises based on your plan philosophy. All exercises now have proper context for intelligent progressions.",
+                'changes_count': len(missing_exercises)
+            })
+        
+        # Regular plan evolution logic for structural changes
         evolution_prompt = f"""Based on this conversation about modifying the user's workout plan, provide specific changes while preserving what's working.
 
 CURRENT PLAN CONTEXT:
