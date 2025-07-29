@@ -1,0 +1,71 @@
+
+# Troubleshooting Session - Replit Performance Issues
+Date: January 27, 2025
+
+## Problem Summary
+User experienced severe performance issues with their Replit environment:
+- Slow typing and response times
+- Browser crashes
+- Chat interface freezing
+- Overall sluggish system performance
+
+## Initial Diagnosis
+- User thought it was resource limitations (free tier)
+- Suspected the Flask workout app was consuming too much resources
+
+## System Analysis Results
+```bash
+# Memory check
+free -h
+               total        used        free      shared  buff/cache   available
+Mem:            62Gi        27Gi        19Gi        24Mi        16Gi        35Gi
+Swap:             0B          0B          0B
+
+# Load average check  
+top -bn1 | head -20
+load average: 7.00, 6.57, 6.13  # <- HIGH LOAD ISSUE FOUND
+```
+
+## Root Cause Identified
+- **NOT a resource problem** - User has 62GB RAM available
+- **Load average of 6-7** indicating CPU contention
+- Multiple system processes competing for CPU time
+- High load was affecting entire Replit environment, including chat
+
+## Process Analysis
+```bash
+ps aux --sort=-%cpu | head -10
+# Showed multiple pid2 processes and language servers
+# No runaway Python processes from user's app
+```
+
+## Key Findings
+1. User has excellent resources (62GB RAM, multiple CPUs)
+2. Issue was system-level load average, not user application
+3. High CPU load (6-7) was causing sluggish performance across entire environment
+4. When Flask app stopped, chat performance improved immediately
+
+## Recommended Solutions
+1. **Restart Repl** - Clear lingering system processes
+2. **Monitor load average** after restart
+3. **Start Flask app again** to test if performance improves
+4. **Consider breaking up long chat sessions** to prevent context buildup
+
+## Technical Notes
+- Load average should be under 1.0 for smooth performance
+- Multiple system processes (pid2, language servers) can accumulate over time
+- Replit infrastructure load can affect individual repls
+- Chat performance is linked to overall system performance
+
+## Files Involved
+- app.py: Flask workout trainer application
+- main.py: Console version of trainer
+- workout_logs.db: SQLite database
+- Various HTML templates for web interface
+
+## User's Application
+- Workout tracking and planning app
+- Uses OpenAI Grok API for AI coaching
+- SQLite database for workout logs
+- Flask web interface with chat functionality
+- No obvious performance issues in code itself
