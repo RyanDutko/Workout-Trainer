@@ -779,8 +779,7 @@ Please be concise but capture the key insights from our discussion."""
             ORDER BY 
                 CASE day_of_week 
                     WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3
+                    WHEN 'tuesday' THEN 2                     WHEN 'wednesday' THEN 3
                     WHEN 'thursday' THEN 4
                     WHEN 'friday' THEN 5
                     WHEN 'saturday' THEN 6
@@ -1688,7 +1687,7 @@ def edit_exercise():
         sets = data.get('sets')
         reps = data.get('reps')
         weight = data.get('weight')
-        notes = data.get('notes')
+        notes = data.get('notes', '')
 
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
@@ -1869,6 +1868,7 @@ Be specific with weights based on their experience level."""
                         'sets': int(parts[1]) if parts[1].isdigit() else 3,
                         'reps': parts[2],
                         'weight': parts[3],
+                        'exercise_type': parts[4],
                         'exercise_type': parts[4],
                         'progression_rate': parts[5],
                         'purpose': parts[6] if len(parts) > 6 else ""

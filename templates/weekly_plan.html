@@ -40,7 +40,7 @@
                                             </button>
                                         </div>
                                         <div>
-                                            <button class="btn btn-sm btn-outline-primary" onclick="editExercise('{{ day }}', '{{ exercise.exercise }}', {{ exercise.sets }}, '{{ exercise.reps }}', '{{ exercise.weight }}')">
+                                            <button class="btn btn-sm btn-outline-primary" onclick="editExercise({{ exercise.id }}, '{{ day }}', '{{ exercise.exercise }}', {{ exercise.sets }}, '{{ exercise.reps }}', '{{ exercise.weight }}', '{{ exercise.notes }}')">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-danger" onclick="deleteExercise('{{ day }}', '{{ exercise.exercise }}')">
@@ -127,8 +127,8 @@
             </div>
             <form id="editExerciseForm">
                 <div class="modal-body">
+                    <input type="hidden" id="editId" name="id">
                     <input type="hidden" id="editDay" name="day">
-                    <input type="hidden" id="editOriginalExercise" name="original_exercise">
                     
                     <div class="mb-3">
                         <label for="editExerciseName" class="form-label">Exercise Name</label>
@@ -150,6 +150,12 @@
                             <input type="text" class="form-control" id="editWeight" name="weight" 
                                    placeholder="200lbs" required>
                         </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">Notes (optional)</label>
+                        <textarea class="form-control" id="editNotes" name="notes" rows="2" 
+                                  placeholder="Any additional notes..."></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -190,13 +196,14 @@ function moveExercise(day, exercise, direction) {
     });
 }
 
-function editExercise(day, exercise, sets, reps, weight) {
+function editExercise(id, day, exercise, sets, reps, weight, notes) {
+    document.getElementById('editId').value = id;
     document.getElementById('editDay').value = day;
-    document.getElementById('editOriginalExercise').value = exercise;
     document.getElementById('editExerciseName').value = exercise;
     document.getElementById('editSets').value = sets;
     document.getElementById('editReps').value = reps;
     document.getElementById('editWeight').value = weight;
+    document.getElementById('editNotes').value = notes || '';
     
     new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
 }
@@ -233,12 +240,13 @@ document.getElementById('editExerciseForm').addEventListener('submit', function(
     
     const formData = new FormData(this);
     const data = {
+        id: parseInt(formData.get('id')),
         day: formData.get('day'),
-        original_exercise: formData.get('original_exercise'),
-        exercise_name: formData.get('exercise_name'),
+        exercise: formData.get('exercise_name'),
         sets: parseInt(formData.get('sets')),
         reps: formData.get('reps'),
-        weight: formData.get('weight')
+        weight: formData.get('weight'),
+        notes: formData.get('notes')
     };
     
     fetch('/edit_exercise', {
