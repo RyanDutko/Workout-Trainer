@@ -1689,6 +1689,12 @@ def edit_exercise():
         weight = data.get('weight')
         notes = data.get('notes', '')
 
+        # Debug logging
+        print(f"Editing exercise ID {exercise_id}: weight='{weight}', sets={sets}, reps='{reps}'")
+
+        if not exercise_id or not weight or weight.strip() == '':
+            return jsonify({'success': False, 'error': 'Missing required fields or empty weight'})
+
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
 
@@ -1696,13 +1702,19 @@ def edit_exercise():
             UPDATE weekly_plan 
             SET day_of_week = ?, exercise_name = ?, target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
             WHERE id = ?
-        ''', (day, exercise, sets, reps, weight, notes, exercise_id))
+        ''', (day, exercise, int(sets), reps, weight.strip(), notes, int(exercise_id)))
+
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found or no changes made'})
 
         conn.commit()
         conn.close()
 
+        print(f"✅ Successfully updated exercise {exercise} to {sets}x{reps}@{weight}")
         return jsonify({'success': True})
     except Exception as e:
+        print(f"❌ Error editing exercise: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/get_plan/<day>')

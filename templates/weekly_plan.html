@@ -239,14 +239,29 @@ document.getElementById('editExerciseForm').addEventListener('submit', function(
     e.preventDefault();
     
     const formData = new FormData(this);
+    const weightValue = formData.get('weight');
+    
+    // Debug logging
+    console.log('Form data:', {
+        id: formData.get('id'),
+        weight: weightValue,
+        sets: formData.get('sets'),
+        reps: formData.get('reps')
+    });
+    
+    if (!weightValue || weightValue.trim() === '') {
+        alert('Weight field cannot be empty');
+        return;
+    }
+    
     const data = {
         id: parseInt(formData.get('id')),
         day: formData.get('day'),
         exercise: formData.get('exercise_name'),
         sets: parseInt(formData.get('sets')),
         reps: formData.get('reps'),
-        weight: formData.get('weight'),
-        notes: formData.get('notes')
+        weight: weightValue.trim(),
+        notes: formData.get('notes') || ''
     };
     
     fetch('/edit_exercise', {
