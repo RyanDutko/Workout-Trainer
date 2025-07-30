@@ -1,198 +1,49 @@
 {% extends "base.html" %}
 
-{% block title %}Analyze Plan - Personal Trainer{% endblock %}
+{% block title %}Plan Philosophy - Personal Trainer{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-brain me-2"></i>Tell Grok About Your Plan</h1>
-    <small class="text-muted">Help Grok understand the "why" behind your workout plan</small>
+    <h1 class="h2"><i class="fas fa-brain me-2"></i>Your Training Philosophy</h1>
+    <small class="text-muted">Understanding the "why" behind your workout plan</small>
 </div>
 
+<!-- Overall Philosophy Section -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-primary">
+        <div class="card">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-robot me-2"></i>Choose Your Approach</h5>
+                <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Overall Training Philosophy</h5>
             </div>
             <div class="card-body">
-                <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="analysisMode" id="evolutionMode" value="evolution" checked>
-                    <label class="btn btn-outline-success" for="evolutionMode">
-                        <i class="fas fa-sync-alt me-2"></i>Plan Evolution
-                        <small class="d-block">Modify your existing plan with Grok (preserves context)</small>
-                    </label>
-
-                    <input type="radio" class="btn-check" name="analysisMode" id="aiMode" value="ai">
-                    <label class="btn btn-outline-primary" for="aiMode">
-                        <i class="fas fa-comments me-2"></i>Fresh Analysis
-                        <small class="d-block">Start completely fresh (overwrites everything)</small>
-                    </label>
-
-                    <input type="radio" class="btn-check" name="analysisMode" id="manualMode" value="manual">
-                    <label class="btn btn-outline-primary" for="manualMode">
-                        <i class="fas fa-keyboard me-2"></i>Manual Entry
-                        <small class="d-block">Fill out all fields yourself (expert mode)</small>
-                    </label>
-                </div></div>
-</div>
-
-<!-- Plan Evolution Mode -->
-<div id="evolutionAnalysisSection" class="row">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-sync-alt me-2"></i>Plan Evolution Chat</h5>
-            </div>
-            <div class="card-body">
-                <div class="alert alert-success">
-                    <i class="fas fa-lightbulb me-2"></i>
-                    <strong>Smart Plan Updates!</strong> Tell Grok what you want to change about your current plan. Examples:
-                    <ul class="mb-0 mt-2">
-                        <li>"I want to increase leg mass faster without losing midsection focus"</li>
-                        <li>"Add more upper body volume on Wednesdays"</li>
-                        <li>"Replace bench press with dumbbell press due to shoulder issues"</li>  
-                        <li>"I need more back work but keep everything else the same"</li>
-                    </ul>
-                </div>
-
-                <div id="evolutionChatContainer">
-                    <div id="evolutionChatMessages" class="border rounded p-3 mb-3" style="height: 400px; overflow-y: auto; background-color: #f8f9fa;">
-                        <div class="text-center text-muted py-4">
-                            <i class="fas fa-comments fa-3x mb-3"></i>
-                            <p>Start a conversation about how you want to evolve your plan...</p>
+                <div id="overallPhilosophy">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
-                    </div>
-
-                    <div class="input-group">
-                        <input type="text" id="evolutionChatInput" class="form-control" placeholder="e.g., I want to add more leg volume for faster mass gains...">
-                        <button id="sendEvolutionChatBtn" class="btn btn-success">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </div>
-
-                    <div class="text-center mt-3">
-                        <button id="applyEvolutionBtn" class="btn btn-success" style="display: none;">
-                            <i class="fas fa-magic me-2"></i>Apply Plan Changes
-                        </button>
-                        <div class="mt-2">
-                            <small class="text-muted">Discuss your changes, then apply them to your plan when ready.</small>
-                        </div>
+                        <p class="mt-2">Loading your training philosophy...</p>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h6><i class="fas fa-info-circle me-2"></i>How Plan Evolution Works</h6>
-            </div>
-            <div class="card-body">
-                <p><strong>🧠 Context Aware:</strong> Grok knows your current plan and philosophy</p>
-                <p><strong>🎯 Targeted Changes:</strong> Only modifies what you want to change</p>
-                <p><strong>🔄 Preserves Progress:</strong> Keeps working elements intact</p>
-                <p><strong>📝 Smart Updates:</strong> Updates context to reflect new goals</p>
-
-                <div class="mt-3 p-3 bg-light rounded">
-                    <h6>Current Plan Summary:</h6>
-                    <div id="currentPlanSummary">
-                        <div class="text-center">
-                            <div class="spinner-border spinner-border-sm" role="status"></div>
-                            <small class="d-block mt-1">Loading...</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="alert alert-info mt-3 small">
-                    <i class="fas fa-shield-alt me-1"></i>
-                    <strong>Safe Updates:</strong> Your original plan is preserved. You can always revert changes.
-                </div>
-            </div>
-        </div>
-    </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- AI Conversation Mode -->
-<div id="aiAnalysisSection" class="row">
-    <div class="col-md-8">
+<!-- Daily Plan Philosophy Section -->
+<div class="row">
+    <div class="col-12">
         <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-robot me-2"></i>AI Plan Analysis</h5>
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-calendar-week me-2"></i>Daily Plan Breakdown</h5>
             </div>
             <div class="card-body">
-                <div id="conversationArea">
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Ready to analyze your plan!</strong> Click "Start Analysis" and Grok will examine your weekly plan and ask thoughtful questions to understand your training philosophy.
-                    </div>
-
-                    <div class="text-center mb-4">
-                        <button id="startAnalysisBtn" class="btn btn-primary btn-lg">
-                            <i class="fas fa-play me-2"></i>Start AI Analysis
-                        </button>
-                    </div>
-
-                    <div id="chatContainer" style="display: none;">
-                        <div id="chatMessages" class="border rounded p-3 mb-3" style="height: 400px; overflow-y: auto; background-color: #f8f9fa;">
-                            <!-- Chat messages will appear here -->
-                        </div>
-
-                        <div class="input-group">
-                            <input type="text" id="chatInput" class="form-control" placeholder="Type your response..." disabled>
-                            <button id="sendChatBtn" class="btn btn-primary" disabled>
-                                <i class="fas fa-paper-plane"></i>
-                            </button>
-                        </div>
-
-                        <div class="text-center mt-3">
-                            <button id="finishAnalysisBtn" class="btn btn-success" style="display: none;">
-                                <i class="fas fa-check me-2"></i>Save Analysis Results
-                            </button>
-                            <div class="mt-2">
-                                <small class="text-muted">Continue the conversation, then click "Save Analysis Results" when you're satisfied with the discussion.</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h6><i class="fas fa-lightbulb me-2"></i>How AI Analysis Works</h6>
-            </div>
-            <div class="card-body">
-                <p><strong>Step 1:</strong> Grok examines your current weekly plan</p>
-                <p><strong>Step 2:</strong> Asks targeted questions about your training goals and philosophy</p>
-                <p><strong>Step 3:</strong> Automatically fills out all context fields based on your answers</p>
-                <p><strong>Result:</strong> Perfect understanding without the manual work!</p>
-
-                <div class="mt-3 p-3 bg-light rounded">
-                    <h6>Fields that will be populated:</h6>
-                    <ul class="small mb-0">
-                        <li>Training Philosophy</li>
-                        <li>Weekly Structure</li>
-                        <li>Progression Strategy</li>
-                        <li>Exercise-specific context (ALL exercises)</li>
-                        <li>Special considerations</li>
-                    </ul>
+                <div class="accordion" id="dailyPhilosophyAccordion">
+                    <!-- Will be populated via JavaScript -->
                 </div>
 
-                <div class="alert alert-warning mt-3 small">
-                    <i class="fas fa-exclamation-triangle me-1"></i>
-                    <strong>Important:</strong> Starting AI Analysis will overwrite any existing context. Check "View Stored Context" first!
-                </div>
-
-                <!-- Current Context Section -->
-                <div class="mt-3">
-                    <button class="btn btn-outline-info btn-sm w-100" type="button" data-bs-toggle="collapse" data-bs-target="#storedContextSection">
-                        <i class="fas fa-eye me-2"></i>View Stored Context
+                <div class="text-center mt-4">
+                    <button id="refreshPhilosophyBtn" class="btn btn-outline-primary">
+                        <i class="fas fa-sync me-2"></i>Refresh Philosophy
                     </button>
                 </div>
             </div>
@@ -200,107 +51,12 @@
     </div>
 </div>
 
-<!-- Manual Entry Mode -->
-<div id="manualAnalysisSection" class="row" style="display: none;">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="fas fa-lightbulb me-2"></i>Plan Philosophy & Context</h5>
-            </div>
-            <div class="card-body">
-                <form id="planContextForm">
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Overall Training Philosophy</strong></label>
-                        <textarea class="form-control" name="philosophy" rows="3" 
-                                  placeholder="e.g., Focus on compound movements for strength, with accessories for weak points. Monday is heavy day, Friday is light/pump day..."></textarea>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Weekly Structure Reasoning</strong></label>
-                        <textarea class="form-control" name="weekly_structure" rows="3" 
-                                  placeholder="e.g., Monday starts strong after weekend rest, Wednesday maintains momentum, Friday is lighter because of weekend plans..."></textarea>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Progression Strategy</strong></label>
-                        <textarea class="form-control" name="progression_strategy" rows="3" 
-                                  placeholder="e.g., Increase weight when all sets hit top rep range, never progress warmup exercises, focus on form before weight..."></textarea>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Special Considerations</strong></label>
-                        <textarea class="form-control" name="special_considerations" rows="3" 
-                                  placeholder="e.g., Avoid overhead pressing due to shoulder history, Friday exercises are just activation/blood flow..."></textarea>
-                    </div>
-
-                    <div class="mb-4">
-                        <label class="form-label"><strong>Overall Reasoning</strong></label>
-                        <textarea class="form-control" name="reasoning" rows="4" 
-                                  placeholder="Explain the complete thought process behind this plan - what are you trying to achieve and why is it structured this way?"></textarea>
-                    </div>
-
-                    <h6 class="mb-3"><i class="fas fa-dumbbell me-2"></i>Exercise-Specific Context</h6>
-                    <div id="exerciseContext">
-                        <!-- Will be populated via JavaScript -->
-                    </div>
-
-                    <div class="text-center mt-4">
-                        <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fas fa-save me-2"></i>Save Plan Context
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h6><i class="fas fa-info-circle me-2"></i>Why This Matters</h6>
-            </div>
-            <div class="card-body">
-                <p><strong>Better Progressions:</strong> Grok will understand which exercises should progress aggressively vs. conservatively.</p>
-                <p><strong>Smarter Suggestions:</strong> Recommendations will align with your actual training philosophy.</p>
-                <p><strong>Context-Aware Chat:</strong> Grok can explain why certain exercises are programmed the way they are.</p>
-                <p><strong>Future Plans:</strong> This context will help if you ever want to modify or rebuild your plan.</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Stored Context Section (Collapsible) -->
-<div class="collapse mt-4" id="storedContextSection">
-    <div class="row">
-        <div class="col-12">
-            <div class="card border-info">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="fas fa-database me-2"></i>Currently Stored Plan Context</h5>
-                    <small>This shows what Grok actually has access to about your plan</small>
-                </div>
-                <div class="card-body">
-                    <div id="storedContextDisplay">
-                        <div class="text-center">
-                            <div class="spinner-border" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2">Loading stored context...</p>
-                        </div>
-                    </div>
-
-                    <div class="text-center mt-3">
-                        <button id="editStoredContextBtn" class="btn btn-warning me-2" style="display: none;">
-                            <i class="fas fa-edit me-2"></i>Edit Context
-                        </button>
-                        <button id="refreshContextBtn" class="btn btn-secondary me-2">
-                            <i class="fas fa-sync me-2"></i>Refresh
-                        </button>
-                        <button onclick="cleanupDuplicates()" class="btn btn-danger">
-                            <i class="fas fa-broom me-2"></i>Fix Duplicates
-                        </button>
-                    </div>
-                </div>
-            </div>
+<!-- AI Integration Info -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="fas fa-robot me-2"></i>
+            <strong>AI Integration:</strong> Your training philosophy is automatically updated when you discuss changes with Grok in your regular chat. Just tell Grok about modifications to your approach and this page will reflect those updates!
         </div>
     </div>
 </div>
@@ -308,776 +64,298 @@
 
 {% block scripts %}
 <script>
-let conversationContext = {};
-let analysisComplete = false;
+let currentPhilosophy = {};
+let currentPlan = {};
 
-// Mode switching
-document.querySelectorAll('input[name="analysisMode"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-        // Hide all sections first
-        document.getElementById('evolutionAnalysisSection').style.display = 'none';
-        document.getElementById('aiAnalysisSection').style.display = 'none';
-        document.getElementById('manualAnalysisSection').style.display = 'none';
-
-        if (this.value === 'evolution') {
-            document.getElementById('evolutionAnalysisSection').style.display = 'block';
-            loadCurrentPlanSummary();
-        } else if (this.value === 'ai') {
-            document.getElementById('aiAnalysisSection').style.display = 'block';
-        } else {
-            document.getElementById('manualAnalysisSection').style.display = 'block';
-            loadExerciseContext(); // Load manual form
-        }
-    });
+// Load philosophy on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadPhilosophy();
 });
 
-// AI Analysis Functions
-document.getElementById('startAnalysisBtn').addEventListener('click', startAIAnalysis);
-document.getElementById('sendChatBtn').addEventListener('click', sendChatMessage);
-document.getElementById('chatInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') sendChatMessage();
-});
-document.getElementById('finishAnalysisBtn').addEventListener('click', saveAIAnalysis);
-
-// Plan Evolution handlers
-document.getElementById('sendEvolutionChatBtn').addEventListener('click', sendEvolutionMessage);
-document.getElementById('evolutionChatInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') sendEvolutionMessage();
-});
-document.getElementById('applyEvolutionBtn').addEventListener('click', applyPlanEvolution);
-
-async function startAIAnalysis() {
-    // Check if user already has stored context and warn them
-    try {
-        const contextResponse = await fetch('/get_stored_context');
-        const contextData = await contextResponse.json();
-
-        if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
-            const confirmed = confirm(
-                "⚠️ WARNING: You already have stored plan analysis!\n\n" +
-                "Starting a new AI analysis will COMPLETELY REPLACE your existing context:\n" +
-                `• Current Philosophy: ${contextData.plan_context.plan_philosophy.substring(0, 100)}...\n` +
-                `• ${contextData.exercise_metadata ? contextData.exercise_metadata.length : 0} exercise contexts\n\n` +
-                "Are you sure you want to overwrite this and start fresh?\n\n" +
-                "💡 TIP: Consider using the 'Edit Context' button instead to modify your existing analysis."
-            );
-
-            if (!confirmed) {
-                return; // User cancelled
-            }
-        }
-    } catch (error) {
-        console.log('Could not check existing context, proceeding with analysis');
-    }
-
-    document.getElementById('startAnalysisBtn').style.display = 'none';
-    document.getElementById('chatContainer').style.display = 'block';
-
-    // Get current weekly plan
-    const planResponse = await fetch('/api/weekly_plan');
-    const planData = await planResponse.json();
-
-    // Format plan for AI
-    let planText = "Current Weekly Plan:\n";
-    Object.keys(planData).forEach(day => {
-        planText += `${day.charAt(0).toUpperCase() + day.slice(1)}: `;
-        planText += planData[day].map(ex => `${ex.exercise_name} ${ex.sets}x${ex.reps}@${ex.weight}`).join(', ');
-        planText += '\n';
-    });
-
-    const initialPrompt = `I want you to analyze my workout plan and help me understand the reasoning behind it. Here's my current plan:
-
-${planText}
-
-Please start by examining this plan and asking me 1-2 thoughtful questions to understand my goals and training philosophy. Keep it conversational - don't ask everything at once. Based on my answers, you'll help me fill out context fields like training philosophy, weekly structure reasoning, progression strategy, and exercise-specific purposes.
-
-Start with your initial analysis and first questions.`;
-
-    // Send to AI
-    addChatMessage('You', 'Starting AI analysis of my workout plan...');
-
-    try {
-        const response = await fetch('/chat_stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'message=' + encodeURIComponent(initialPrompt)
-        });
-
-        const reader = response.body.getReader();
-        let aiMessage = '';
-        let messageDiv = addChatMessage('Grok', '');
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = new TextDecoder().decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.content) {
-                            aiMessage += data.content;
-                            messageDiv.innerHTML = `<strong>Grok:</strong> ${aiMessage}`;
-                            scrollChatToBottom();
-                        }
-                        if (data.done) {
-                            enableChatInput();
-                        }
-                    } catch (e) {}
-                }
-            }
-        }
-    } catch (error) {
-        addChatMessage('System', 'Error starting analysis. Please try again.');
-        enableChatInput();
-    }
-}
-
-async function sendChatMessage() {
-    const input = document.getElementById('chatInput');
-    const message = input.value.trim();
-    if (!message) return;
-
-    addChatMessage('You', message);
-    input.value = '';
-    disableChatInput();
-
-    try {
-        // Build conversation context for AI analysis
-        const messages = document.getElementById('chatMessages').children;
-        let conversationHistory = '';
-
-        for (let msg of messages) {
-            conversationHistory += msg.textContent + '\n\n';
-        }
-
-        // Include the current message in context
-        const contextualMessage = `CONTEXT: We are in an AI workout plan analysis session. Here's our conversation so far:
-
-${conversationHistory}
-
-Current user response: ${message}
-
-Please continue the analysis conversation. If the user has provided detailed information about their training philosophy, acknowledge it and ask follow-up questions to complete the analysis. Do not provide progression tips - we're still in the analysis phase.`;
-
-        const response = await fetch('/chat_stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'message=' + encodeURIComponent(contextualMessage)
-        });
-
-        const reader = response.body.getReader();
-        let aiMessage = '';
-        let messageDiv = addChatMessage('Grok', '');
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = new TextDecoder().decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.content) {
-                            aiMessage += data.content;
-                            messageDiv.innerHTML = `<strong>Grok:</strong> ${aiMessage}`;
-                            scrollChatToBottom();
-                        }
-                        if (data.done) {
-                            enableChatInput();
-                            // Show save button after Grok's initial analysis
-                            if (document.getElementById('chatMessages').children.length >= 2) {
-                                document.getElementById('finishAnalysisBtn').style.display = 'inline-block';
-                            }
-                        }
-                    } catch (e) {}
-                }
-            }
-        }
-    } catch (error) {
-        addChatMessage('System', 'Error sending message. Please try again.');
-        enableChatInput();
-    }
-}
-
-function addChatMessage(sender, message) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'mb-2 p-2 rounded ' + (sender === 'You' ? 'bg-primary text-white ms-5' : 'bg-white me-5');
-    messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
-    chatMessages.appendChild(messageDiv);
-    scrollChatToBottom();
-    return messageDiv;
-}
-
-function scrollChatToBottom() {
-    const chatMessages = document.getElementById('chatMessages');
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function enableChatInput() {
-    document.getElementById('chatInput').disabled = false;
-    document.getElementById('sendChatBtn').disabled = false;
-    document.getElementById('chatInput').focus();
-}
-
-function disableChatInput() {
-    document.getElementById('chatInput').disabled = true;
-    document.getElementById('sendChatBtn').disabled = true;
-}
-
-function checkIfAnalysisComplete() {
-    // Show finish button after a few exchanges
-    const messages = document.getElementById('chatMessages').children.length;
-    if (messages >= 4) { // 2+ exchanges (Grok's initial response + your response)
-        document.getElementById('finishAnalysisBtn').style.display = 'inline-block';
-    }
-}
-
-async function saveAIAnalysis() {
-    // Show loading state
-    const saveBtn = document.getElementById('finishAnalysisBtn');
-    const originalText = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing Analysis...';
-    saveBtn.disabled = true;
-
-    // Get the full conversation
-    const messages = document.getElementById('chatMessages').children;
-    let conversation = '';
-
-    for (let msg of messages) {
-        conversation += msg.textContent + '\n\n';
-    }
-
-    const finalPrompt = `Based on our conversation about my workout plan, please extract and format the key information into these specific fields:
-
-TRAINING_PHILOSOPHY: [Your understanding of my overall training approach]
-WEEKLY_STRUCTURE: [Why my week is structured the way it is]
-PROGRESSION_STRATEGY: [How I should progress exercises]
-SPECIAL_CONSIDERATIONS: [Any limitations, injuries, or special notes]
-REASONING: [Overall reasoning behind the plan design]
-
-Also, for each exercise in my plan, provide:
-EXERCISE_CONTEXT: [exercise_name|purpose|progression_type|notes]
-
-Please format your response exactly as requested so I can parse it automatically.
-
-Here's our full conversation for reference:
-${conversation}`;
-
-    try {
-        const response = await fetch('/extract_plan_context', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversation: finalPrompt })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            alert('✅ AI Analysis complete! Your plan context has been saved.\n\nGrok now understands your training philosophy and can provide much better progression advice!');
-            window.location.href = '/';
-        } else {
-            alert('Error saving analysis: ' + result.error);
-            // Restore button
-            saveBtn.innerHTML = originalText;
-            saveBtn.disabled = false;
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-        // Restore button
-        saveBtn.innerHTML = originalText;
-        saveBtn.disabled = false;
-    }
-}
-
-// Load current weekly plan and create exercise context fields (for manual mode)
-async function loadExerciseContext() {
-    try {
-        const response = await fetch('/api/weekly_plan');
-        const planData = await response.json();
-
-        const container = document.getElementById('exerciseContext');
-        let exerciseHtml = '';
-
-        Object.keys(planData).forEach(day => {
-            planData[day].forEach(exercise => {
-                exerciseHtml += `
-                    <div class="border rounded p-3 mb-3">
-                        <h6>${exercise.exercise_name} (${day.charAt(0).toUpperCase() + day.slice(1)})</h6>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <label class="form-label">Purpose</label>
-                                <input type="text" class="form-control" name="exercise_purpose_${exercise.exercise_name}" 
-                                       placeholder="e.g., main chest builder, warmup, weak point work">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Progression Logic</label>
-                                <select class="form-select" name="exercise_progression_${exercise.exercise_name}">
-                                    <option value="normal">Normal progression</option>
-                                    <option value="aggressive">Aggressive progression</option>
-                                    <option value="slow">Conservative progression</option>
-                                    <option value="maintain">Maintain (no progression)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="mt-2">
-                            <label class="form-label">Special Notes</label>
-                            <input type="text" class="form-control" name="exercise_notes_${exercise.exercise_name}" 
-                                   placeholder="Any special considerations for this exercise">
-                        </div>
-                    </div>
-                `;
-            });
-        });
-
-        container.innerHTML = exerciseHtml;
-    } catch (error) {
-        console.error('Error loading exercises:', error);
-    }
-}
-
-document.getElementById('planContextForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    const formData = new FormData(this);
-    const data = {
-        philosophy: formData.get('philosophy'),
-        weekly_structure: formData.get('weekly_structure'),
-        progression_strategy: formData.get('progression_strategy'),
-        special_considerations: formData.get('special_considerations'),
-        reasoning: formData.get('reasoning'),
-        exercises: []
-    };
-
-    // Collect exercise-specific data
-    const exerciseInputs = document.querySelectorAll('[name^="exercise_"]');
-    const exerciseData = {};
-
-    exerciseInputs.forEach(input => {
-        const match = input.name.match(/exercise_(\w+)_(.+)/);
-        if (match) {
-            const [, field, exerciseName] = match;
-            if (!exerciseData[exerciseName]) {
-                exerciseData[exerciseName] = { name: exerciseName };
-            }
-            exerciseData[exerciseName][field] = input.value;
-        }
-    });
-
-    data.exercises = Object.values(exerciseData);
-
-    try {
-        const response = await fetch('/save_plan_context', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            alert('✅ Plan context saved! Grok now understands your training philosophy.');
-            window.location.href = '/';
-        } else {
-            alert('Error: ' + result.error);
-        }
-    } catch (error) {
-        alert('Error saving context: ' + error.message);
-    }
+// Refresh button handler
+document.getElementById('refreshPhilosophyBtn').addEventListener('click', function() {
+    loadPhilosophy();
 });
 
-// Plan Evolution Functions
-async function loadCurrentPlanSummary() {
+async function loadPhilosophy() {
     try {
-        const contextResponse = await fetch('/get_stored_context');
-        const contextData = await contextResponse.json();
-
-        const planResponse = await fetch('/api/weekly_plan');
-        const planData = await planResponse.json();
-
-        let summary = '';
-
-        if (contextData.plan_context && contextData.plan_context.plan_philosophy) {
-            summary += `<strong>Philosophy:</strong> ${contextData.plan_context.plan_philosophy.substring(0, 120)}...<br>`;
-        }
-
-        const totalExercises = Object.values(planData).reduce((sum, day) => sum + day.length, 0);
-        summary += `<strong>Structure:</strong> ${Object.keys(planData).length} training days, ${totalExercises} exercises<br>`;
-
-        if (contextData.exercise_metadata) {
-            summary += `<strong>Context:</strong> ${contextData.exercise_metadata.length} exercises with AI context`;
-        }
-
-        document.getElementById('currentPlanSummary').innerHTML = summary || 'No current plan found';
-
-    } catch (error) {
-        document.getElementById('currentPlanSummary').innerHTML = '<span class="text-danger">Error loading plan</span>';
-    }
-}
-
-async function sendEvolutionMessage() {
-    const input = document.getElementById('evolutionChatInput');
-    const message = input.value.trim();
-    if (!message) return;
-
-    addEvolutionMessage('You', message);
-    input.value = '';
-    disableEvolutionInput();
-
-    try {
-        // Get current context for the conversation
-        const contextResponse = await fetch('/get_stored_context');
-        const contextData = await contextResponse.json();
-
-        const planResponse = await fetch('/api/weekly_plan');
-        const planData = await planResponse.json();
-
-        // Build context-aware prompt
-        let contextualMessage = `PLAN EVOLUTION REQUEST: The user wants to modify their existing workout plan. Here's their current setup:
-
-CURRENT PHILOSOPHY: ${contextData.plan_context?.plan_philosophy || 'Not set'}
-CURRENT WEEKLY STRUCTURE: ${contextData.plan_context?.weekly_structure || 'Not set'}
-
-CURRENT WEEKLY PLAN:`;
-
-        Object.keys(planData).forEach(day => {
-            contextualMessage += `\n${day.toUpperCase()}: `;
-            contextualMessage += planData[day].map(ex => `${ex.exercise_name} ${ex.sets}x${ex.reps}@${ex.weight}`).join(', ');
-        });
-
-        if (contextData.exercise_metadata) {
-            contextualMessage += `\n\nEXERCISE CONTEXT:\n`;
-            contextData.exercise_metadata.forEach(ex => {
-                contextualMessage += `• ${ex.exercise_name}: ${ex.primary_purpose} (${ex.progression_logic})\n`;
-            });
-        }
-
-        contextualMessage += `\n\nUSER REQUEST: ${message}
-
-Please provide a brief, focused response about this modification. Be concise - don't list every exercise unless specifically asked. Focus on understanding the goal and providing a clear summary of what needs to change.`;
-
-        const response = await fetch('/chat_stream', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'message=' + encodeURIComponent(contextualMessage)
-        });
-
-        const reader = response.body.getReader();
-        let aiMessage = '';
-        let messageDiv = addEvolutionMessage('Grok', '');
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = new TextDecoder().decode(value);
-            const lines = chunk.split('\n');
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        if (data.content) {
-                            aiMessage += data.content;
-                            messageDiv.innerHTML = `<strong>Grok:</strong> ${aiMessage}`;
-                            scrollEvolutionToBottom();
-                        }
-                        if (data.done) {
-                            enableEvolutionInput();
-                            // Show apply button after conversation starts
-                            document.getElementById('applyEvolutionBtn').style.display = 'inline-block';
-                        }
-                    } catch (e) {}
-                }
-            }
-        }
-    } catch (error) {
-        addEvolutionMessage('System', 'Error sending message. Please try again.');
-        enableEvolutionInput();
-    }
-}
-
-function addEvolutionMessage(sender, message) {
-    const chatMessages = document.getElementById('evolutionChatMessages');
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'mb-2 p-2 rounded ' + (sender === 'You' ? 'bg-success text-white ms-5' : 'bg-white me-5');
-    messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
-    chatMessages.appendChild(messageDiv);
-    scrollEvolutionToBottom();
-    return messageDiv;
-}
-
-function scrollEvolutionToBottom() {
-    const chatMessages = document.getElementById('evolutionChatMessages');
-    chatMessages.scrollTop = chatMessages.scrollHeight;}
-
-function enableEvolutionInput() {
-    document.getElementById('evolutionChatInput').disabled = false;
-    document.getElementById('sendEvolutionChatBtn').disabled = false;
-    document.getElementById('evolutionChatInput').focus();
-}
-
-function disableEvolutionInput() {
-    document.getElementById('evolutionChatInput').disabled = true;
-    document.getElementById('sendEvolutionChatBtn').disabled = true;
-}
-
-async function applyPlanEvolution() {
-    const applyBtn = document.getElementById('applyEvolutionBtn');
-    const originalText = applyBtn.innerHTML;
-    applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Applying Changes...';
-    applyBtn.disabled = true;
-
-    // Get the full evolution conversation
-    const messages = document.getElementById('evolutionChatMessages').children;
-    let conversation = '';
-
-    for (let msg of messages) {
-        if (msg.textContent.trim()) {
-            conversation += msg.textContent + '\n\n';
-        }
-    }
-
-    try {
-        const response = await fetch('/evolve_plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversation: conversation })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            alert(`✅ Plan Evolution Complete!\n\n${result.summary}\n\nYour plan has been updated while preserving existing context.`);
-            window.location.href = '/';
-        } else {
-            alert('Error applying changes: ' + result.error);
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-    } finally {
-        applyBtn.innerHTML = originalText;
-        applyBtn.disabled = false;
-    }
-}
-
-// Load exercise context on page load when manual mode is active
-if (document.getElementById('manualMode').checked) {
-    loadExerciseContext();
-}
-
-// Load evolution mode by default
-if (document.getElementById('evolutionMode').checked) {
-    loadCurrentPlanSummary();
-}
-
-// Load stored context when section what expanded
-const refreshBtn = document.getElementById('refreshContextBtn');
-if (refreshBtn) {
-    refreshBtn.addEventListener('click', loadStoredContext);
-}
-
-// Auto-load when collapse is shown
-const contextSection = document.getElementById('storedContextSection');
-if (contextSection) {
-    contextSection.addEventListener('shown.bs.collapse', function() {
-        loadStoredContext();
-    });
-}
-
-async function loadStoredContext() {
-    document.getElementById('storedContextDisplay').innerHTML = `
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
+        // Show loading state
+        document.getElementById('overallPhilosophy').innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading your training philosophy...</p>
             </div>
-            <p class="mt-2">Loading stored context...</p>
-        </div>
-    `;
+        `;
 
-    try {
-        const response = await fetch('/get_stored_context');
-        const data = await response.json();
+        // Load both context and weekly plan
+        const [contextResponse, planResponse] = await Promise.all([
+            fetch('/get_stored_context'),
+            fetch('/api/weekly_plan')
+        ]);
 
-        let html = '';
+        const contextData = await contextResponse.json();
+        const planData = await planResponse.json();
 
-        if (data.plan_context) {
-            const ctx = data.plan_context;
-            html += `
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h6><i class="fas fa-brain me-2"></i>Plan Context</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <tr><th>Philosophy:</th><td>${ctx.plan_philosophy || '<em>Not set</em>'}</td></tr>
-                                <tr><th>Weekly Structure:</th><td>${ctx.weekly_structure || '<em>Not set</em>'}</td></tr>
-                                <tr><th>Progression Strategy:</th><td>${ctx.progression_strategy || '<em>Not set</em>'}</td></tr>
-                                <tr><th>Special Considerations:</th><td>${ctx.special_considerations || '<em>Not set</em>'}</td></tr>
-                                <tr><th>Creation Reasoning:</th><td>${ctx.creation_reasoning ? ctx.creation_reasoning.substring(0, 200) + '...' : '<em>Not set</em>'}</td></tr>
-                                <tr><th>Created By AI:</th><td>${ctx.created_by_ai ? 'Yes' : 'No'}</td></tr>
-                                <tr><th>Last Updated:</th><td>${ctx.updated_date || 'Never'}</td></tr>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-        } else {
-            html += `
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle me-2"></i>
-                    No plan context found. Use AI Analysis or Manual Entry to create context.
-                </div>
-            `;
-        }
+        currentPhilosophy = contextData;
+        currentPlan = planData;
 
-        if (data.exercise_metadata && data.exercise_metadata.length > 0) {
-            html += `
-                <div class="row">
-                    <div class="col-12">
-                        <h6><i class="fas fa-dumbbell me-2"></i>Exercise Context (${data.exercise_metadata.length} exercises)</h6>
-                        <div class="mb-2">
-                            <button class="btn btn-sm btn-outline-primary" onclick="toggleExerciseDetails()">
-                                <i class="fas fa-eye me-1"></i>View All Exercise Details
-                            </button>
-                        </div>
-                        <div id="exerciseDetails" style="display: none;">
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    <tr><th>Exercise</th>
-                                        <th>Type</th>
-                                        <th>Purpose</th>
-                                        <th>Progression</th>
-                                        <th>Notes</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-            `;
-
-            data.exercise_metadata.forEach(ex => {
-                html += `
-                    <tr>
-                        <td><strong>${ex.exercise_name}</strong></td>
-                        <td><span class="badge bg-secondary">${ex.exercise_type}</span></td>
-                        <td>${ex.primary_purpose || '<em>Not set</em>'}</td>
-                        <td><span class="badge bg-info">${ex.progression_logic}</span></td>
-                        <td>${ex.ai_notes || '<em>None</em>'}</td>
-                    </tr>
-                `;
-            });
-
-            html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-        } else {
-            html += `
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle me-2"></i>
-                    No exercise metadata found. Exercise-specific context will be created during analysis.
-                </div>
-            `;
-        }
-
-        document.getElementById('storedContextDisplay').innerHTML = html;
-        document.getElementById('editStoredContextBtn').style.display = data.plan_context ? 'inline-block' : 'none';
+        displayOverallPhilosophy(contextData);
+        displayDailyBreakdown(contextData, planData);
 
     } catch (error) {
-        document.getElementById('storedContextDisplay').innerHTML = `
+        console.error('Error loading philosophy:', error);
+        document.getElementById('overallPhilosophy').innerHTML = `
             <div class="alert alert-danger">
                 <i class="fas fa-exclamation-circle me-2"></i>
-                Error loading stored context: ${error.message}
+                Error loading philosophy. Please try again.
             </div>
         `;
     }
 }
 
-// Add event listener for edit button when it's created
-document.addEventListener('click', function(e) {
-    if (e.target && e.target.id === 'editStoredContextBtn') {
-        // Switch to manual mode and populate with current data
-        document.getElementById('manualMode').checked = true;
-        document.getElementById('manualMode').dispatchEvent(new Event('change'));
+function displayOverallPhilosophy(data) {
+    const container = document.getElementById('overallPhilosophy');
 
-        // Load current context into manual form
-        populateManualFormWithStoredData();
+    if (!data.plan_context) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>No philosophy found.</strong> Start chatting with Grok about your training approach to automatically populate your philosophy!
+            </div>
+        `;
+        return;
     }
-});
 
-async function populateManualFormWithStoredData() {
-    try {
-        const response = await fetch('/get_stored_context');
-        const data = await response.json();
+    const ctx = data.plan_context;
 
-        if (data.plan_context) {
-            const ctx = data.plan_context;
-            document.querySelector('[name="philosophy"]').value = ctx.plan_philosophy || '';
-            document.querySelector('[name="weekly_structure"]').value = ctx.weekly_structure || '';
-            document.querySelector('[name="progression_strategy"]').value = ctx.progression_strategy || '';
-            document.querySelector('[name="special_considerations"]').value = ctx.special_considerations || '';
-            document.querySelector('[name="reasoning"]').value = ctx.creation_reasoning || '';
-        }
+    let html = '<div class="row">';
 
-        // Populate exercise fields if they exist
-        if (data.exercise_metadata) {
-            data.exercise_metadata.forEach(ex => {
-                const purposeField = document.querySelector(`[name="exercise_purpose_${ex.exercise_name}"]`);
-                const progressionField = document.querySelector(`[name="exercise_progression_${ex.exercise_name}"]`);
-                const notesField = document.querySelector(`[name="exercise_notes_${ex.exercise_name}"]`);
+    if (ctx.plan_philosophy) {
+        html += `
+            <div class="col-md-6 mb-3">
+                <h6><i class="fas fa-brain me-2 text-primary"></i>Training Philosophy</h6>
+                <p class="border-start border-primary ps-3">${ctx.plan_philosophy}</p>
+            </div>
+        `;
+    }
 
-                if (purposeField) purposeField.value = ex.primary_purpose || '';
-                if (progressionField) progressionField.value = ex.progression_logic || 'normal';
-                if (notesField) notesField.value = ex.ai_notes || '';
+    if (ctx.weekly_structure) {
+        html += `
+            <div class="col-md-6 mb-3">
+                <h6><i class="fas fa-calendar me-2 text-success"></i>Weekly Structure</h6>
+                <p class="border-start border-success ps-3">${ctx.weekly_structure}</p>
+            </div>
+        `;
+    }
+
+    if (ctx.progression_strategy) {
+        html += `
+            <div class="col-md-6 mb-3">
+                <h6><i class="fas fa-chart-line me-2 text-info"></i>Progression Strategy</h6>
+                <p class="border-start border-info ps-3">${ctx.progression_strategy}</p>
+            </div>
+        `;
+    }
+
+    if (ctx.special_considerations) {
+        html += `
+            <div class="col-md-6 mb-3">
+                <h6><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Special Considerations</h6>
+                <p class="border-start border-warning ps-3">${ctx.special_considerations}</p>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+
+    // Add creation/update info
+    if (ctx.created_by_ai) {
+        html += `
+            <div class="mt-3 text-muted small">
+                <i class="fas fa-robot me-1"></i>
+                Created by AI analysis on ${ctx.created_date || 'unknown date'}
+                ${ctx.updated_date ? ` • Last updated: ${ctx.updated_date}` : ''}
+            </div>
+        `;
+    }
+
+    container.innerHTML = html;
+}
+
+function displayDailyBreakdown(contextData, planData) {
+    const container = document.getElementById('dailyPhilosophyAccordion');
+
+    if (!planData || Object.keys(planData).length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-warning">
+                <i class="fas fa-calendar-times me-2"></i>
+                No weekly plan found. Set up your weekly plan first.
+            </div>
+        `;
+        return;
+    }
+
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayNames = {
+        'monday': 'Monday',
+        'tuesday': 'Tuesday', 
+        'wednesday': 'Wednesday',
+        'thursday': 'Thursday',
+        'friday': 'Friday',
+        'saturday': 'Saturday',
+        'sunday': 'Sunday'
+    };
+
+    let html = '';
+
+    dayOrder.forEach((day, index) => {
+        if (planData[day] && planData[day].length > 0) {
+            const exercises = planData[day];
+            const dayName = dayNames[day];
+
+            html += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading${day}">
+                        <button class="accordion-button ${index > 0 ? 'collapsed' : ''}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#collapse${day}">
+                            <i class="fas fa-dumbbell me-2"></i>
+                            <strong>${dayName}</strong>
+                            <span class="badge bg-secondary ms-2">${exercises.length} exercises</span>
+                        </button>
+                    </h2>
+                    <div id="collapse${day}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                         data-bs-parent="#dailyPhilosophyAccordion">
+                        <div class="accordion-body">
+            `;
+
+            // Day overview
+            html += `
+                <div class="mb-4 p-3 bg-light rounded">
+                    <h6><i class="fas fa-info-circle me-2"></i>${dayName} Overview</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Exercise Count:</strong> ${exercises.length} exercises<br>
+                            <strong>Structure:</strong> ${getWorkoutStructure(exercises)}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Focus:</strong> ${getWorkoutFocus(exercises)}<br>
+                            <strong>Volume:</strong> ${getTotalSets(exercises)} total sets
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Exercise breakdown
+            html += '<div class="table-responsive">';
+            html += `
+                <table class="table table-sm">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Exercise</th>
+                            <th>Sets × Reps</th>
+                            <th>Weight</th>
+                            <th>Purpose</th>
+                            <th>Progression</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            exercises.forEach(exercise => {
+                const metadata = getExerciseMetadata(exercise.exercise, contextData);
+                html += `
+                    <tr>
+                        <td><strong>${exercise.exercise}</strong></td>
+                        <td>${exercise.sets} × ${exercise.reps}</td>
+                        <td>${exercise.weight}</td>
+                        <td>${metadata.purpose}</td>
+                        <td><span class="badge bg-${getProgressionColor(metadata.progression)}">${metadata.progression}</span></td>
+                    </tr>
+                `;
             });
+
+            html += '</tbody></table></div></div></div></div>';
         }
+    });
 
-        // Scroll to manual section
-        document.getElementById('manualAnalysisSection').scrollIntoView({ behavior: 'smooth' });
+    if (html === '') {
+        html = `
+            <div class="alert alert-info">
+                <i class="fas fa-calendar-plus me-2"></i>
+                No training days found. Add exercises to your weekly plan to see daily philosophy breakdowns.
+            </div>
+        `;
+    }
 
-    } catch (error) {
-        alert('Error loading data for editing: ' + error.message);
+    container.innerHTML = html;
+}
+
+function getExerciseMetadata(exerciseName, contextData) {
+    if (!contextData.exercise_metadata) {
+        return {
+            purpose: 'General strength and hypertrophy',
+            progression: 'normal'
+        };
+    }
+
+    const metadata = contextData.exercise_metadata.find(ex => 
+        ex.exercise_name.toLowerCase() === exerciseName.toLowerCase()
+    );
+
+    if (metadata) {
+        return {
+            purpose: metadata.primary_purpose || 'General strength and hypertrophy',
+            progression: metadata.progression_logic || 'normal'
+        };
+    }
+
+    // Fallback based on exercise name
+    const exerciseLower = exerciseName.toLowerCase();
+    if (exerciseLower.includes('curl') || exerciseLower.includes('raise') || exerciseLower.includes('fly')) {
+        return { purpose: 'Isolation hypertrophy', progression: 'slow' };
+    } else if (exerciseLower.includes('press') || exerciseLower.includes('squat') || exerciseLower.includes('deadlift')) {
+        return { purpose: 'Compound strength', progression: 'aggressive' };
+    } else if (exerciseLower.includes('ab') || exerciseLower.includes('crunch')) {
+        return { purpose: 'Core strengthening', progression: 'aggressive' };
+    }
+
+    return { purpose: 'General strength and hypertrophy', progression: 'normal' };
+}
+
+function getProgressionColor(progression) {
+    switch (progression) {
+        case 'aggressive': return 'success';
+        case 'slow': return 'warning';
+        case 'maintain': return 'secondary';
+        default: return 'primary';
     }
 }
 
-function toggleExerciseDetails() {
-            const details = document.getElementById('exerciseDetails');
-            if (details.style.display === 'none') {
-                details.style.display = 'block';
-            } else {
-                details.style.display = 'none';
-            }
-        }
+function getWorkoutStructure(exercises) {
+    if (exercises.length <= 3) return 'Focused';
+    if (exercises.length <= 5) return 'Moderate';
+    return 'High Volume';
+}
 
-        function cleanupDuplicates() {
-            if (!confirm('This will remove all duplicate exercise contexts and create exactly one entry per unique exercise. Continue?')) {
-                return;
-            }
+function getWorkoutFocus(exercises) {
+    const exerciseNames = exercises.map(ex => ex.exercise.toLowerCase()).join(' ');
 
-            fetch('/cleanup_exercise_duplicates', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert(data.message);
-                    location.reload(); // Refresh to show updated counts
-                } else {
-                    alert('Error: ' + data.error);
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error cleaning up duplicates');
-            });
-        }
+    if (exerciseNames.includes('bench') || exerciseNames.includes('chest')) {
+        return 'Upper Body Push';
+    } else if (exerciseNames.includes('row') || exerciseNames.includes('pull')) {
+        return 'Upper Body Pull';
+    } else if (exerciseNames.includes('squat') || exerciseNames.includes('leg')) {
+        return 'Lower Body';
+    } else if (exerciseNames.includes('ab') || exerciseNames.includes('core')) {
+        return 'Core & Accessories';
+    }
+    return 'Full Body';
+}
+
+function getTotalSets(exercises) {
+    return exercises.reduce((total, ex) => total + (ex.sets || 0), 0);
+}
 </script>
 {% endblock %}
