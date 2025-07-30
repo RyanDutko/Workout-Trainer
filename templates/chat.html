@@ -79,16 +79,17 @@ window.addEventListener('load', function() {
 
 // Auto-save input as user types
 messageInput.addEventListener('input', function() {
-    // Only save if there's existing conversation to preserve
     const existing = localStorage.getItem('aiChatConversation');
+    
     if (existing) {
+        // Update existing conversation data
         try {
             const data = JSON.parse(existing);
             data.currentInput = messageInput.value;
-            data.timestamp = Date.now(); // Update timestamp to keep it fresh
+            data.timestamp = Date.now();
             localStorage.setItem('aiChatConversation', JSON.stringify(data));
         } catch (e) {
-            // If parsing fails, just save a minimal version
+            // If parsing fails, create new data
             const conversationData = {
                 messages: chatMessages.innerHTML,
                 history: conversationHistory,
@@ -97,6 +98,15 @@ messageInput.addEventListener('input', function() {
             };
             localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
         }
+    } else {
+        // Create new conversation data just for the input
+        const conversationData = {
+            messages: chatMessages.innerHTML,
+            history: conversationHistory,
+            currentInput: messageInput.value,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
     }
 });
 
