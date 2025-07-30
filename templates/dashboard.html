@@ -241,6 +241,48 @@
         </div>
     </div>
 </div>
+
+<!-- Quick Log Modal -->
+<div class="modal fade" id="quickLogModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Log Workout</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="quickLogForm">
+                    <div class="mb-3">
+                        <label for="quickExerciseName" class="form-label">Exercise</label>
+                        <input type="text" class="form-control" id="quickExerciseName" readonly>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="quickSets" class="form-label">Sets</label>
+                            <input type="number" class="form-control" id="quickSets" min="1" max="10">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="quickReps" class="form-label">Reps</label>
+                            <input type="text" class="form-control" id="quickReps" placeholder="e.g., 12 or 10/10/8">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="quickWeight" class="form-label">Weight</label>
+                            <input type="text" class="form-control" id="quickWeight" placeholder="e.g., 180lbs">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quickNotes" class="form-label">Notes (Optional)</label>
+                        <textarea class="form-control" id="quickNotes" rows="2" placeholder="How did it feel?"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitQuickLog()">Log Workout</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -536,27 +578,66 @@ function analyzeExercise() {
 }
 
 function quickLog(exercise, sets, reps, weight) {
-    const workoutText = `${sets}x${reps}@${weight} ${exercise}`;
+    // Populate the modal with the planned workout data
+    document.getElementById('quickExerciseName').value = exercise.charAt(0).toUpperCase() + exercise.slice(1);
+    document.getElementById('quickSets').value = sets;
+    document.getElementById('quickReps').value = reps;
+    document.getElementById('quickWeight').value = weight;
+    document.getElementById('quickNotes').value = '';
     
-    // Create a form and submit it
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ url_for("log_workout") }}';
+    // Show the modal
+    const modal = new bootstrap.Modal(document.getElementById('quickLogModal'));
+    modal.show();
+}
+
+function submitQuickLog() {
+    const exerciseName = document.getElementById('quickExerciseName').value;
+    const sets = document.getElementById('quickSets').value;
+    const reps = document.getElementById('quickReps').value;
+    const weight = document.getElementById('quickWeight').value;
+    const notes = document.getElementById('quickNotes').value;
     
-    const workoutInput = document.createElement('input');
-    workoutInput.type = 'hidden';
-    workoutInput.name = 'workout_text';
-    workoutInput.value = workoutText;
+    if (!sets || !reps || !weight) {
+        alert('Please fill in sets, reps, and weight');
+        return;
+    }
     
-    const dateInput = document.createElement('input');
-    dateInput.type = 'hidden';
-    dateInput.name = 'date';
-    dateInput.value = new Date().toISOString().split('T')[0];
+    const workoutData = {
+        exercise_name: exerciseName,
+        sets: parseInt(sets),
+        reps: reps,
+        weight: weight,
+        notes: notes,
+        date: new Date().toISOString().split('T')[0]
+    };
     
-    form.appendChild(workoutInput);
-    form.appendChild(dateInput);
-    document.body.appendChild(form);
-    form.submit();
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(workoutData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('quickLogModal'));
+            modal.hide();
+            
+            // Show success message
+            alert('Workout logged successfully!');
+            
+            // Refresh the page to show updated completion status
+            window.location.reload();
+        } else {
+            alert('Error logging workout: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging workout. Please try again.');
+    });
 }
 </script>
 {% endblock %}

@@ -2480,6 +2480,38 @@ def get_exercise_performance(exercise):
             'has_real_data': False
         })
 
+@app.route('/save_workout', methods=['POST'])
+def save_workout():
+    """Save a single workout entry"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 1)
+        reps = data.get('reps', '')
+        weight = data.get('weight', '')
+        notes = data.get('notes', '')
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        if not exercise_name:
+            return jsonify({'status': 'error', 'message': 'Exercise name is required'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, reps, weight, notes, date))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'status': 'success', 'message': 'Workout logged successfully'})
+        
+    except Exception as e:
+        print(f"Error saving workout: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
 @app.route('/get_conversation_context/<int:days>')
 def get_conversation_context_api(days):
     """Get conversation context for the last N days"""
