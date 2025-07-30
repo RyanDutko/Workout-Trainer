@@ -518,6 +518,51 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
         
     return None
 
+def parse_preference_updates_from_conversation(ai_response, user_request):
+    """Parse conversation to detect AI preference changes"""
+    try:
+        combined_text = f"{user_request} {ai_response}".lower()
+        
+        # Look for preference change requests
+        preference_changes = {}
+        
+        # Tone preferences
+        if any(phrase in combined_text for phrase in ['too long', 'shorter', 'more brief', 'less verbose', 'keep it short']):
+            preference_changes['grok_detail_level'] = 'brief'
+        elif any(phrase in combined_text for phrase in ['more detail', 'longer', 'more comprehensive', 'explain more']):
+            preference_changes['grok_detail_level'] = 'detailed'
+        elif any(phrase in combined_text for phrase in ['more casual', 'less formal', 'relaxed']):
+            preference_changes['grok_tone'] = 'casual'
+        elif any(phrase in combined_text for phrase in ['more professional', 'formal', 'business like']):
+            preference_changes['grok_tone'] = 'professional'
+        elif any(phrase in combined_text for phrase in ['more motivational', 'pump me up', 'encourage me']):
+            preference_changes['grok_tone'] = 'motivational'
+        elif any(phrase in combined_text for phrase in ['more analytical', 'technical', 'data focused']):
+            preference_changes['grok_tone'] = 'analytical'
+            
+        # Format preferences
+        if any(phrase in combined_text for phrase in ['bullet points', 'bulleted list', 'use bullets']):
+            preference_changes['grok_format'] = 'bullet_points'
+        elif any(phrase in combined_text for phrase in ['paragraph', 'full sentences', 'narrative']):
+            preference_changes['grok_format'] = 'paragraphs'
+        elif any(phrase in combined_text for phrase in ['numbered list', 'numbers', 'step by step']):
+            preference_changes['grok_format'] = 'numbered_lists'
+            
+        # Communication style
+        if any(phrase in combined_text for phrase in ['more direct', 'straight to the point', 'no fluff']):
+            preference_changes['communication_style'] = 'direct'
+        elif any(phrase in combined_text for phrase in ['more friendly', 'warmer', 'nicer']):
+            preference_changes['communication_style'] = 'friendly'
+        elif any(phrase in combined_text for phrase in ['more encouraging', 'supportive', 'positive']):
+            preference_changes['communication_style'] = 'encouraging'
+            
+        return preference_changes if preference_changes else None
+        
+    except Exception as e:
+        print(f"Error parsing preference updates: {e}")
+        
+    return None
+
 def get_conversation_context(days_back=14, limit=10):
     """Get recent conversation context for enhanced AI responses"""
     try:
@@ -1041,6 +1086,17 @@ def chat_stream():
                         print(f"🧠 Auto-updated training philosophy based on conversation")
                     except Exception as e:
                         print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
+
+                # Parse potential AI preference updates from conversation
+                preference_updates = parse_preference_updates_from_conversation(response, user_message)
+                if preference_updates:
+                    # Auto-update AI preferences in database
+                    try:
+                        for field, value in preference_updates.items():
+                            cursor.execute(f'UPDATE users SET {field} = ? WHERE id = 1', (value,))
+                        print(f"🤖 Auto-updated AI preferences: {list(preference_updates.keys())}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to auto-update preferences: {str(e)}")
 
                 # Get or create conversation thread
                 cursor.execute('''
