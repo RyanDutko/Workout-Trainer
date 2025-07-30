@@ -968,28 +968,49 @@ def dashboard():
     # Get today's day of week
     today = datetime.now().strftime('%A')
     today_lowercase = today.lower()
+    today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan - select specific columns to match template unpacking
     cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     today_plan = cursor.fetchall()
 
-    # Get recent workouts
-    cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
-    recent_workouts = cursor.fetchall()
-
     # Calculate stats
     from collections import namedtuple
     Stats = namedtuple('Stats', ['week_volume', 'month_volume', 'week_workouts', 'latest_weight', 'weight_date'])
 
-    # Week volume
+    # Week volume - handle non-numeric weight values
     week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-    cursor.execute('SELECT SUM(CAST(weight AS REAL) * sets * CAST(reps AS REAL)) FROM workouts WHERE date_logged >= ?', (week_ago,))
-    week_volume = cursor.fetchone()[0] or 0
+    cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (week_ago,))
+    week_workouts_data = cursor.fetchall()
+    
+    week_volume = 0
+    for exercise, sets, reps, weight in week_workouts_data:
+        try:
+            # Extract numeric weight value
+            weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+            if weight_str != 'bodyweight' and weight_str:
+                weight_num = float(weight_str)
+                reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                week_volume += weight_num * sets * reps_num
+        except (ValueError, AttributeError):
+            continue
 
-    # Month volume
+    # Month volume - handle non-numeric weight values
     month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    cursor.execute('SELECT SUM(CAST(weight AS REAL) * sets * CAST(reps AS REAL)) FROM workouts WHERE date_logged >= ?', (month_ago,))
-    month_volume = cursor.fetchone()[0] or 0
+    cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (month_ago,))
+    month_workouts_data = cursor.fetchall()
+    
+    month_volume = 0
+    for exercise, sets, reps, weight in month_workouts_data:
+        try:
+            # Extract numeric weight value
+            weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+            if weight_str != 'bodyweight' and weight_str:
+                weight_num = float(weight_str)
+                reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                month_volume += weight_num * sets * reps_num
+        except (ValueError, AttributeError):
+            continue
 
     # Week workouts count
     cursor.execute('SELECT COUNT(DISTINCT date_logged) FROM workouts WHERE date_logged >= ?', (week_ago,))
@@ -1016,8 +1037,8 @@ def dashboard():
 
     return render_template('dashboard.html', 
                          today=today,
-                         today_plan=today_plan, 
-                         recent_workouts=recent_workouts,
+                         today_date=today_date,
+                         today_plan=today_plan,
                          stats=stats,
                          needs_onboarding=needs_onboarding)
 
@@ -2127,12 +2148,67 @@ def api_weekly_plan():
 @app.route('/get_weight_history')
 def get_weight_history():
     """Get weight history for analytics"""
-    return jsonify({'dates': [], 'weights': []})
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create a simple weight tracking table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weight_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weight REAL NOT NULL,
+                date_logged TEXT NOT NULL,
+                user_id INTEGER DEFAULT 1
+            )
+        ''')
+        
+        cursor.execute('SELECT date_logged, weight FROM weight_logs WHERE user_id = 1 ORDER BY date_logged')
+        weight_data = cursor.fetchall()
+        
+        dates = [row[0] for row in weight_data]
+        weights = [row[1] for row in weight_data]
+        
+        conn.close()
+        return jsonify({'dates': dates, 'weights': weights})
+    except Exception as e:
+        return jsonify({'dates': [], 'weights': []})
 
 @app.route('/get_volume_history')
 def get_volume_history():
     """Get volume history for analytics"""
-    return jsonify({'dates': [], 'volumes': []})
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get weekly volume data for the last 8 weeks
+        weekly_volumes = []
+        week_labels = []
+        
+        for week_offset in range(7, -1, -1):
+            week_start = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday())).strftime('%Y-%m-%d')
+            week_end = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday() - 6)).strftime('%Y-%m-%d')
+            
+            cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged BETWEEN ? AND ?', (week_start, week_end))
+            week_workouts = cursor.fetchall()
+            
+            week_volume = 0
+            for exercise, sets, reps, weight in week_workouts:
+                try:
+                    weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                    if weight_str != 'bodyweight' and weight_str:
+                        weight_num = float(weight_str)
+                        reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                        week_volume += weight_num * sets * reps_num
+                except (ValueError, AttributeError):
+                    continue
+            
+            weekly_volumes.append(int(week_volume))
+            week_labels.append(f"Week {week_offset + 1}")
+        
+        conn.close()
+        return jsonify({'weeks': week_labels, 'volumes': weekly_volumes})
+    except Exception as e:
+        return jsonify({'weeks': [], 'volumes': []})
 
 @app.route('/get_exercise_list')
 def get_exercise_list():
@@ -2145,10 +2221,119 @@ def get_exercise_list():
         exercises = [row[0] for row in cursor.fetchall()]
         
         conn.close()
-        return jsonify(exercises)
+        return jsonify({'exercises': exercises})
         
     except Exception as e:
-        return jsonify([])
+        return jsonify({'exercises': []})
+
+@app.route('/log_weight', methods=['POST'])
+def log_weight():
+    """Log weight entry"""
+    try:
+        data = request.json
+        weight = float(data.get('weight'))
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create weight_logs table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weight_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weight REAL NOT NULL,
+                date_logged TEXT NOT NULL,
+                user_id INTEGER DEFAULT 1
+            )
+        ''')
+        
+        # Insert or update weight for the date
+        cursor.execute('DELETE FROM weight_logs WHERE date_logged = ? AND user_id = 1', (date,))
+        cursor.execute('INSERT INTO weight_logs (weight, date_logged, user_id) VALUES (?, ?, 1)', (weight, date))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_exercise_performance/<exercise>')
+def get_exercise_performance(exercise):
+    """Get exercise performance data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT date_logged, sets, reps, weight 
+            FROM workouts 
+            WHERE LOWER(exercise_name) LIKE LOWER(?) 
+            ORDER BY date_logged
+        ''', (f'%{exercise}%',))
+        
+        performance_data = cursor.fetchall()
+        
+        dates = []
+        max_weights = []
+        volumes = []
+        
+        for date, sets, reps, weight in performance_data:
+            try:
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str != 'bodyweight' and weight_str:
+                    weight_num = float(weight_str)
+                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                    volume = weight_num * sets * reps_num
+                    
+                    dates.append(date)
+                    max_weights.append(weight_num)
+                    volumes.append(volume)
+            except (ValueError, AttributeError):
+                continue
+        
+        # Calculate stats
+        best_weight = max(max_weights) if max_weights else 0
+        best_date = dates[max_weights.index(best_weight)] if max_weights else 'N/A'
+        recent_avg = sum(max_weights[-5:]) / len(max_weights[-5:]) if max_weights else 0
+        total_sessions = len(dates)
+        
+        # Calculate progress (last month vs previous month)
+        recent_weights = [w for i, w in enumerate(max_weights) if i >= len(max_weights) - 4] if len(max_weights) > 4 else max_weights
+        older_weights = [w for i, w in enumerate(max_weights) if i < len(max_weights) - 4] if len(max_weights) > 4 else []
+        
+        if recent_weights and older_weights:
+            recent_avg_calc = sum(recent_weights) / len(recent_weights)
+            older_avg = sum(older_weights) / len(older_weights)
+            progress = ((recent_avg_calc - older_avg) / older_avg * 100) if older_avg > 0 else 0
+        else:
+            progress = 0
+        
+        conn.close()
+        
+        return jsonify({
+            'dates': dates,
+            'max_weights': max_weights,
+            'volumes': volumes,
+            'best_weight': best_weight,
+            'best_date': best_date,
+            'recent_avg': round(recent_avg, 1),
+            'progress': round(progress, 1),
+            'total_sessions': total_sessions
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'dates': [],
+            'max_weights': [],
+            'volumes': [],
+            'best_weight': 0,
+            'best_date': 'N/A',
+            'recent_avg': 0,
+            'progress': 0,
+            'total_sessions': 0
+        })
 
 @app.route('/get_conversation_context/<int:days>')
 def get_conversation_context_api(days):
