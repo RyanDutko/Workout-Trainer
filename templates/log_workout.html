@@ -747,18 +747,23 @@ function logCurrentExercise() {
     };
 
     if (workoutStatus === 'skipped') {
-        const skipReason = document.getElementById('skipReason').value;
-        if (!skipReason) {
+        const skipReasonElement = document.getElementById('skipReason');
+        const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
+        
+        if (!skipReason || skipReason === '') {
             alert('Please select a reason for skipping this exercise');
             return;
         }
         workoutData.skip_reason = skipReason;
         workoutData.sets = 0;
-        workoutData.reps = 0;
-        workoutData.weight = 0;
+        workoutData.reps = '0';
+        workoutData.weight = '0lbs';
     } else if (workoutStatus === 'substituted') {
-        const substitutedExercise = document.getElementById('substitutedExercise').value;
-        const substitutionReason = document.getElementById('substitutionReason').value;
+        const substitutedExerciseElement = document.getElementById('substitutedExercise');
+        const substitutionReasonElement = document.getElementById('substitutionReason');
+        
+        const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+        const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
 
         if (!substitutedExercise || !substitutionReason) {
             alert('Please fill in what exercise you substituted and why');
@@ -776,10 +781,12 @@ function logCurrentExercise() {
         let allSetsHaveReps = true;
 
         for (let i = 1; i <= exercise.sets; i++) {
-            const reps = document.getElementById(`set${i}Reps`).value;
+            const repsElement = document.getElementById(`set${i}Reps`);
+            const reps = repsElement ? repsElement.value : '';
             if (!reps || reps === '') {
                 allSetsHaveReps = false;
-                break;            }
+                break;
+            }
             setReps.push(parseInt(reps));
         }
 
@@ -791,29 +798,61 @@ function logCurrentExercise() {
         workoutData.reps_performed = setReps;
     }
 
-    // Log the exercise
-    fetch('/log_multi_workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            exercises: [workoutData],
+    // For skipped exercises, use the simple save_workout endpoint
+    if (workoutStatus === 'skipped') {
+        const saveData = {
+            exercise_name: workoutData.exercise_name,
+            sets: 0,
+            reps: '0',
+            weight: '0lbs',
+            notes: workoutData.notes + ` [SKIPPED: ${workoutData.skip_reason}]`,
             date: workoutData.date
+        };
+
+        fetch('/save_workout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(saveData)
         })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Move to next exercise
-            currentExerciseIndex++;
-            loadCurrentExercise();
-        } else {
-            alert('Error logging exercise: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error logging exercise');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                // Move to next exercise
+                currentExerciseIndex++;
+                loadCurrentExercise();
+            } else {
+                alert('Error logging exercise: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error logging exercise');
+        });
+    } else {
+        // Use the multi-workout endpoint for completed/substituted exercises
+        fetch('/log_multi_workout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exercises: [workoutData],
+                date: workoutData.date
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Move to next exercise
+                currentExerciseIndex++;
+                loadCurrentExercise();
+            } else {
+                alert('Error logging exercise: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error logging exercise');
+        });
+    }
 }
 
 function previousExercise() {
@@ -1046,18 +1085,23 @@ function logCurrentPostExercise() {
     };
 
     if (workoutStatus === 'skipped') {
-        const skipReason = document.getElementById('postSkipReason').value;
-        if (!skipReason) {
+        const skipReasonElement = document.getElementById('postSkipReason');
+        const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
+        
+        if (!skipReason || skipReason === '') {
             alert('Please select a reason for skipping this exercise');
             return;
         }
         workoutData.skip_reason = skipReason;
         workoutData.sets = 0;
-        workoutData.reps = 0;
-        workoutData.weight = 0;
+        workoutData.reps = '0';
+        workoutData.weight = '0lbs';
     } else if (workoutStatus === 'substituted') {
-        const substitutedExercise = document.getElementById('postSubstitutedExercise').value;
-        const substitutionReason = document.getElementById('postSubstitutionReason').value;
+        const substitutedExerciseElement = document.getElementById('postSubstitutedExercise');
+        const substitutionReasonElement = document.getElementById('postSubstitutionReason');
+        
+        const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+        const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
 
         if (!substitutedExercise || !substitutionReason) {
             alert('Please fill in what exercise you substituted and why');
@@ -1075,7 +1119,8 @@ function logCurrentPostExercise() {
         let allSetsHaveReps = true;
 
         for (let i = 1; i <= exercise.sets; i++) {
-            const reps = document.getElementById(`postSet${i}Reps`).value;
+            const repsElement = document.getElementById(`postSet${i}Reps`);
+            const reps = repsElement ? repsElement.value : '';
             if (!reps || reps === '') {
                 allSetsHaveReps = false;
                 break;
@@ -1100,6 +1145,11 @@ function logCurrentPostExercise() {
         notes: workoutData.notes + (workoutData.status !== 'completed' ? ` [${workoutData.status}]` : ''),
         date: workoutData.date
     };
+
+    // Add skip reason to notes if skipped
+    if (workoutStatus === 'skipped') {
+        saveData.notes += ` [SKIPPED: ${workoutData.skip_reason}]`;
+    }
 
     // Log the exercise
     fetch('/save_workout', {
