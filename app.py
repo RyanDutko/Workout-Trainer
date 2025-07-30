@@ -970,9 +970,63 @@ def dashboard():
     today_lowercase = today.lower()
     today_date = datetime.now().strftime('%Y-%m-%d')
 
-    # Get today's plan - select specific columns to match template unpacking
+    # Get today's plan with completion status
     cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
-    today_plan = cursor.fetchall()
+    plan_data = cursor.fetchall()
+    
+    # Check completion status for each exercise
+    today_plan = []
+    for row in plan_data:
+        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes = row
+        
+        # Check if this exercise was logged today
+        cursor.execute('''
+            SELECT sets, reps, weight, notes 
+            FROM workouts 
+            WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
+            ORDER BY id DESC LIMIT 1
+        ''', (exercise_name, today_date))
+        
+        logged_workout = cursor.fetchone()
+        
+        completion_status = {
+            'completed': False,
+            'status_text': 'Not completed',
+            'status_class': 'text-muted',
+            'logged_sets': None,
+            'logged_reps': None,
+            'logged_weight': None,
+            'notes': None
+        }
+        
+        if logged_workout:
+            logged_sets, logged_reps, logged_weight, logged_notes = logged_workout
+            completion_status['completed'] = True
+            completion_status['logged_sets'] = logged_sets
+            completion_status['logged_reps'] = logged_reps
+            completion_status['logged_weight'] = logged_weight
+            completion_status['notes'] = logged_notes
+            
+            # Determine completion quality
+            try:
+                target_sets_num = int(target_sets)
+                logged_sets_num = int(logged_sets)
+                
+                if logged_sets_num == target_sets_num:
+                    completion_status['status_text'] = 'Completed'
+                    completion_status['status_class'] = 'text-success'
+                elif logged_sets_num > 0:
+                    completion_status['status_text'] = f'Partial ({logged_sets}/{target_sets} sets)'
+                    completion_status['status_class'] = 'text-warning'
+                else:
+                    completion_status['status_text'] = 'Skipped'
+                    completion_status['status_class'] = 'text-danger'
+            except:
+                completion_status['status_text'] = 'Completed'
+                completion_status['status_class'] = 'text-success'
+        
+        # Add completion status to the row data
+        today_plan.append((*row, completion_status))
 
     # Calculate stats
     from collections import namedtuple

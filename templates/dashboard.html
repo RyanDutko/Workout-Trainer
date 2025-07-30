@@ -29,7 +29,7 @@
                 {% if today_plan %}
                     <div class="row">
                         {% for row in today_plan %}
-                            {% set id, day, exercise, sets, reps, weight, order, notes = row %}
+                            {% set id, day, exercise, sets, reps, weight, order, notes, completion = row %}
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card border-left-primary h-100">
                                     <div class="card-body">
@@ -41,13 +41,48 @@
                                                     <span class="badge bg-light text-dark me-2">{{ reps }} reps</span>
                                                     <span class="badge bg-light text-dark">{{ weight }}</span>
                                                 </p>
+                                                
+                                                <!-- Completion Status -->
+                                                <div class="mb-2">
+                                                    <small class="{{ completion.status_class }}">
+                                                        {% if completion.completed %}
+                                                            <i class="fas fa-check-circle me-1"></i>
+                                                        {% else %}
+                                                            <i class="fas fa-circle me-1"></i>
+                                                        {% endif %}
+                                                        {{ completion.status_text }}
+                                                    </small>
+                                                </div>
+                                                
+                                                <!-- Show logged details if completed -->
+                                                {% if completion.completed %}
+                                                    <div class="mb-2">
+                                                        <small class="text-success">
+                                                            Logged: {{ completion.logged_sets }}x{{ completion.logged_reps }} @ {{ completion.logged_weight }}
+                                                        </small>
+                                                    </div>
+                                                    {% if completion.notes %}
+                                                        <div class="mb-2">
+                                                            <small class="text-muted fst-italic">{{ completion.notes }}</small>
+                                                        </div>
+                                                    {% endif %}
+                                                {% endif %}
+                                                
                                                 {% if notes %}
                                                     <small class="text-muted">{{ notes }}</small>
                                                 {% endif %}
                                             </div>
-                                            <button class="btn btn-success btn-sm" onclick="quickLog('{{ exercise }}', {{ sets }}, '{{ reps }}', '{{ weight }}')">
-                                                <i class="fas fa-check"></i>
-                                            </button>
+                                            
+                                            <!-- Action Button -->
+                                            {% if completion.completed %}
+                                                <button class="btn btn-outline-success btn-sm" disabled>
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            {% else %}
+                                                <button class="btn btn-success btn-sm" onclick="quickLog('{{ exercise }}', {{ sets }}, '{{ reps }}', '{{ weight }}')">
+                                                    <i class="fas fa-plus"></i>
+                                                </button>
+                                            {% endif %}
                                         </div>
                                     </div>
                                 </div>
