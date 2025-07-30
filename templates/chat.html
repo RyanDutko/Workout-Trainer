@@ -77,11 +77,35 @@ window.addEventListener('load', function() {
     loadConversationFromStorage();
 });
 
+// Auto-save input as user types
+messageInput.addEventListener('input', function() {
+    // Only save if there's existing conversation to preserve
+    const existing = localStorage.getItem('aiChatConversation');
+    if (existing) {
+        try {
+            const data = JSON.parse(existing);
+            data.currentInput = messageInput.value;
+            data.timestamp = Date.now(); // Update timestamp to keep it fresh
+            localStorage.setItem('aiChatConversation', JSON.stringify(data));
+        } catch (e) {
+            // If parsing fails, just save a minimal version
+            const conversationData = {
+                messages: chatMessages.innerHTML,
+                history: conversationHistory,
+                currentInput: messageInput.value,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
+        }
+    }
+});
+
 // Save conversation to localStorage
 function saveConversationToStorage() {
     const conversationData = {
         messages: chatMessages.innerHTML,
         history: conversationHistory,
+        currentInput: messageInput.value,
         timestamp: Date.now()
     };
     localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
@@ -99,6 +123,7 @@ function loadConversationFromStorage() {
             if (conversationData.timestamp > twoHoursAgo) {
                 chatMessages.innerHTML = conversationData.messages;
                 conversationHistory = conversationData.history || '';
+                messageInput.value = conversationData.currentInput || '';
                 
                 // Scroll to bottom
                 chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -133,6 +158,7 @@ function clearConversation() {
         </div>
     `;
     conversationHistory = '';
+    messageInput.value = '';
 }
 
 chatForm.addEventListener('submit', function(e) {
