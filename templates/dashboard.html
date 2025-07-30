@@ -415,21 +415,23 @@ function analyzeExercise() {
             if (data.dates && data.dates.length > 0) {
                 // Create extended timeline for progression visualization
                 const extendedDates = [...data.dates];
-                const extendedWeights = [...data.max_weights];
-                
-                // Add 4 future sessions for progression visualization (every 2 sessions = 5lb increase)
                 const lastDate = new Date(data.dates[data.dates.length - 1]);
                 const lastWeight = data.max_weights[data.max_weights.length - 1];
                 
+                // Add 4 future sessions for progression visualization (every 2 sessions = 5lb increase)
                 for (let i = 1; i <= 4; i++) {
                     const futureDate = new Date(lastDate);
                     futureDate.setDate(futureDate.getDate() + (i * 7)); // Weekly intervals for display
                     extendedDates.push(futureDate.toISOString().split('T')[0]);
-                    
+                }
+                
+                // Create progression data that connects smoothly
+                const projectionData = [...data.max_weights];
+                for (let i = 1; i <= 4; i++) {
                     // Project 5lb increase every 2 sessions (more realistic progression)
                     const sessionsProgressed = Math.ceil(i / 2);
                     const projectedWeight = lastWeight + (sessionsProgressed * 5);
-                    extendedWeights.push(projectedWeight);
+                    projectionData.push(projectedWeight);
                 }
                 
                 // Update chart with only weight data (remove confusing volume)
@@ -445,7 +447,7 @@ function analyzeExercise() {
                     pointRadius: 6
                 }, {
                     label: 'Progression Goal (lbs)',
-                    data: Array(data.max_weights.length).fill(null).concat(extendedWeights.slice(-4)),
+                    data: Array(data.max_weights.length - 1).fill(null).concat(projectionData.slice(data.max_weights.length - 1)),
                     borderColor: 'rgba(255, 99, 132, 0.5)',
                     backgroundColor: 'rgba(255, 99, 132, 0.05)',
                     tension: 0.1,
