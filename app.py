@@ -2485,6 +2485,53 @@ def get_exercise_performance(exercise):
             'has_real_data': False
         })
 
+@app.route('/delete_workout', methods=['POST'])
+def delete_workout():
+    """Delete a workout entry"""
+    try:
+        data = request.json
+        workout_id = data.get('workout_id')
+        
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get exercise name before deleting to potentially restore newly_added flag
+        cursor.execute('SELECT exercise_name FROM workouts WHERE id = ?', (workout_id,))
+        result = cursor.fetchone()
+        
+        if result:
+            exercise_name = result[0]
+            
+            # Delete the workout
+            cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+            
+            # Check if this was the only log for this exercise
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            remaining_logs = cursor.fetchone()[0]
+            
+            if remaining_logs == 0:
+                # Restore newly_added flag if no logs remain
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET newly_added = TRUE 
+                    WHERE LOWER(exercise_name) = LOWER(?)
+                ''', (exercise_name,))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({'success': True, 'message': 'Workout deleted successfully'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+        
+    except Exception as e:
+        print(f"Error deleting workout: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/save_workout', methods=['POST'])
 def save_workout():
     """Save a single workout entry"""
