@@ -2512,18 +2512,26 @@ def delete_workout():
             cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
             remaining_logs = cursor.fetchone()[0]
             
+            print(f"🗑️ Deleted workout for {exercise_name}, remaining logs: {remaining_logs}")
+            
             if remaining_logs == 0:
-                # Restore newly_added flag if no logs remain for this exercise
+                # Restore newly_added flag if no logs remain for this exercise AND it was created by AI
                 cursor.execute('''
                     UPDATE weekly_plan 
-                    SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
-                    WHERE LOWER(exercise_name) = LOWER(?)
+                    SET newly_added = TRUE
+                    WHERE LOWER(exercise_name) = LOWER(?) AND created_by = 'grok_ai'
                 ''', (exercise_name,))
                 
                 if cursor.rowcount > 0:
-                    print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs")
+                    print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
                 else:
-                    print(f"⚠️ Could not restore 'newly_added' flag for {exercise_name} - exercise not found in plan")
+                    # Check if exercise exists in plan but wasn't created by AI
+                    cursor.execute('SELECT created_by FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                    plan_result = cursor.fetchone()
+                    if plan_result:
+                        print(f"ℹ️ {exercise_name} exists in plan but created by '{plan_result[0]}', not restoring NEW flag")
+                    else:
+                        print(f"⚠️ {exercise_name} not found in weekly plan at all")
             
             conn.commit()
             conn.close()
@@ -2570,6 +2578,17 @@ def save_workout():
         # Check if we actually updated any rows (meaning it was newly added)
         if cursor.rowcount > 0:
             print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
+        else:
+            # Check if exercise exists in plan
+            cursor.execute('SELECT newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            plan_result = cursor.fetchone()
+            if plan_result:
+                if plan_result[0]:
+                    print(f"⚠️ {exercise_name} still shows as newly_added despite logging")
+                else:
+                    print(f"ℹ️ {exercise_name} was already marked as completed")
+            else:
+                print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
         
         conn.commit()
         conn.close()
