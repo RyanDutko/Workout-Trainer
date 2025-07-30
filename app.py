@@ -2329,33 +2329,73 @@ def get_exercise_performance(exercise):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # First check if we have actual logged data for this exercise
+        # More flexible exercise matching - try exact match first, then partial
         cursor.execute('''
             SELECT date_logged, sets, reps, weight 
             FROM workouts 
-            WHERE LOWER(exercise_name) LIKE LOWER(?) 
+            WHERE LOWER(exercise_name) = LOWER(?) 
             ORDER BY date_logged
-        ''', (f'%{exercise}%',))
+        ''', (exercise,))
         
         performance_data = cursor.fetchall()
+        
+        # If no exact match, try partial matching
+        if not performance_data:
+            cursor.execute('''
+                SELECT date_logged, sets, reps, weight 
+                FROM workouts 
+                WHERE LOWER(exercise_name) LIKE LOWER(?) 
+                ORDER BY date_logged
+            ''', (f'%{exercise}%',))
+            performance_data = cursor.fetchall()
         
         dates = []
         max_weights = []
         volumes = []
         
-        # Process actual logged data
+        print(f"🔍 Found {len(performance_data)} workout entries for '{exercise}'")  # Debug log
+        
+        # Process actual logged data with improved reps parsing
         for date, sets, reps, weight in performance_data:
             try:
                 weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
                 if weight_str and weight_str != 'bodyweight':
                     weight_num = float(weight_str)
-                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
-                    volume = weight_num * sets * reps_num
                     
-                    dates.append(date)
-                    max_weights.append(weight_num)
-                    volumes.append(volume)
-            except (ValueError, AttributeError):
+                    # Improved reps parsing to handle different formats
+                    reps_str = str(reps).strip()
+                    reps_num = 0
+                    
+                    # Handle different reps formats
+                    if '/' in reps_str:
+                        # Format like "12/12/12" - take average or first value
+                        reps_parts = reps_str.split('/')
+                        reps_values = []
+                        for part in reps_parts:
+                            try:
+                                reps_values.append(int(part.strip()))
+                            except ValueError:
+                                continue
+                        if reps_values:
+                            reps_num = max(reps_values)  # Use max reps for weight calculation
+                    elif '-' in reps_str:
+                        # Format like "8-12" - use first number
+                        reps_num = int(reps_str.split('-')[0])
+                    else:
+                        # Simple format like "12"
+                        reps_num = int(reps_str)
+                    
+                    if reps_num > 0:
+                        volume = weight_num * sets * reps_num
+                        
+                        dates.append(date)
+                        max_weights.append(weight_num)
+                        volumes.append(volume)
+                        
+                        print(f"📊 {date}: {sets}x{reps_num}@{weight_num}lbs = {volume} volume")  # Debug log
+                        
+            except (ValueError, AttributeError) as e:
+                print(f"⚠️ Error parsing workout data: {date}, {sets}, {reps}, {weight} - {e}")
                 continue
         
         # If no logged data, check weekly plan and create sample progression data
