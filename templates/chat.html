@@ -42,6 +42,9 @@
                     <button class="btn btn-primary btn-sm" onclick="requestFullPlanReview()">
                         <i class="fas fa-clipboard-list me-1"></i>Full Plan Review
                     </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="clearConversation()">
+                        <i class="fas fa-trash me-1"></i>Clear Chat
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" onclick="askQuestion('How should I progress my bench press?')">
                         Bench Press Progression
                     </button>
@@ -69,6 +72,69 @@ const chatMessages = document.getElementById('chatMessages');
 let chatHistory = [];
 let conversationHistory = '';
 
+// Load conversation from localStorage on page load
+window.addEventListener('load', function() {
+    loadConversationFromStorage();
+});
+
+// Save conversation to localStorage
+function saveConversationToStorage() {
+    const conversationData = {
+        messages: chatMessages.innerHTML,
+        history: conversationHistory,
+        timestamp: Date.now()
+    };
+    localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
+}
+
+// Load conversation from localStorage
+function loadConversationFromStorage() {
+    const saved = localStorage.getItem('aiChatConversation');
+    if (saved) {
+        try {
+            const conversationData = JSON.parse(saved);
+            
+            // Check if conversation is less than 2 hours old
+            const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
+            if (conversationData.timestamp > twoHoursAgo) {
+                chatMessages.innerHTML = conversationData.messages;
+                conversationHistory = conversationData.history || '';
+                
+                // Scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Show restore notice
+                const restoreNotice = document.createElement('div');
+                restoreNotice.className = 'alert alert-info alert-dismissible fade show';
+                restoreNotice.innerHTML = `
+                    <i class="fas fa-history me-2"></i>
+                    <strong>Conversation restored!</strong> Your chat history has been recovered.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <button type="button" class="btn btn-sm btn-outline-primary ms-2" onclick="clearConversation()">
+                        Start Fresh
+                    </button>
+                `;
+                chatMessages.insertBefore(restoreNotice, chatMessages.firstChild);
+            }
+        } catch (e) {
+            console.log('Error loading conversation:', e);
+        }
+    }
+}
+
+// Clear conversation storage
+function clearConversation() {
+    localStorage.removeItem('aiChatConversation');
+    chatMessages.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            Ask me anything about your workouts, nutrition, progression, or fitness goals!
+            <br><small class="text-muted mt-1">✨ I can now auto-detect and execute workout logging from your conversations!</small>
+        </div>
+    `;
+    conversationHistory = '';
+}
+
 chatForm.addEventListener('submit', function(e) {
     e.preventDefault();
     const message = messageInput.value.trim();
@@ -80,6 +146,9 @@ chatForm.addEventListener('submit', function(e) {
 
     // Update conversation history
     conversationHistory += `User: ${message}\n\n`;
+    
+    // Save to localStorage
+    saveConversationToStorage();
 
     // Create streaming AI message container
     const aiMessageId = addStreamingMessage();
@@ -104,6 +173,9 @@ chatForm.addEventListener('submit', function(e) {
                     // Add AI response to conversation history
                     conversationHistory += `Grok: ${aiResponse}\n\n`;
                     finalizeStreamingMessage(aiMessageId);
+                    
+                    // Save conversation to localStorage
+                    saveConversationToStorage();
                     return;
                 }
 
