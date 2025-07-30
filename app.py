@@ -2513,12 +2513,13 @@ def delete_workout():
             remaining_logs = cursor.fetchone()[0]
             
             if remaining_logs == 0:
-                # Restore newly_added flag if no logs remain
+                # Restore newly_added flag if no logs remain for this exercise
                 cursor.execute('''
                     UPDATE weekly_plan 
                     SET newly_added = TRUE 
-                    WHERE LOWER(exercise_name) = LOWER(?)
+                    WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = FALSE
                 ''', (exercise_name,))
+                print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs")
             
             conn.commit()
             conn.close()
@@ -2559,8 +2560,12 @@ def save_workout():
         cursor.execute('''
             UPDATE weekly_plan 
             SET newly_added = FALSE 
-            WHERE LOWER(exercise_name) = LOWER(?)
+            WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
+        
+        # Check if we actually updated any rows (meaning it was newly added)
+        if cursor.rowcount > 0:
+            print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
         
         conn.commit()
         conn.close()
@@ -2616,6 +2621,84 @@ def get_conversation_context_api(days):
             'conversations': context_data,
             'total_count': len(context_data)
         })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/debug_newly_added')
+def debug_newly_added():
+    """Debug endpoint to check newly_added status"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get all exercises from weekly plan with their newly_added status
+        cursor.execute('''
+            SELECT exercise_name, newly_added, date_added, created_by 
+            FROM weekly_plan 
+            ORDER BY day_of_week, exercise_order
+        ''')
+        plan_exercises = cursor.fetchall()
+        
+        # For each exercise, check if it has any logs
+        results = []
+        for exercise_name, newly_added, date_added, created_by in plan_exercises:
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            log_count = cursor.fetchone()[0]
+            
+            results.append({
+                'exercise': exercise_name,
+                'newly_added': bool(newly_added),
+                'date_added': date_added,
+                'created_by': created_by,
+                'log_count': log_count,
+                'should_be_new': log_count == 0 and created_by == 'grok_ai'
+            })
+        
+        conn.close()
+        return jsonify(results)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/fix_newly_added', methods=['POST'])
+def fix_newly_added():
+    """Fix newly_added flags based on actual log data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get all exercises from weekly plan
+        cursor.execute('SELECT exercise_name FROM weekly_plan')
+        exercises = cursor.fetchall()
+        
+        fixed_count = 0
+        for (exercise_name,) in exercises:
+            # Check if this exercise has any logs
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            log_count = cursor.fetchone()[0]
+            
+            if log_count == 0:
+                # No logs - should be marked as newly_added if it was created by AI
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET newly_added = TRUE 
+                    WHERE LOWER(exercise_name) = LOWER(?) AND (created_by = 'grok_ai' OR created_by IS NULL)
+                ''', (exercise_name,))
+                if cursor.rowcount > 0:
+                    fixed_count += 1
+            else:
+                # Has logs - should not be marked as newly_added
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET newly_added = FALSE 
+                    WHERE LOWER(exercise_name) = LOWER(?)
+                ''', (exercise_name,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'fixed_count': fixed_count})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
