@@ -1630,6 +1630,227 @@ def modify_plan():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/add_to_plan', methods=['POST'])
+def add_to_plan():
+    """Add exercise to weekly plan"""
+    try:
+        day = request.form.get('day').lower()
+        exercise = request.form.get('exercise')
+        sets = int(request.form.get('sets'))
+        reps = request.form.get('reps')
+        weight = request.form.get('weight')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get next order for the day
+        cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+        next_order = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            INSERT INTO weekly_plan 
+            (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (day, exercise, sets, reps, weight, next_order))
+        
+        conn.commit()
+        conn.close()
+        
+        return redirect(url_for('weekly_plan'))
+        
+    except Exception as e:
+        print(f"Error adding exercise: {e}")
+        return redirect(url_for('weekly_plan'))
+
+@app.route('/edit_exercise', methods=['POST'])
+def edit_exercise():
+    """Edit exercise in weekly plan"""
+    try:
+        data = request.json
+        exercise_id = data.get('id')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        exercise_name = data.get('exercise')
+        notes = data.get('notes', '')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
+            WHERE id = ?
+        ''', (sets, reps, weight, exercise_name, notes, exercise_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_exercise', methods=['POST'])
+def delete_exercise():
+    """Delete exercise from weekly plan"""
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/reorder_exercise', methods=['POST'])
+def reorder_exercise():
+    """Reorder exercises in weekly plan"""
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+        direction = data.get('direction')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get current order
+        cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        current_order = cursor.fetchone()[0]
+        
+        if direction == 'up' and current_order > 1:
+            new_order = current_order - 1
+        elif direction == 'down':
+            cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day,))
+            max_order = cursor.fetchone()[0]
+            if current_order < max_order:
+                new_order = current_order + 1
+            else:
+                return jsonify({'success': False, 'error': 'Already at bottom'})
+        else:
+            return jsonify({'success': False, 'error': 'Cannot move further'})
+        
+        # Swap orders
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (999, day, new_order))
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, 999))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    """Update user profile field"""
+    try:
+        field_name = request.form.get('field_name')
+        value = request.form.get('value')
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user_background record exists
+        cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
+        if cursor.fetchone()[0] == 0:
+            # Create record
+            cursor.execute('INSERT INTO user_background (user_id) VALUES (1)')
+        
+        # Update the specific field
+        update_query = f'UPDATE user_background SET {field_name} = ?, updated_date = ? WHERE user_id = 1'
+        cursor.execute(update_query, (value, datetime.now().strftime('%Y-%m-%d')))
+        
+        conn.commit()
+        conn.close()
+        
+        return redirect(url_for('profile'))
+        
+    except Exception as e:
+        print(f"Error updating profile: {e}")
+        return redirect(url_for('profile'))
+
+@app.route('/api/weekly_plan')
+def api_weekly_plan():
+    """API endpoint for weekly plan data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+        
+        plan_data = cursor.fetchall()
+        conn.close()
+        
+        # Organize by day
+        plan_by_day = {}
+        for day, exercise, sets, reps, weight, order in plan_data:
+            if day not in plan_by_day:
+                plan_by_day[day] = []
+            plan_by_day[day].append({
+                'exercise': exercise,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': order
+            })
+        
+        return jsonify(plan_by_day)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/get_weight_history')
+def get_weight_history():
+    """Get weight history for analytics"""
+    return jsonify({'dates': [], 'weights': []})
+
+@app.route('/get_volume_history')
+def get_volume_history():
+    """Get volume history for analytics"""
+    return jsonify({'dates': [], 'volumes': []})
+
+@app.route('/get_exercise_list')
+def get_exercise_list():
+    """Get exercise list for analytics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT DISTINCT exercise_name FROM workouts ORDER BY exercise_name')
+        exercises = [row[0] for row in cursor.fetchall()]
+        
+        conn.close()
+        return jsonify(exercises)
+        
+    except Exception as e:
+        return jsonify([])
+
 @app.route('/get_conversation_context/<int:days>')
 def get_conversation_context_api(days):
     """Get conversation context for the last N days"""
