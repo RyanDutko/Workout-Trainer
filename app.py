@@ -2516,10 +2516,14 @@ def delete_workout():
                 # Restore newly_added flag if no logs remain for this exercise
                 cursor.execute('''
                     UPDATE weekly_plan 
-                    SET newly_added = TRUE 
-                    WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = FALSE
+                    SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                    WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
-                print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs")
+                
+                if cursor.rowcount > 0:
+                    print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs")
+                else:
+                    print(f"⚠️ Could not restore 'newly_added' flag for {exercise_name} - exercise not found in plan")
             
             conn.commit()
             conn.close()
@@ -2669,11 +2673,13 @@ def fix_newly_added():
         cursor = conn.cursor()
         
         # Get all exercises from weekly plan
-        cursor.execute('SELECT exercise_name FROM weekly_plan')
+        cursor.execute('SELECT exercise_name, created_by FROM weekly_plan')
         exercises = cursor.fetchall()
         
         fixed_count = 0
-        for (exercise_name,) in exercises:
+        details = []
+        
+        for exercise_name, created_by in exercises:
             # Check if this exercise has any logs
             cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
             log_count = cursor.fetchone()[0]
@@ -2682,11 +2688,12 @@ def fix_newly_added():
                 # No logs - should be marked as newly_added if it was created by AI
                 cursor.execute('''
                     UPDATE weekly_plan 
-                    SET newly_added = TRUE 
-                    WHERE LOWER(exercise_name) = LOWER(?) AND (created_by = 'grok_ai' OR created_by IS NULL)
+                    SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                    WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
                 if cursor.rowcount > 0:
                     fixed_count += 1
+                    details.append(f"✅ Set {exercise_name} as NEW (no logs)")
             else:
                 # Has logs - should not be marked as newly_added
                 cursor.execute('''
@@ -2694,11 +2701,46 @@ def fix_newly_added():
                     SET newly_added = FALSE 
                     WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
+                details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
         
         conn.commit()
         conn.close()
         
-        return jsonify({'success': True, 'fixed_count': fixed_count})
+        return jsonify({
+            'success': True, 
+            'fixed_count': fixed_count,
+            'details': details
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/mark_exercise_new', methods=['POST'])
+def mark_exercise_new():
+    """Manually mark an exercise as newly added"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name')
+        
+        if not exercise_name:
+            return jsonify({'success': False, 'error': 'Exercise name required'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET newly_added = TRUE, created_by = 'grok_ai', date_added = ?
+            WHERE LOWER(exercise_name) = LOWER(?)
+        ''', (datetime.now().strftime('%Y-%m-%d'), exercise_name))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'message': f'Marked {exercise_name} as NEW!'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
