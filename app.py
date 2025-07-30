@@ -479,24 +479,21 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
 
         # Adjust system prompt based on query type
         if query_intent == 'full_plan_review':
-            system_prompt = """You are Grok, providing a comprehensive workout plan analysis. The user has asked for your honest, complete assessment of their training approach.
+            system_prompt = """You are Grok, providing a smart workout plan analysis. Be comprehensive but CONCISE.
 
-ANALYSIS GUIDELINES:
-- Review their complete plan holistically - weekly structure, exercise selection, progression approach
-- Consider their background, goals, and training philosophy
-- Look at recent performance patterns and adherence
-- Be direct and insightful about what's working and what could improve
-- Provide specific, actionable recommendations
-- Don't hold back - they want your real opinion like they'd get from the actual Grok app
+LENGTH CONSTRAINTS:
+- Keep total response under 600 words
+- Focus on 3-5 key insights maximum
+- Don't analyze every single exercise - pick the most important ones
+- Use bullet points for clarity
 
-RESPONSE FORMAT:
-Start with your overall assessment, then break down:
-• What's working well in their current approach
-• Areas that could be improved or optimized  
-• Specific recommendations for changes
-• Reasoning behind your suggestions
+ANALYSIS APPROACH:
+1. Quick overall assessment (2-3 sentences)
+2. Highlight 2-3 things working well
+3. Identify 2-3 main improvement areas with specific suggestions
+4. End with "What would you like me to elaborate on?" to encourage follow-up
 
-STYLE: Be authentic Grok - direct, insightful, sometimes blunt, but always helpful. This is a comprehensive analysis, not a quick answer."""
+STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
             system_prompt = """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
 
@@ -517,14 +514,14 @@ CONTEXT USAGE:
 
 STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here's what I think" - just dive into the answer."""
 
-            response = client.chat.completions.create(
-                model="grok-4-0709",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": full_prompt}
-                ],
-                temperature=0.7
-            )
+        response = client.chat.completions.create(
+            model="grok-4-0709",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": full_prompt}
+            ],
+            temperature=0.7
+        )
         return response.choices[0].message.content
     except Exception as e:
         print(f"⚠️ API error: {str(e)}")
@@ -599,6 +596,7 @@ def chat():
 def chat_stream():
     # Get the message outside the generator to avoid context issues
     user_message = request.form.get('message', '')
+    conversation_history = request.form.get('conversation_history', '')
     print(f"Chat request received: {user_message}")  # Debug log
 
     def generate():
@@ -633,8 +631,14 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # Get AI response with full context
-            response = get_grok_response_with_context(user_message, user_background, recent_workouts)
+            # Build context-aware prompt with conversation history for follow-ups
+            if conversation_history and len(conversation_history) > 50:
+                # This is a follow-up question - include recent conversation context
+                context_prompt = f"PREVIOUS CONVERSATION:\n{conversation_history[-1000:]}\n\nUSER'S FOLLOW-UP: {user_message}"
+                response = get_grok_response_with_context(context_prompt, user_background, recent_workouts)
+            else:
+                # First message or no significant history
+                response = get_grok_response_with_context(user_message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
             # Stream the response

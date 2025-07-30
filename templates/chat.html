@@ -65,6 +65,8 @@
 const chatForm = document.getElementById('chatForm');
 const messageInput = document.getElementById('messageInput');
 const chatMessages = document.getElementById('chatMessages');
+let chatHistory = [];
+let conversationHistory = '';
 
 chatForm.addEventListener('submit', function(e) {
     e.preventDefault();
@@ -75,6 +77,9 @@ chatForm.addEventListener('submit', function(e) {
     addMessage(message, 'user');
     messageInput.value = '';
 
+    // Update conversation history
+    conversationHistory += `User: ${message}\n\n`;
+
     // Create streaming AI message container
     const aiMessageId = addStreamingMessage();
 
@@ -84,27 +89,30 @@ chatForm.addEventListener('submit', function(e) {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'message=' + encodeURIComponent(message)
+        body: 'message=' + encodeURIComponent(message) + '&conversation_history=' + encodeURIComponent(conversationHistory)
     })
     .then(response => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        
+        let aiResponse = '';
+
         function readStream() {
             reader.read().then(({ done, value }) => {
                 if (done) {
+                    // Add AI response to conversation history
+                    conversationHistory += `Grok: ${aiResponse}\n\n`;
                     finalizeStreamingMessage(aiMessageId);
                     return;
                 }
-                
+
                 // Accumulate chunks in buffer
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                
+
                 // Keep the last incomplete line in buffer
                 buffer = lines.pop() || '';
-                
+
                 for (const line of lines) {
                     if (line.trim() && line.startsWith('data: ')) {
                         try {
@@ -112,6 +120,7 @@ chatForm.addEventListener('submit', function(e) {
                             if (jsonStr && jsonStr !== '') {
                                 const data = JSON.parse(jsonStr);
                                 if (data.content) {
+                                    aiResponse += data.content;
                                     appendToStreamingMessage(aiMessageId, data.content);
                                 } else if (data.error) {
                                     updateStreamingMessage(aiMessageId, 'Sorry, I encountered an error. Please try again.');
@@ -127,7 +136,7 @@ chatForm.addEventListener('submit', function(e) {
                         }
                     }
                 }
-                
+
                 readStream();
             }).catch(error => {
                 console.error('Stream reading error:', error);
@@ -135,7 +144,7 @@ chatForm.addEventListener('submit', function(e) {
                 finalizeStreamingMessage(aiMessageId);
             });
         }
-        
+
         readStream();
     })
     .catch(error => {
@@ -164,7 +173,7 @@ function addStreamingMessage() {
     const messageId = 'streaming-' + Date.now();
     messageDiv.id = messageId;
     messageDiv.className = 'alert alert-success d-flex align-items-start streaming-message';
-    
+
     messageDiv.innerHTML = `
         <i class="fas fa-robot me-2 mt-1"></i>
         <div class="streaming-content">
@@ -182,11 +191,11 @@ function appendToStreamingMessage(messageId, content) {
     if (messageDiv) {
         const contentDiv = messageDiv.querySelector('.streaming-content');
         const cursor = contentDiv.querySelector('.typing-cursor');
-        
+
         // Insert content before cursor
         const textNode = document.createTextNode(content);
         contentDiv.insertBefore(textNode, cursor);
-        
+
         // Auto-scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
@@ -218,7 +227,7 @@ function askQuestion(question) {
 
 function requestFullPlanReview() {
     const reviewPrompt = "FULL_PLAN_REVIEW_REQUEST: I want you to analyze my complete workout plan and give me your honest assessment. Look at my training philosophy, weekly structure, recent performance history, and overall approach. What do you think of my current plan? What would you change or improve? Give me a comprehensive Grok-style analysis - be direct, insightful, and don't hold back on recommendations for improvement.";
-    
+
     messageInput.value = reviewPrompt;
     chatForm.dispatchEvent(new Event('submit'));
 }
