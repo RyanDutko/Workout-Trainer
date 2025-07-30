@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 import time
+import uuid
 
 app = Flask(__name__)
 
@@ -719,7 +720,6 @@ def chat_stream():
                 cursor = conn.cursor()
 
                 # Generate session ID for conversation grouping
-                import uuid
                 session_id = str(uuid.uuid4())[:8]
 
                 # Detect intent and extract context
@@ -1210,3 +1210,7 @@ Please be concise but capture the key insights from our discussion."""
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+if __name__ == '__main__':
+    init_db()
+    app.run(host='0.0.0.0', port=5000, debug=True)
