@@ -466,6 +466,58 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         
     return None
 
+def parse_philosophy_update_from_conversation(ai_response, user_request):
+    """Parse conversation to detect philosophy/approach changes"""
+    try:
+        combined_text = f"{user_request} {ai_response}".lower()
+        
+        # Look for philosophy-related keywords
+        philosophy_keywords = [
+            'philosophy', 'approach', 'strategy', 'mindset', 'method',
+            'training style', 'workout approach', 'fitness philosophy',
+            'training philosophy', 'overall approach'
+        ]
+        
+        # Look for change indicators
+        change_keywords = [
+            'change my approach', 'new philosophy', 'different strategy',
+            'switch to', 'want to focus on', 'my new approach',
+            'change my training', 'adjust my mindset'
+        ]
+        
+        has_philosophy_talk = any(keyword in combined_text for keyword in philosophy_keywords)
+        has_change_intent = any(keyword in combined_text for keyword in change_keywords)
+        
+        if has_philosophy_talk and has_change_intent:
+            # Extract the philosophical content from Grok's response
+            philosophy_content = ai_response
+            
+            # Try to identify specific philosophy elements
+            extracted_philosophy = {}
+            
+            if any(word in combined_text for word in ['aggressive', 'fast', 'quick', 'rapid']):
+                extracted_philosophy['progression_strategy'] = 'Aggressive progression focused on rapid strength gains'
+            elif any(word in combined_text for word in ['conservative', 'slow', 'steady', 'careful']):
+                extracted_philosophy['progression_strategy'] = 'Conservative progression prioritizing form and consistency'
+                
+            if any(word in combined_text for word in ['compound', 'basics', 'fundamentals']):
+                extracted_philosophy['plan_philosophy'] = 'Compound movement focused training with emphasis on fundamentals'
+            elif any(word in combined_text for word in ['isolation', 'detail', 'targeted']):
+                extracted_philosophy['plan_philosophy'] = 'Detailed isolation work for targeted muscle development'
+                
+            if any(word in combined_text for word in ['injury', 'safe', 'careful', 'recovery']):
+                extracted_philosophy['special_considerations'] = 'Injury prevention and recovery-focused approach'
+                
+            # If we found specific elements, return them
+            if extracted_philosophy:
+                extracted_philosophy['reasoning'] = f"Updated based on conversation: {philosophy_content[:200]}..."
+                return extracted_philosophy
+                
+    except Exception as e:
+        print(f"Error parsing philosophy update: {e}")
+        
+    return None
+
 def get_conversation_context(days_back=14, limit=10):
     """Get recent conversation context for enhanced AI responses"""
     try:
@@ -967,6 +1019,28 @@ def chat_stream():
                         'type': 'modify_plan_suggestion',
                         'data': plan_mod_data
                     })
+                
+                # Parse potential philosophy updates from conversation
+                philosophy_update = parse_philosophy_update_from_conversation(response, user_message)
+                if philosophy_update:
+                    # Auto-update philosophy in database
+                    try:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO plan_context
+                            (user_id, plan_philosophy, progression_strategy, special_considerations, 
+                             created_by_ai, creation_reasoning, created_date, updated_date)
+                            VALUES (1, ?, ?, ?, TRUE, ?, ?, ?)
+                        ''', (
+                            philosophy_update.get('plan_philosophy', ''),
+                            philosophy_update.get('progression_strategy', ''),
+                            philosophy_update.get('special_considerations', ''),
+                            philosophy_update.get('reasoning', ''),
+                            datetime.now().strftime('%Y-%m-%d'),
+                            datetime.now().strftime('%Y-%m-%d')
+                        ))
+                        print(f"🧠 Auto-updated training philosophy based on conversation")
+                    except Exception as e:
+                        print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
                 # Get or create conversation thread
                 cursor.execute('''
