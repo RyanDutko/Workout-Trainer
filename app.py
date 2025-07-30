@@ -231,6 +231,10 @@ def analyze_query_intent(prompt):
     """Analyze the query to determine what type of context to include"""
     prompt_lower = prompt.lower()
 
+    # Full plan review (comprehensive analysis)
+    if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
+        return 'full_plan_review'
+
     # Progression-related queries
     if any(word in prompt_lower for word in ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance']):
         return 'progression'
@@ -264,7 +268,88 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if user_background.get('fitness_level'):
             context_info += f"Fitness Level: {user_background['fitness_level']}\n"
 
-    if query_intent == 'progression':
+    if query_intent == 'full_plan_review':
+        # Provide EVERYTHING for comprehensive analysis
+        context_info += "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
+        
+        # User background and goals
+        if user_background:
+            context_info += "USER PROFILE:\n"
+            if user_background.get('primary_goal'):
+                context_info += f"Primary Goal: {user_background['primary_goal']}\n"
+            if user_background.get('fitness_level'):
+                context_info += f"Fitness Level: {user_background['fitness_level']}\n"
+            if user_background.get('years_training'):
+                context_info += f"Training Experience: {user_background['years_training']} years\n"
+            if user_background.get('injuries_history'):
+                context_info += f"Injury History: {user_background['injuries_history']}\n"
+            if user_background.get('training_frequency'):
+                context_info += f"Training Frequency: {user_background['training_frequency']}\n"
+        
+        # Current weekly plan with full structure
+        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        planned_exercises = cursor.fetchall()
+        if planned_exercises:
+            context_info += "\nCURRENT WEEKLY PLAN:\n"
+            current_day = ""
+            for day, exercise, sets, reps, weight, order in planned_exercises:
+                if day != current_day:
+                    context_info += f"\n{day.upper()}:\n"
+                    current_day = day
+                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+        
+        # Plan philosophy and context
+        cursor.execute('SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations, creation_reasoning FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        plan_context_result = cursor.fetchone()
+        if plan_context_result:
+            philosophy, weekly_structure, progression_strategy, special_considerations, reasoning = plan_context_result
+            context_info += "\nPLAN PHILOSOPHY & CONTEXT:\n"
+            if philosophy:
+                context_info += f"Training Philosophy: {philosophy}\n"
+            if weekly_structure:
+                context_info += f"Weekly Structure Reasoning: {weekly_structure}\n"
+            if progression_strategy:
+                context_info += f"Progression Strategy: {progression_strategy}\n"
+            if special_considerations:
+                context_info += f"Special Considerations: {special_considerations}\n"
+            if reasoning:
+                context_info += f"Original Plan Reasoning: {reasoning[:300]}...\n"
+        
+        # Exercise-specific context
+        cursor.execute('SELECT exercise_name, primary_purpose, progression_logic, ai_notes FROM exercise_metadata WHERE user_id = 1 ORDER BY exercise_name')
+        exercise_metadata = cursor.fetchall()
+        if exercise_metadata:
+            context_info += "\nEXERCISE-SPECIFIC CONTEXT:\n"
+            for exercise, purpose, progression, notes in exercise_metadata:
+                context_info += f"• {exercise}: {purpose} (progression: {progression})"
+                if notes:
+                    context_info += f" - {notes}"
+                context_info += "\n"
+        
+        # Recent performance history (last 3 weeks)
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+            FROM workouts 
+            WHERE date_logged >= date('now', '-21 days')
+            ORDER BY date_logged DESC
+            LIMIT 30
+        """)
+        recent_logs = cursor.fetchall()
+        if recent_logs:
+            context_info += "\nRECENT PERFORMANCE HISTORY (Last 3 weeks):\n"
+            for log in recent_logs:
+                exercise, sets, reps, weight, date, notes, sub_reason = log
+                context_info += f"• {date}: {exercise} {sets}x{reps}@{weight}"
+                if sub_reason:
+                    context_info += f" [SUBSTITUTED: {sub_reason}]"
+                if notes:
+                    context_info += f" - {notes}"
+                context_info += "\n"
+        
+        # Strip the trigger phrase from the actual prompt
+        prompt = prompt.replace('FULL_PLAN_REVIEW_REQUEST:', '').strip()
+        
+    elif query_intent == 'progression':
         # Include recent performance and related exercises
         context_info += "\n=== PROGRESSION CONTEXT ===\n"
 
@@ -392,10 +477,28 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
 
-        response = client.chat.completions.create(
-                model="grok-4-0709",
-                messages=[
-                    {"role": "system", "content": """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
+        # Adjust system prompt based on query type
+            if query_intent == 'full_plan_review':
+                system_prompt = """You are Grok, providing a comprehensive workout plan analysis. The user has asked for your honest, complete assessment of their training approach.
+
+ANALYSIS GUIDELINES:
+- Review their complete plan holistically - weekly structure, exercise selection, progression approach
+- Consider their background, goals, and training philosophy
+- Look at recent performance patterns and adherence
+- Be direct and insightful about what's working and what could improve
+- Provide specific, actionable recommendations
+- Don't hold back - they want your real opinion like they'd get from the actual Grok app
+
+RESPONSE FORMAT:
+Start with your overall assessment, then break down:
+• What's working well in their current approach
+• Areas that could be improved or optimized  
+• Specific recommendations for changes
+• Reasoning behind your suggestions
+
+STYLE: Be authentic Grok - direct, insightful, sometimes blunt, but always helpful. This is a comprehensive analysis, not a quick answer."""
+            else:
+                system_prompt = """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
 
 RESPONSE LENGTH GUIDELINES:
 - Greetings ("hello", "hi"): Very brief (1-2 sentences)
@@ -412,7 +515,12 @@ CONTEXT USAGE:
 - For specific fitness questions, use the provided context appropriately
 - Don't feel obligated to reference every piece of context data you have access to
 
-STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here's what I think" - just dive into the answer."""},
+STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here's what I think" - just dive into the answer."""
+
+            response = client.chat.completions.create(
+                model="grok-4-0709",
+                messages=[
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": full_prompt}
                 ],
                 temperature=0.7

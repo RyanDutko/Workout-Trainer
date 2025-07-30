@@ -38,6 +38,9 @@
             </div>
             <div class="card-body">
                 <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-primary btn-sm" onclick="requestFullPlanReview()">
+                        <i class="fas fa-clipboard-list me-1"></i>Full Plan Review
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" onclick="askQuestion('How should I progress my bench press?')">
                         Bench Press Progression
                     </button>
@@ -210,6 +213,13 @@ function finalizeStreamingMessage(messageId) {
 
 function askQuestion(question) {
     messageInput.value = question;
+    chatForm.dispatchEvent(new Event('submit'));
+}
+
+function requestFullPlanReview() {
+    const reviewPrompt = "FULL_PLAN_REVIEW_REQUEST: I want you to analyze my complete workout plan and give me your honest assessment. Look at my training philosophy, weekly structure, recent performance history, and overall approach. What do you think of my current plan? What would you change or improve? Give me a comprehensive Grok-style analysis - be direct, insightful, and don't hold back on recommendations for improvement.";
+    
+    messageInput.value = reviewPrompt;
     chatForm.dispatchEvent(new Event('submit'));
 }
 </script>
