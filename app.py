@@ -478,7 +478,7 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         full_prompt = context_info + "\n\n" + prompt
 
         # Adjust system prompt based on query type
-            if query_intent == 'full_plan_review':
+        if query_intent == 'full_plan_review':
                 system_prompt = """You are Grok, providing a comprehensive workout plan analysis. The user has asked for your honest, complete assessment of their training approach.
 
 ANALYSIS GUIDELINES:
