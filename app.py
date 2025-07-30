@@ -471,89 +471,109 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
     try:
         combined_text = f"{user_request} {ai_response}".lower()
         user_request_lower = user_request.lower()
+        ai_response_lower = ai_response.lower()
         
-        # Look for philosophy-related keywords
-        philosophy_keywords = [
-            'philosophy', 'approach', 'strategy', 'mindset', 'method',
-            'training style', 'workout approach', 'fitness philosophy',
-            'training philosophy', 'overall approach', 'plan philosphy'  # typo included intentionally
+        # Only trigger if Grok's response actually contains updated philosophy content
+        # Look for signs that Grok is providing a NEW or UPDATED philosophy
+        grok_update_indicators = [
+            "i'll update your philosophy",
+            "here's your updated",
+            "your new philosophy",
+            "updated approach",
+            "revised philosophy",
+            "modified approach",
+            "new training philosophy",
+            "updated training approach"
         ]
         
-        # Look for change indicators - expanded list
-        change_keywords = [
-            'change my approach', 'new philosophy', 'different strategy',
-            'switch to', 'want to focus on', 'my new approach',
-            'change my training', 'adjust my mindset', 'tweak my',
-            'remove', 'get rid of', 'take out', 'delete', 'update my',
-            'modify my', 'edit my', 'fix my'
+        # Check if Grok is actually providing an updated philosophy
+        grok_is_updating = any(indicator in ai_response_lower for indicator in grok_update_indicators)
+        
+        # Also check if the AI response contains substantial philosophical content
+        philosophy_content_indicators = [
+            "training philosophy:",
+            "approach:",
+            "philosophy is",
+            "training approach",
+            "focus on",
+            "emphasize",
+            "prioritize"
         ]
         
-        has_philosophy_talk = any(keyword in combined_text for keyword in philosophy_keywords)
-        has_change_intent = any(keyword in combined_text for keyword in change_keywords)
+        has_philosophy_content = any(indicator in ai_response_lower for indicator in philosophy_content_indicators)
         
-        # Special handling for skin tightening removal request
-        if 'tighten' in user_request_lower and 'skin' in user_request_lower and any(word in user_request_lower for word in ['remove', 'get rid', 'delete', 'take out']):
-            # Get current philosophy and remove skin tightening references
-            conn = sqlite3.connect('workout_logs.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('SELECT plan_philosophy, progression_strategy, special_considerations FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-            current_context = cursor.fetchone()
-            conn.close()
-            
-            if current_context:
-                philosophy, progression, considerations = current_context
-                
-                # Remove skin tightening references
-                updated_philosophy = philosophy
-                if updated_philosophy:
-                    # Remove various forms of skin tightening references
-                    skin_patterns = [
-                        'for loose skin tightening',
-                        'loose skin tightening',
-                        'skin tightening',
-                        'tightening loose skin',
-                        'tighten loose skin',
-                        'tightening skin'
-                    ]
-                    for pattern in skin_patterns:
-                        updated_philosophy = updated_philosophy.replace(pattern, '').strip()
-                    
-                    # Clean up any double spaces or awkward punctuation
-                    updated_philosophy = ' '.join(updated_philosophy.split())
-                    updated_philosophy = updated_philosophy.replace(' ,', ',').replace(' .', '.')
-                
-                return {
-                    'plan_philosophy': updated_philosophy,
-                    'progression_strategy': progression or '',
-                    'special_considerations': considerations or '',
-                    'reasoning': f"Removed skin tightening references as requested: {user_request[:100]}..."
-                }
+        # Look for user requests that are asking for changes (but not just asking questions)
+        user_change_requests = [
+            'update my philosophy',
+            'change my approach',
+            'modify my philosophy',
+            'tweak my philosophy',
+            'revise my approach',
+            'adjust my philosophy',
+            'new philosophy',
+            'different approach'
+        ]
         
-        if has_philosophy_talk and has_change_intent:
-            # Extract the philosophical content from Grok's response
-            philosophy_content = ai_response
+        user_wants_change = any(request in user_request_lower for request in user_change_requests)
+        
+        # Only proceed if BOTH conditions are met:
+        # 1. User is requesting a change to philosophy
+        # 2. Grok is actually providing updated content (not just acknowledging)
+        if user_wants_change and (grok_is_updating or has_philosophy_content):
             
-            # Try to identify specific philosophy elements
-            extracted_philosophy = {}
-            
-            if any(word in combined_text for word in ['aggressive', 'fast', 'quick', 'rapid']):
-                extracted_philosophy['progression_strategy'] = 'Aggressive progression focused on rapid strength gains'
-            elif any(word in combined_text for word in ['conservative', 'slow', 'steady', 'careful']):
-                extracted_philosophy['progression_strategy'] = 'Conservative progression prioritizing form and consistency'
+            # Use Grok's response as the new philosophy if it contains substantial content
+            if len(ai_response) > 100 and has_philosophy_content:
+                # Try to extract structured philosophy from Grok's response
+                philosophy_sections = {}
                 
-            if any(word in combined_text for word in ['compound', 'basics', 'fundamentals']):
-                extracted_philosophy['plan_philosophy'] = 'Compound movement focused training with emphasis on fundamentals'
-            elif any(word in combined_text for word in ['isolation', 'detail', 'targeted']):
-                extracted_philosophy['plan_philosophy'] = 'Detailed isolation work for targeted muscle development'
+                # Look for specific philosophy elements in Grok's response
+                response_lines = ai_response.split('\n')
+                current_section = None
+                current_content = []
                 
-            if any(word in combined_text for word in ['injury', 'safe', 'careful', 'recovery']):
-                extracted_philosophy['special_considerations'] = 'Injury prevention and recovery-focused approach'
+                for line in response_lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    # Check for section headers
+                    if any(header in line.lower() for header in ['philosophy:', 'approach:', 'strategy:', 'considerations:']):
+                        # Save previous section
+                        if current_section and current_content:
+                            philosophy_sections[current_section] = ' '.join(current_content)
+                        
+                        # Start new section
+                        if 'philosophy' in line.lower():
+                            current_section = 'plan_philosophy'
+                        elif 'strategy' in line.lower() or 'progression' in line.lower():
+                            current_section = 'progression_strategy'
+                        elif 'consideration' in line.lower():
+                            current_section = 'special_considerations'
+                        else:
+                            current_section = 'plan_philosophy'  # default
+                        
+                        current_content = [line.split(':', 1)[-1].strip()] if ':' in line else []
+                    else:
+                        # Add to current section
+                        if current_section:
+                            current_content.append(line)
                 
-            # If we found specific elements, return them
-            if extracted_philosophy:
-                extracted_philosophy['reasoning'] = f"Updated based on conversation: {philosophy_content[:200]}..."
-                return extracted_philosophy
+                # Save last section
+                if current_section and current_content:
+                    philosophy_sections[current_section] = ' '.join(current_content)
+                
+                # If we didn't find structured sections, use the whole response as philosophy
+                if not philosophy_sections:
+                    philosophy_sections['plan_philosophy'] = ai_response.strip()
+                
+                # Add reasoning
+                philosophy_sections['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
+                
+                print(f"🧠 Detected philosophy update request with substantial AI content")
+                return philosophy_sections
+                
+        # No philosophy update detected
+        return None
                 
     except Exception as e:
         print(f"Error parsing philosophy update: {e}")
