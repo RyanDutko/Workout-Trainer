@@ -2515,23 +2515,30 @@ def delete_workout():
             print(f"🗑️ Deleted workout for {exercise_name}, remaining logs: {remaining_logs}")
             
             if remaining_logs == 0:
-                # Restore newly_added flag if no logs remain for this exercise AND it was created by AI
-                cursor.execute('''
-                    UPDATE weekly_plan 
-                    SET newly_added = TRUE
-                    WHERE LOWER(exercise_name) = LOWER(?) AND created_by = 'grok_ai'
-                ''', (exercise_name,))
+                # Check what's in the weekly plan for this exercise
+                cursor.execute('SELECT exercise_name, created_by, newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                plan_result = cursor.fetchone()
                 
-                if cursor.rowcount > 0:
-                    print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
-                else:
-                    # Check if exercise exists in plan but wasn't created by AI
-                    cursor.execute('SELECT created_by FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-                    plan_result = cursor.fetchone()
-                    if plan_result:
-                        print(f"ℹ️ {exercise_name} exists in plan but created by '{plan_result[0]}', not restoring NEW flag")
+                if plan_result:
+                    plan_exercise_name, created_by, currently_newly_added = plan_result
+                    print(f"📋 Found in plan: '{plan_exercise_name}', created_by: '{created_by}', currently_newly_added: {currently_newly_added}")
+                    
+                    # Restore newly_added flag if it was created by AI (regardless of current newly_added status)
+                    if created_by == 'grok_ai':
+                        cursor.execute('''
+                            UPDATE weekly_plan 
+                            SET newly_added = TRUE
+                            WHERE LOWER(exercise_name) = LOWER(?)
+                        ''', (exercise_name,))
+                        
+                        if cursor.rowcount > 0:
+                            print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
+                        else:
+                            print(f"⚠️ Failed to update newly_added flag for {exercise_name}")
                     else:
-                        print(f"⚠️ {exercise_name} not found in weekly plan at all")
+                        print(f"ℹ️ {exercise_name} exists in plan but created by '{created_by}', not restoring NEW flag")
+                else:
+                    print(f"⚠️ {exercise_name} not found in weekly plan at all")
             
             conn.commit()
             conn.close()
