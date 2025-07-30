@@ -52,7 +52,9 @@ def init_db():
         progression_rate TEXT DEFAULT 'normal',
         created_by TEXT DEFAULT 'user',
         is_complex BOOLEAN DEFAULT FALSE,
-        complex_structure TEXT
+        complex_structure TEXT,
+        newly_added BOOLEAN DEFAULT FALSE,
+        date_added TEXT
     )
     ''')
 
@@ -229,7 +231,9 @@ def init_db():
         ('exercise_order', 'INTEGER DEFAULT 1'),
         ('exercise_type', 'TEXT DEFAULT "working_set"'),
         ('progression_rate', 'TEXT DEFAULT "normal"'),
-        ('created_by', 'TEXT DEFAULT "user"')
+        ('created_by', 'TEXT DEFAULT "user"'),
+        ('newly_added', 'BOOLEAN DEFAULT FALSE'),
+        ('date_added', 'TEXT')
     ]
 
     # Add context columns to workouts table
@@ -971,13 +975,13 @@ def dashboard():
     today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan with completion status
-    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
+    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0) FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     plan_data = cursor.fetchall()
     
     # Check completion status for each exercise
     today_plan = []
     for row in plan_data:
-        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes = row
+        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
         
         # Check if this exercise was logged today
         cursor.execute('''
@@ -1025,8 +1029,8 @@ def dashboard():
                 completion_status['status_text'] = 'Completed'
                 completion_status['status_class'] = 'text-success'
         
-        # Add completion status to the row data
-        today_plan.append((*row, completion_status))
+        # Add completion status and newly_added flag to the row data
+        today_plan.append((*row[:-1], completion_status, bool(newly_added)))
 
     # Calculate stats
     from collections import namedtuple
@@ -1330,9 +1334,9 @@ def weekly_plan():
 
     # Use the correct column names based on what exists
     if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0) FROM weekly_plan ORDER BY day_of_week, exercise_order')
     else:
-        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, "") FROM weekly_plan ORDER BY day_of_week, order_index')
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0 FROM weekly_plan ORDER BY day_of_week, order_index')
 
     plan_data = cursor.fetchall()
     conn.close()
@@ -1340,7 +1344,7 @@ def weekly_plan():
     # Organize plan by day
     plan_by_day = {}
     for row in plan_data:
-        id, day, exercise, sets, reps, weight, order, notes = row
+        id, day, exercise, sets, reps, weight, order, notes, newly_added = row
         if day not in plan_by_day:
             plan_by_day[day] = []
         plan_by_day[day].append({
@@ -1350,7 +1354,8 @@ def weekly_plan():
             'reps': reps,
             'weight': weight,
             'order': order,
-            'notes': notes or ""
+            'notes': notes or "",
+            'newly_added': bool(newly_added)
         })
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
@@ -1877,9 +1882,9 @@ def modify_plan():
             
             cursor.execute('''
                 INSERT INTO weekly_plan 
-                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
-            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning))
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
             
             message = f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}"
             
@@ -2023,9 +2028,9 @@ def add_to_plan():
         
         cursor.execute('''
             INSERT INTO weekly_plan 
-            (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (day, exercise, sets, reps, weight, next_order))
+            (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, newly_added, date_added)
+            VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)
+        ''', (day, exercise, sets, reps, weight, next_order, datetime.now().strftime('%Y-%m-%d')))
         
         conn.commit()
         conn.close()
@@ -2502,6 +2507,13 @@ def save_workout():
             INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (exercise_name, sets, reps, weight, notes, date))
+        
+        # Remove newly_added flag for this exercise since it's been completed
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET newly_added = FALSE 
+            WHERE LOWER(exercise_name) = LOWER(?)
+        ''', (exercise_name,))
         
         conn.commit()
         conn.close()

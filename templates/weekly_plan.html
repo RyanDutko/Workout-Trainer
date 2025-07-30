@@ -24,7 +24,12 @@
                             <div class="border-bottom py-2">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div>
-                                        <strong>{{ exercise.exercise.title() }}</strong><br>
+                                        <strong>
+                                            {{ exercise.exercise.title() }}
+                                            {% if exercise.newly_added %}
+                                                <span class="badge bg-success ms-1">New!</span>
+                                            {% endif %}
+                                        </strong><br>
                                         <small class="text-muted">{{ exercise.sets }}x{{ exercise.reps }} @ {{ exercise.weight }}</small>
                                         {% if exercise.notes %}
                                             <br><small class="text-info">{{ exercise.notes }}</small>
