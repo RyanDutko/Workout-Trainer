@@ -470,23 +470,65 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
     try:
         combined_text = f"{user_request} {ai_response}".lower()
+        user_request_lower = user_request.lower()
         
         # Look for philosophy-related keywords
         philosophy_keywords = [
             'philosophy', 'approach', 'strategy', 'mindset', 'method',
             'training style', 'workout approach', 'fitness philosophy',
-            'training philosophy', 'overall approach'
+            'training philosophy', 'overall approach', 'plan philosphy'  # typo included intentionally
         ]
         
-        # Look for change indicators
+        # Look for change indicators - expanded list
         change_keywords = [
             'change my approach', 'new philosophy', 'different strategy',
             'switch to', 'want to focus on', 'my new approach',
-            'change my training', 'adjust my mindset'
+            'change my training', 'adjust my mindset', 'tweak my',
+            'remove', 'get rid of', 'take out', 'delete', 'update my',
+            'modify my', 'edit my', 'fix my'
         ]
         
         has_philosophy_talk = any(keyword in combined_text for keyword in philosophy_keywords)
         has_change_intent = any(keyword in combined_text for keyword in change_keywords)
+        
+        # Special handling for skin tightening removal request
+        if 'tighten' in user_request_lower and 'skin' in user_request_lower and any(word in user_request_lower for word in ['remove', 'get rid', 'delete', 'take out']):
+            # Get current philosophy and remove skin tightening references
+            conn = sqlite3.connect('workout_logs.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT plan_philosophy, progression_strategy, special_considerations FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+            current_context = cursor.fetchone()
+            conn.close()
+            
+            if current_context:
+                philosophy, progression, considerations = current_context
+                
+                # Remove skin tightening references
+                updated_philosophy = philosophy
+                if updated_philosophy:
+                    # Remove various forms of skin tightening references
+                    skin_patterns = [
+                        'for loose skin tightening',
+                        'loose skin tightening',
+                        'skin tightening',
+                        'tightening loose skin',
+                        'tighten loose skin',
+                        'tightening skin'
+                    ]
+                    for pattern in skin_patterns:
+                        updated_philosophy = updated_philosophy.replace(pattern, '').strip()
+                    
+                    # Clean up any double spaces or awkward punctuation
+                    updated_philosophy = ' '.join(updated_philosophy.split())
+                    updated_philosophy = updated_philosophy.replace(' ,', ',').replace(' .', '.')
+                
+                return {
+                    'plan_philosophy': updated_philosophy,
+                    'progression_strategy': progression or '',
+                    'special_considerations': considerations or '',
+                    'reasoning': f"Removed skin tightening references as requested: {user_request[:100]}..."
+                }
         
         if has_philosophy_talk and has_change_intent:
             # Extract the philosophical content from Grok's response
