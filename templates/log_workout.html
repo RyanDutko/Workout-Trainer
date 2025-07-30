@@ -411,8 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('postWorkoutDate').value = today;
 
-    // Setup post-workout form handler
-    document.getElementById('postWorkoutForm').addEventListener('submit', handlePostWorkoutSubmit);
+    // Post-workout form setup (no form element needed for current implementation)
 });
 
 // Mode selection functions
@@ -1043,12 +1042,7 @@ function logCurrentPostExercise() {
         weight: exercise.weight,
         notes: notes,
         status: workoutStatus,
-        date: selectedWorkoutDate,
-            substitution_reason: document.getElementById('substitutionReason').value,
-            performance_context: document.getElementById('performanceContext').value,
-            environmental_factors: document.getElementById('environmentalFactors').value,
-            difficulty_rating: document.getElementById('difficultyRating').value ? parseInt(document.getElementById('difficultyRating').value) : null,
-            gym_location: '' // Can be added later if needed
+        date: selectedWorkoutDate
     };
 
     if (workoutStatus === 'skipped') {
