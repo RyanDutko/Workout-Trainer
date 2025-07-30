@@ -412,45 +412,87 @@ function analyzeExercise() {
     fetch(`/get_exercise_performance/${exercise}`)
         .then(response => response.json())
         .then(data => {
-            // Update chart
-            exerciseChart.data.labels = data.dates;
-            exerciseChart.data.datasets = [{
-                label: 'Max Weight (lbs)',
-                data: data.max_weights,
-                borderColor: 'rgb(255, 99, 132)',
-                tension: 0.1
-            }, {
-                label: 'Total Volume (lbs)',
-                data: data.volumes,
-                borderColor: 'rgb(54, 162, 235)',
-                tension: 0.1
-            }];
-            exerciseChart.update();
-            
-            // Update stats
-            const statsDiv = document.getElementById('exerciseStats');
-            statsDiv.innerHTML = `
-                <div class="row">
-                    <div class="col-md-3">
-                        <strong>Best Session:</strong><br>
-                        ${data.best_weight} lbs (${data.best_date})
+            if (data.dates && data.dates.length > 0) {
+                // Update chart
+                exerciseChart.data.labels = data.dates;
+                exerciseChart.data.datasets = [{
+                    label: 'Max Weight (lbs)',
+                    data: data.max_weights,
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.1
+                }, {
+                    label: 'Total Volume (lbs)',
+                    data: data.volumes,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    tension: 0.1,
+                    yAxisID: 'y1'
+                }];
+                
+                // Add second y-axis for volume
+                exerciseChart.options.scales.y1 = {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                };
+                
+                exerciseChart.update();
+                
+                // Update stats
+                const statsDiv = document.getElementById('exerciseStats');
+                const dataTypeNote = data.has_real_data ? '' : '<small class="text-muted">(Sample progression data - log workouts to see real data)</small>';
+                
+                statsDiv.innerHTML = `
+                    ${dataTypeNote}
+                    <div class="row mt-2">
+                        <div class="col-md-3">
+                            <strong>Best Session:</strong><br>
+                            ${data.best_weight} lbs<br>
+                            <small class="text-muted">${data.best_date}</small>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Recent Average:</strong><br>
+                            ${data.recent_avg} lbs
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Progress Trend:</strong><br>
+                            <span class="badge bg-${data.progress >= 0 ? 'success' : 'danger'}">
+                                ${data.progress > 0 ? '+' : ''}${data.progress}%
+                            </span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Total Sessions:</strong><br>
+                            ${data.total_sessions}
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <strong>Recent Average:</strong><br>
-                        ${data.recent_avg} lbs
+                `;
+            } else {
+                // No data available
+                exerciseChart.data.labels = [];
+                exerciseChart.data.datasets = [];
+                exerciseChart.update();
+                
+                document.getElementById('exerciseStats').innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No performance data found for "${exercise}". Start logging workouts to see your progress!
                     </div>
-                    <div class="col-md-3">
-                        <strong>Progress:</strong><br>
-                        ${data.progress > 0 ? '+' : ''}${data.progress}% this month
-                    </div>
-                    <div class="col-md-3">
-                        <strong>Total Sessions:</strong><br>
-                        ${data.total_sessions}
-                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('exerciseStats').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Error loading exercise data. Please try again.
                 </div>
             `;
-        })
-        .catch(error => console.error('Error:', error));
+        });
 }
 
 function quickLog(exercise, sets, reps, weight) {
