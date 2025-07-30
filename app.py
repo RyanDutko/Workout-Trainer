@@ -112,6 +112,26 @@ def init_db():
     ''')
 
     cursor.execute('''
+    CREATE TABLE IF NOT EXISTS conversations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER DEFAULT 1,
+        conversation_type TEXT DEFAULT 'general',
+        user_message TEXT NOT NULL,
+        ai_response TEXT NOT NULL,
+        detected_intent TEXT,
+        actions_taken TEXT,
+        workout_context TEXT,
+        exercise_mentioned TEXT,
+        form_cues_given TEXT,
+        performance_notes TEXT,
+        plan_modifications TEXT,
+        timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+        session_id TEXT,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
+
+    cursor.execute('''
     CREATE TABLE IF NOT EXISTS user_background (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER DEFAULT 1,
@@ -254,12 +274,57 @@ def analyze_query_intent(prompt):
 
     return 'general'
 
+def get_conversation_context(days_back=14, limit=10):
+    """Get recent conversation context for enhanced AI responses"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get conversations from last N days
+        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        
+        cursor.execute('''
+            SELECT user_message, ai_response, detected_intent, exercise_mentioned, 
+                   form_cues_given, performance_notes, timestamp
+            FROM conversations 
+            WHERE timestamp >= ? 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        ''', (cutoff_date, limit))
+        
+        conversations = cursor.fetchall()
+        conn.close()
+        
+        if not conversations:
+            return ""
+            
+        context = "\n=== RECENT CONVERSATION CONTEXT ===\n"
+        for conv in reversed(conversations):  # Show oldest first for chronological context
+            user_msg, ai_resp, intent, exercise, form_cues, perf_notes, timestamp = conv
+            context += f"[{timestamp}] User: {user_msg[:100]}{'...' if len(user_msg) > 100 else ''}\n"
+            if form_cues:
+                context += f"  Form tips given: {form_cues}\n"
+            if perf_notes:
+                context += f"  Performance noted: {perf_notes}\n"
+            context += f"  AI: {ai_resp[:150]}{'...' if len(ai_resp) > 150 else ''}\n\n"
+        
+        return context
+        
+    except Exception as e:
+        print(f"Error getting conversation context: {str(e)}")
+        return ""
+
 def build_smart_context(prompt, query_intent, user_background=None):
     """Build context based on query intent to avoid overwhelming Grok"""
     context_info = ""
 
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
+    
+    # Add conversation context for better continuity
+    conversation_context = get_conversation_context()
+    if conversation_context:
+        context_info += conversation_context
 
     # Always include basic user info if available
     if user_background:
@@ -647,6 +712,41 @@ def chat_stream():
                 time.sleep(0.01)  # Small delay for streaming effect
 
             yield f"data: {json.dumps({'done': True})}\n\n"
+
+            # Store the conversation in database for future context
+            try:
+                conn = sqlite3.connect('workout_logs.db')
+                cursor = conn.cursor()
+                
+                # Generate session ID for conversation grouping
+                import uuid
+                session_id = str(uuid.uuid4())[:8]
+                
+                # Detect intent and extract context
+                detected_intent = analyze_query_intent(user_message)
+                
+                # Extract exercise mentions
+                exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
+                exercise_mentioned = None
+                for keyword in exercise_keywords:
+                    if keyword in user_message.lower():
+                        exercise_mentioned = keyword
+                        break
+                
+                # Store conversation
+                cursor.execute('''
+                    INSERT INTO conversations 
+                    (user_message, ai_response, detected_intent, exercise_mentioned, session_id, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (user_message, response, detected_intent, exercise_mentioned, session_id, 
+                      datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                
+                conn.commit()
+                conn.close()
+                print(f"💾 Stored conversation with intent: {detected_intent}")
+                
+            except Exception as e:
+                print(f"⚠️ Failed to store conversation: {str(e)}")
 
         except Exception as e:
             print(f"Chat stream error: {str(e)}")  # Debug log
@@ -1097,6 +1197,71 @@ Please be concise but capture the key insights from our discussion."""
                 ''', (
                     exercise_name,
                     purpose,
+
+
+@app.route('/conversation_history')
+def conversation_history():
+    """View recent conversation history for debugging and analysis"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT user_message, ai_response, detected_intent, exercise_mentioned,
+                   form_cues_given, performance_notes, plan_modifications, timestamp
+            FROM conversations 
+            ORDER BY timestamp DESC 
+            LIMIT 50
+        ''')
+        
+        conversations = cursor.fetchall()
+        conn.close()
+        
+        # Format for display
+        conversation_data = []
+        for conv in conversations:
+            conversation_data.append({
+                'user_message': conv[0],
+                'ai_response': conv[1],
+                'detected_intent': conv[2],
+                'exercise_mentioned': conv[3],
+                'form_cues_given': conv[4],
+                'performance_notes': conv[5],
+                'plan_modifications': conv[6],
+                'timestamp': conv[7]
+            })
+        
+        return jsonify({'conversations': conversation_data})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/cleanup_old_conversations', methods=['POST'])
+def cleanup_old_conversations():
+    """Clean up conversations older than specified days"""
+    try:
+        data = request.json
+        days_to_keep = data.get('days', 28)  # Default 4 weeks
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime('%Y-%m-%d')
+        
+        cursor.execute('DELETE FROM conversations WHERE timestamp < ?', (cutoff_date,))
+        deleted_count = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Cleaned up {deleted_count} conversations older than {days_to_keep} days'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
                     progression_logic,
                     notes,
                     datetime.now().strftime('%Y-%m-%d')
