@@ -327,10 +327,19 @@ def analyze_query_intent(prompt):
         intents['workout_logging'] = min(log_score * 0.3, 1.0)
 
     # Plan modification intent
-    plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace']
+    plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace', 'adjust', 'tweak', 'switch']
     plan_score = sum(1 for word in plan_keywords if word in prompt_lower)
-    if plan_score > 0 and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
-        intents['plan_modification'] = min(plan_score * 0.4, 1.0)
+    
+    # Boost score if day mentioned or context suggests plan modification
+    if any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+        plan_score += 2
+    if any(phrase in prompt_lower for phrase in ['my plan', 'weekly plan', 'workout plan', 'current plan']):
+        plan_score += 1
+    if any(phrase in prompt_lower for phrase in ['can you', 'could you', 'would you', 'please']):
+        plan_score += 1
+        
+    if plan_score > 0:
+        intents['plan_modification'] = min(plan_score * 0.3, 1.0)
 
     # Progression-related queries
     progression_keywords = ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance', 'progression', 'stronger']
@@ -388,17 +397,74 @@ def extract_potential_actions(prompt, intent):
             })
     
     elif intent == 'plan_modification':
-        # Look for plan change requests
+        # Look for plan change requests with more detail
         days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        detected_day = None
         for day in days:
             if day in prompt_lower:
-                actions.append({
-                    'type': 'modify_plan',
-                    'data': {'day': day, 'raw_request': prompt}
-                })
+                detected_day = day
                 break
+        
+        # Try to extract exercise and modification details
+        exercise_match = None
+        modification_type = 'update'  # default
+        
+        if any(word in prompt_lower for word in ['add', 'include']):
+            modification_type = 'add'
+        elif any(word in prompt_lower for word in ['remove', 'delete', 'drop']):
+            modification_type = 'remove'
+        
+        actions.append({
+            'type': 'modify_plan',
+            'data': {
+                'day': detected_day,
+                'modification_type': modification_type,
+                'raw_request': prompt
+            }
+        })
     
     return actions
+
+def parse_plan_modification_from_ai_response(ai_response, user_request):
+    """Parse Grok's response to extract specific plan modifications"""
+    try:
+        # Look for patterns indicating Grok wants to make changes
+        response_lower = ai_response.lower()
+        
+        if not any(phrase in response_lower for phrase in ['can make', 'i can', 'absolutely', 'change', 'modify', 'update']):
+            return None
+            
+        # Extract exercise, sets, reps, weight from either user request or AI response
+        exercise_pattern = r'(?:tricep|bicep|chest|shoulder|leg|back|ab|core)[\s\w]*(?:press|curl|extension|raise|pushdown|pulldown|fly|row|squat|deadlift)'
+        sets_pattern = r'(\d+)\s*(?:sets?|x)'
+        reps_pattern = r'(?:x|sets?\s*of\s*)(\d+(?:-\d+)?)'
+        weight_pattern = r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg|pounds?)'
+        day_pattern = r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
+        
+        # Try to find these patterns in either the user request or AI response
+        combined_text = f"{user_request} {ai_response}".lower()
+        
+        exercise_match = re.search(exercise_pattern, combined_text)
+        sets_match = re.search(sets_pattern, combined_text)
+        reps_match = re.search(reps_pattern, combined_text)
+        weight_match = re.search(weight_pattern, combined_text)
+        day_match = re.search(day_pattern, combined_text)
+        
+        if exercise_match:
+            return {
+                'type': 'update',  # assume update unless specified
+                'exercise_name': exercise_match.group(0),
+                'day': day_match.group(1) if day_match else None,
+                'sets': int(sets_match.group(1)) if sets_match else None,
+                'reps': reps_match.group(1) if reps_match else None,
+                'weight': f"{weight_match.group(1)}lbs" if weight_match else None,
+                'reasoning': f"Modified based on conversation about {exercise_match.group(0)}"
+            }
+            
+    except Exception as e:
+        print(f"Error parsing plan modification: {e}")
+        
+    return None
 
 def get_conversation_context(days_back=14, limit=10):
     """Get recent conversation context for enhanced AI responses"""
@@ -688,10 +754,19 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
         else:
             system_prompt = """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
 
+🤖 IMPORTANT: You have the ability to modify the user's weekly workout plan directly! When they ask for plan changes, you can actually make them happen.
+
+PLAN MODIFICATION CAPABILITIES:
+- When user asks to modify their plan (change exercises, sets, reps, weight), respond with enthusiasm: "Absolutely! I can make those changes to your plan."
+- Briefly explain what you'll change and why
+- End with: "Would you like me to make this change?" 
+- I will handle the actual database updates when you suggest modifications
+
 RESPONSE LENGTH GUIDELINES:
 - Greetings ("hello", "hi"): Very brief (1-2 sentences)
 - General questions ("what can you do"): Moderate length with bullet points
 - Historical data ("what did I do Friday"): Brief summary format
+- Plan modifications: Be enthusiastic and specific about what you can change
 - Progression tips: Use this specific format:
   • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
   • Exercise Name: specific actionable change
@@ -881,6 +956,15 @@ def chat_stream():
                 plan_modifications = None
                 if 'plan' in response.lower() and any(word in response.lower() for word in ['change', 'modify', 'update', 'suggest']):
                     plan_modifications = response[:300] + "..." if len(response) > 300 else response
+                
+                # Parse potential plan modification from Grok's response
+                plan_mod_data = parse_plan_modification_from_ai_response(response, user_message)
+                if plan_mod_data and detected_intent == 'plan_modification':
+                    # Store as potential auto-action for user confirmation
+                    potential_actions.append({
+                        'type': 'modify_plan_suggestion',
+                        'data': plan_mod_data
+                    })
 
                 # Get or create conversation thread
                 cursor.execute('''
@@ -1480,6 +1564,67 @@ def execute_auto_actions():
         return jsonify({
             'success': True,
             'executed_actions': results
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/modify_plan', methods=['POST'])
+def modify_plan():
+    """Allow Grok to propose and execute plan modifications"""
+    try:
+        data = request.json
+        modification_type = data.get('type')  # 'update', 'add', 'remove'
+        day = data.get('day', '').lower()
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        reasoning = data.get('reasoning', '')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        if modification_type == 'update':
+            # Update existing exercise
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (sets, reps, weight, reasoning, day, exercise_name))
+            
+            message = f"Updated {exercise_name} on {day.title()}: {sets}x{reps}@{weight}"
+            
+        elif modification_type == 'add':
+            # Get next order for the day
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+            next_order = cursor.fetchone()[0]
+            
+            cursor.execute('''
+                INSERT INTO weekly_plan 
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning))
+            
+            message = f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}"
+            
+        elif modification_type == 'remove':
+            cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
+            message = f"Removed {exercise_name} from {day.title()}"
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'change_made': {
+                'type': modification_type,
+                'day': day,
+                'exercise': exercise_name,
+                'details': f"{sets}x{reps}@{weight}" if sets else None,
+                'reasoning': reasoning
+            }
         })
         
     except Exception as e:

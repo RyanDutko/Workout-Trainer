@@ -210,7 +210,7 @@ function moveExercise(day, exercise, direction) {
 document.addEventListener('DOMContentLoaded', function() {
     // Check if edit buttons exist before adding listeners
     const editButtons = document.querySelectorAll('.edit-btn');
-    if (editButtons.length > 0) {
+    if (editButtons && editButtons.length > 0) {
         editButtons.forEach(button => {
             button.addEventListener('click', function() {
                 const id = this.getAttribute('data-id');
@@ -278,7 +278,7 @@ function deleteExercise(day, exercise) {
 // Form submission handler with proper error checking
 document.addEventListener('DOMContentLoaded', function() {
     const editForm = document.getElementById('editExerciseForm');
-    if (editForm) {
+    if (editForm && editForm.addEventListener) {
         editForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
