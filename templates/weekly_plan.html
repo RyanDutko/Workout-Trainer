@@ -208,27 +208,44 @@ function moveExercise(day, exercise, direction) {
 
 // Add event listeners for edit buttons
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.edit-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            const id = this.getAttribute('data-id');
-            const day = this.getAttribute('data-day');
-            const exercise = this.getAttribute('data-exercise');
-            const sets = this.getAttribute('data-sets');
-            const reps = this.getAttribute('data-reps');
-            const weight = this.getAttribute('data-weight');
-            const notes = this.getAttribute('data-notes') || '';
-            
-            document.getElementById('editId').value = id;
-            document.getElementById('editDay').value = day;
-            document.getElementById('editExerciseName').value = exercise;
-            document.getElementById('editSets').value = sets;
-            document.getElementById('editReps').value = reps;
-            document.getElementById('editWeight').value = weight;
-            document.getElementById('editNotes').value = notes;
-            
-            new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
+    // Check if edit buttons exist before adding listeners
+    const editButtons = document.querySelectorAll('.edit-btn');
+    if (editButtons.length > 0) {
+        editButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const id = this.getAttribute('data-id');
+                const day = this.getAttribute('data-day');
+                const exercise = this.getAttribute('data-exercise');
+                const sets = this.getAttribute('data-sets');
+                const reps = this.getAttribute('data-reps');
+                const weight = this.getAttribute('data-weight');
+                const notes = this.getAttribute('data-notes') || '';
+                
+                // Check if all required form elements exist
+                const editId = document.getElementById('editId');
+                const editDay = document.getElementById('editDay');
+                const editExerciseName = document.getElementById('editExerciseName');
+                const editSets = document.getElementById('editSets');
+                const editReps = document.getElementById('editReps');
+                const editWeight = document.getElementById('editWeight');
+                const editNotes = document.getElementById('editNotes');
+                
+                if (editId && editDay && editExerciseName && editSets && editReps && editWeight && editNotes) {
+                    editId.value = id;
+                    editDay.value = day;
+                    editExerciseName.value = exercise;
+                    editSets.value = sets;
+                    editReps.value = reps;
+                    editWeight.value = weight;
+                    editNotes.value = notes;
+                    
+                    new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
+                } else {
+                    console.error('Edit form elements not found');
+                }
+            });
         });
-    });
+    }
 });
 
 function deleteExercise(day, exercise) {
@@ -258,55 +275,66 @@ function deleteExercise(day, exercise) {
     }
 }
 
-document.getElementById('editExerciseForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const weightValue = formData.get('weight');
-    
-    // Debug logging
-    console.log('Form data:', {
-        id: formData.get('id'),
-        weight: weightValue,
-        sets: formData.get('sets'),
-        reps: formData.get('reps')
-    });
-    
-    if (!weightValue || weightValue.trim() === '') {
-        alert('Weight field cannot be empty');
-        return;
+// Form submission handler with proper error checking
+document.addEventListener('DOMContentLoaded', function() {
+    const editForm = document.getElementById('editExerciseForm');
+    if (editForm) {
+        editForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const weightValue = formData.get('weight');
+            
+            // Debug logging
+            console.log('Form data:', {
+                id: formData.get('id'),
+                weight: weightValue,
+                sets: formData.get('sets'),
+                reps: formData.get('reps')
+            });
+            
+            if (!weightValue || weightValue.trim() === '') {
+                alert('Weight field cannot be empty');
+                return;
+            }
+            
+            const data = {
+                id: parseInt(formData.get('id')),
+                day: formData.get('day'),
+                exercise: formData.get('exercise_name'),
+                sets: parseInt(formData.get('sets')),
+                reps: formData.get('reps'),
+                weight: weightValue.trim(),
+                notes: formData.get('notes') || ''
+            };
+            
+            fetch('/edit_exercise', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const modal = document.getElementById('editExerciseModal');
+                    if (modal && bootstrap.Modal.getInstance(modal)) {
+                        bootstrap.Modal.getInstance(modal).hide();
+                    }
+                    location.reload();
+                } else {
+                    alert('Error editing exercise: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error editing exercise');
+            });
+        });
+    } else {
+        console.warn('Edit exercise form not found');
     }
-    
-    const data = {
-        id: parseInt(formData.get('id')),
-        day: formData.get('day'),
-        exercise: formData.get('exercise_name'),
-        sets: parseInt(formData.get('sets')),
-        reps: formData.get('reps'),
-        weight: weightValue.trim(),
-        notes: formData.get('notes') || ''
-    };
-    
-    fetch('/edit_exercise', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            bootstrap.Modal.getInstance(document.getElementById('editExerciseModal')).hide();
-            location.reload();
-        } else {
-            alert('Error editing exercise: ' + data.error);
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error editing exercise');
-    });
 });
 </script>
 {% endblock %}

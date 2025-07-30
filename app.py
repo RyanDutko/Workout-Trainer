@@ -1659,7 +1659,17 @@ def add_to_plan():
         reps = data.get('reps')
         weight = data.get('weight')
 
-        conn = sqlite3.connect('workout_logs.db')
+        # Validate required fields
+        if not all([day, exercise, sets, reps, weight]):
+            return jsonify({'status': 'error', 'message': 'Missing required fields'})
+
+        # Validate sets is a number
+        try:
+            sets = int(sets)
+        except ValueError:
+            return jsonify({'status': 'error', 'message': 'Sets must be a number'})
+
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         # Get next order index for this day
@@ -1677,6 +1687,7 @@ def add_to_plan():
 
         return jsonify({'status': 'success'})
     except Exception as e:
+        print(f"Error in add_to_plan: {str(e)}")
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/edit_exercise', methods=['POST'])
