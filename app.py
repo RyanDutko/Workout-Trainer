@@ -757,10 +757,12 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
 🤖 IMPORTANT: You have the ability to modify the user's weekly workout plan directly! When they ask for plan changes, you can actually make them happen.
 
 PLAN MODIFICATION CAPABILITIES:
-- When user asks to modify their plan (change exercises, sets, reps, weight), respond with enthusiasm: "Absolutely! I can make those changes to your plan."
-- Briefly explain what you'll change and why
-- End with: "Would you like me to make this change?" 
-- I will handle the actual database updates when you suggest modifications
+- When user asks to modify their plan (change exercises, sets, reps, weight), respond with enthusiasm: "Absolutely! I can add that to your plan."
+- Briefly explain what you'll add and why it's a good choice
+- Be specific about the exercise details: "I'll add Roman Chair Back Extensions with a 45lb plate to your Wednesday routine - 3 sets of 8-12 reps."
+- End with: "I'll add this to your plan now." (Don't ask for permission again if they've already confirmed)
+- When they say "yes" or "yes please" to a plan change, that means they want you to proceed
+- The system will automatically show them a confirmation button to actually execute the change
 
 RESPONSE LENGTH GUIDELINES:
 - Greetings ("hello", "hi"): Very brief (1-2 sentences)
@@ -1625,6 +1627,105 @@ def modify_plan():
                 'details': f"{sets}x{reps}@{weight}" if sets else None,
                 'reasoning': reasoning
             }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/propose_plan_change', methods=['POST'])
+def propose_plan_change():
+    """Create a plan change proposal for user confirmation"""
+    try:
+        data = request.json
+        conversation_id = data.get('conversation_id')
+        modification_type = data.get('type', 'add')
+        day = data.get('day', '').lower()
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 3)
+        reps = data.get('reps', '8-12')
+        weight = data.get('weight', 'bodyweight')
+        reasoning = data.get('reasoning', '')
+        
+        # Store the proposal in the database for confirmation
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        proposal_data = {
+            'type': modification_type,
+            'day': day,
+            'exercise_name': exercise_name,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'reasoning': reasoning
+        }
+        
+        cursor.execute('''
+            INSERT INTO auto_actions 
+            (conversation_id, action_type, action_data, executed)
+            VALUES (?, 'plan_modification_proposal', ?, FALSE)
+        ''', (conversation_id, json.dumps(proposal_data)))
+        
+        proposal_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'proposal_id': proposal_id,
+            'proposal': proposal_data
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/confirm_plan_change', methods=['POST'])
+def confirm_plan_change():
+    """Execute a confirmed plan change"""
+    try:
+        data = request.json
+        proposal_id = data.get('proposal_id')
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get the proposal
+        cursor.execute('SELECT action_data FROM auto_actions WHERE id = ? AND executed = FALSE', (proposal_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            return jsonify({'success': False, 'error': 'Proposal not found or already executed'})
+        
+        proposal_data = json.loads(result[0])
+        
+        # Execute the plan change
+        if proposal_data['type'] == 'add':
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (proposal_data['day'],))
+            next_order = cursor.fetchone()[0]
+            
+            cursor.execute('''
+                INSERT INTO weekly_plan 
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
+            ''', (
+                proposal_data['day'], 
+                proposal_data['exercise_name'], 
+                proposal_data['sets'], 
+                proposal_data['reps'], 
+                proposal_data['weight'], 
+                next_order, 
+                proposal_data['reasoning']
+            ))
+        
+        # Mark as executed
+        cursor.execute('UPDATE auto_actions SET executed = TRUE WHERE id = ?', (proposal_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': f"Added {proposal_data['exercise_name']} to {proposal_data['day'].title()}"
         })
         
     except Exception as e:
