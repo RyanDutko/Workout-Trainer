@@ -413,31 +413,64 @@ function analyzeExercise() {
         .then(response => response.json())
         .then(data => {
             if (data.dates && data.dates.length > 0) {
-                // Update chart
-                exerciseChart.data.labels = data.dates;
+                // Create extended timeline for progression visualization
+                const extendedDates = [...data.dates];
+                const extendedWeights = [...data.max_weights];
+                
+                // Add 4 future weeks for progression visualization
+                const lastDate = new Date(data.dates[data.dates.length - 1]);
+                const lastWeight = data.max_weights[data.max_weights.length - 1];
+                
+                for (let i = 1; i <= 4; i++) {
+                    const futureDate = new Date(lastDate);
+                    futureDate.setDate(futureDate.getDate() + (i * 7));
+                    extendedDates.push(futureDate.toISOString().split('T')[0]);
+                    
+                    // Project modest progression (2.5lbs per week or 5% increase)
+                    const projectedWeight = lastWeight + (i * 2.5);
+                    extendedWeights.push(projectedWeight);
+                }
+                
+                // Update chart with only weight data (remove confusing volume)
+                exerciseChart.data.labels = extendedDates;
                 exerciseChart.data.datasets = [{
-                    label: 'Max Weight (lbs)',
-                    data: data.max_weights,
+                    label: 'Actual Weight (lbs)',
+                    data: data.max_weights.concat(Array(4).fill(null)), // Actual data only
                     borderColor: 'rgb(255, 99, 132)',
                     backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                    tension: 0.1
-                }, {
-                    label: 'Total Volume (lbs)',
-                    data: data.volumes,
-                    borderColor: 'rgb(54, 162, 235)',
-                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
                     tension: 0.1,
-                    yAxisID: 'y1'
+                    pointBackgroundColor: 'rgb(255, 99, 132)',
+                    pointBorderColor: 'rgb(255, 99, 132)',
+                    pointRadius: 6
+                }, {
+                    label: 'Progression Goal (lbs)',
+                    data: Array(data.max_weights.length).fill(null).concat(extendedWeights.slice(-4)),
+                    borderColor: 'rgba(255, 99, 132, 0.5)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.05)',
+                    tension: 0.1,
+                    borderDash: [5, 5],
+                    pointBackgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    pointBorderColor: 'rgba(255, 99, 132, 0.5)',
+                    pointRadius: 4
                 }];
                 
-                // Add second y-axis for volume
-                exerciseChart.options.scales.y1 = {
-                    type: 'linear',
-                    display: true,
-                    position: 'right',
-                    grid: {
-                        drawOnChartArea: false,
+                // Remove second y-axis since we're only showing weight
+                exerciseChart.options.scales = {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
                     },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Weight (lbs)'
+                        },
+                        beginAtZero: false
+                    }
                 };
                 
                 exerciseChart.update();
@@ -446,27 +479,37 @@ function analyzeExercise() {
                 const statsDiv = document.getElementById('exerciseStats');
                 const dataTypeNote = data.has_real_data ? '' : '<small class="text-muted">(Sample progression data - log workouts to see real data)</small>';
                 
+                // Calculate suggested next weight
+                const nextWeight = data.best_weight + 2.5;
+                const totalVolume = data.volumes[data.volumes.length - 1] || 0;
+                
                 statsDiv.innerHTML = `
                     ${dataTypeNote}
                     <div class="row mt-2">
-                        <div class="col-md-3">
-                            <strong>Best Session:</strong><br>
+                        <div class="col-md-2">
+                            <strong>Current Best:</strong><br>
                             ${data.best_weight} lbs<br>
                             <small class="text-muted">${data.best_date}</small>
                         </div>
-                        <div class="col-md-3">
-                            <strong>Recent Average:</strong><br>
-                            ${data.recent_avg} lbs
+                        <div class="col-md-2">
+                            <strong>Sessions:</strong><br>
+                            ${data.total_sessions}
                         </div>
-                        <div class="col-md-3">
-                            <strong>Progress Trend:</strong><br>
+                        <div class="col-md-2">
+                            <strong>Progress:</strong><br>
                             <span class="badge bg-${data.progress >= 0 ? 'success' : 'danger'}">
                                 ${data.progress > 0 ? '+' : ''}${data.progress}%
                             </span>
                         </div>
                         <div class="col-md-3">
-                            <strong>Total Sessions:</strong><br>
-                            ${data.total_sessions}
+                            <strong>Last Volume:</strong><br>
+                            ${totalVolume.toLocaleString()} lbs<br>
+                            <small class="text-muted">total weight moved</small>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Next Goal:</strong><br>
+                            <span class="badge bg-primary">${nextWeight} lbs</span><br>
+                            <small class="text-muted">suggested progression</small>
                         </div>
                     </div>
                 `;
