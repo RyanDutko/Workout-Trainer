@@ -120,15 +120,52 @@ def init_db():
         user_message TEXT NOT NULL,
         ai_response TEXT NOT NULL,
         detected_intent TEXT,
+        confidence_score REAL DEFAULT 0.0,
         actions_taken TEXT,
         workout_context TEXT,
         exercise_mentioned TEXT,
         form_cues_given TEXT,
         performance_notes TEXT,
         plan_modifications TEXT,
+        auto_executed_actions TEXT,
+        extracted_workout_data TEXT,
+        coaching_context TEXT,
         timestamp TEXT DEFAULT (datetime('now', 'localtime')),
         session_id TEXT,
+        conversation_thread_id TEXT,
+        parent_conversation_id INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS conversation_threads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER DEFAULT 1,
+        thread_type TEXT DEFAULT 'chat',
+        thread_subject TEXT,
+        current_context TEXT,
+        last_intent TEXT,
+        active_workout_session BOOLEAN DEFAULT FALSE,
+        workout_session_data TEXT,
+        created_timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+        updated_timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+        is_active BOOLEAN DEFAULT TRUE,
         FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS auto_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id INTEGER NOT NULL,
+        action_type TEXT NOT NULL,
+        action_data TEXT,
+        executed BOOLEAN DEFAULT FALSE,
+        execution_result TEXT,
+        timestamp TEXT DEFAULT (datetime('now', 'localtime')),
+        FOREIGN KEY (conversation_id) REFERENCES conversations (id)
     )
     ''')
 
@@ -167,6 +204,22 @@ def init_db():
         updated_date TEXT
     )
     ''')
+
+    # Add missing columns to conversations table
+    conversation_columns_to_add = [
+        ('confidence_score', 'REAL DEFAULT 0.0'),
+        ('auto_executed_actions', 'TEXT'),
+        ('extracted_workout_data', 'TEXT'),
+        ('coaching_context', 'TEXT'),
+        ('conversation_thread_id', 'TEXT'),
+        ('parent_conversation_id', 'INTEGER')
+    ]
+
+    for column_name, column_def in conversation_columns_to_add:
+        try:
+            cursor.execute(f'ALTER TABLE conversations ADD COLUMN {column_name} {column_def}')
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
     # Add missing columns if they don't exist (for existing databases)
     columns_to_add = [
@@ -249,31 +302,103 @@ def init_db():
     conn.close()
 
 def analyze_query_intent(prompt):
-    """Analyze the query to determine what type of context to include"""
+    """Enhanced intent detection with confidence scoring and action identification"""
     prompt_lower = prompt.lower()
-
+    
+    # Intent scoring system
+    intents = {}
+    
     # Full plan review (comprehensive analysis)
     if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
-        return 'full_plan_review'
+        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': []}
+
+    # Live workout coaching
+    live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
+    live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
+    if live_score > 0:
+        intents['live_workout'] = min(live_score * 0.4, 1.0)
+        
+    # Workout logging intent
+    log_keywords = ['did', 'completed', 'finished', 'logged', 'performed', 'x', 'sets', 'reps', '@']
+    log_patterns = [r'\d+x\d+', r'\d+\s*sets?', r'\d+\s*reps?', r'@\s*\d+']
+    log_score = sum(1 for word in log_keywords if word in prompt_lower)
+    log_score += sum(1 for pattern in log_patterns if re.search(pattern, prompt_lower))
+    if log_score > 0:
+        intents['workout_logging'] = min(log_score * 0.3, 1.0)
+
+    # Plan modification intent
+    plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace']
+    plan_score = sum(1 for word in plan_keywords if word in prompt_lower)
+    if plan_score > 0 and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+        intents['plan_modification'] = min(plan_score * 0.4, 1.0)
 
     # Progression-related queries
-    if any(word in prompt_lower for word in ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance']):
-        return 'progression'
+    progression_keywords = ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance', 'progression', 'stronger']
+    prog_score = sum(1 for word in progression_keywords if word in prompt_lower)
+    if prog_score > 0:
+        intents['progression'] = min(prog_score * 0.3, 1.0)
 
     # Exercise-specific queries
-    exercise_names = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull']
-    if any(exercise in prompt_lower for exercise in exercise_names):
-        return 'exercise_specific'
-
-    # General fitness chat
-    if any(word in prompt_lower for word in ['hello', 'hi', 'how are', 'what can', 'help']):
-        return 'general'
+    exercise_names = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back']
+    exercise_score = sum(1 for exercise in exercise_names if exercise in prompt_lower)
+    if exercise_score > 0:
+        intents['exercise_specific'] = min(exercise_score * 0.2, 1.0)
 
     # Historical queries
-    if any(word in prompt_lower for word in ['did', 'last', 'history', 'previous', 'ago']):
-        return 'historical'
+    historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
+    hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
+    if hist_score > 0:
+        intents['historical'] = min(hist_score * 0.25, 1.0)
 
-    return 'general'
+    # General fitness chat
+    general_keywords = ['hello', 'hi', 'how are', 'what can', 'help', 'advice', 'tips']
+    general_score = sum(1 for word in general_keywords if word in prompt_lower)
+    if general_score > 0:
+        intents['general'] = min(general_score * 0.15, 1.0)
+
+    # Return highest confidence intent
+    if intents:
+        best_intent = max(intents.items(), key=lambda x: x[1])
+        return {
+            'intent': best_intent[0], 
+            'confidence': best_intent[1],
+            'all_intents': intents,
+            'actions': extract_potential_actions(prompt, best_intent[0])
+        }
+    else:
+        return {'intent': 'general', 'confidence': 0.1, 'actions': []}
+
+def extract_potential_actions(prompt, intent):
+    """Extract potential auto-executable actions from the prompt"""
+    actions = []
+    prompt_lower = prompt.lower()
+    
+    if intent == 'workout_logging':
+        # Look for workout data patterns
+        workout_patterns = re.findall(r'(\d+)x(\d+)(?:@|\s*at\s*)(\d+(?:\.\d+)?)\s*(?:lbs?|kg)?\s+([a-zA-Z\s]+)', prompt)
+        for sets, reps, weight, exercise in workout_patterns:
+            actions.append({
+                'type': 'log_workout',
+                'data': {
+                    'exercise': exercise.strip(),
+                    'sets': int(sets),
+                    'reps': reps,
+                    'weight': f"{weight}lbs"
+                }
+            })
+    
+    elif intent == 'plan_modification':
+        # Look for plan change requests
+        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+        for day in days:
+            if day in prompt_lower:
+                actions.append({
+                    'type': 'modify_plan',
+                    'data': {'day': day, 'raw_request': prompt}
+                })
+                break
+    
+    return actions
 
 def get_conversation_context(days_back=14, limit=10):
     """Get recent conversation context for enhanced AI responses"""
@@ -722,8 +847,11 @@ def chat_stream():
                 # Generate session ID for conversation grouping
                 session_id = str(uuid.uuid4())[:8]
 
-                # Detect intent and extract context
-                detected_intent = analyze_query_intent(user_message)
+                # Enhanced intent detection with confidence scoring
+                intent_analysis = analyze_query_intent(user_message)
+                detected_intent = intent_analysis['intent']
+                confidence_score = intent_analysis['confidence']
+                potential_actions = intent_analysis.get('actions', [])
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
@@ -733,17 +861,80 @@ def chat_stream():
                         exercise_mentioned = keyword
                         break
 
-                # Store conversation
+                # Extract workout data if detected
+                extracted_workout_data = None
+                if detected_intent == 'workout_logging' and potential_actions:
+                    extracted_workout_data = json.dumps(potential_actions)
+
+                # Extract form cues and coaching context from AI response
+                form_cues = None
+                coaching_context = None
+                if detected_intent in ['live_workout', 'exercise_specific']:
+                    # Look for form-related keywords in AI response
+                    form_keywords = ['form', 'technique', 'posture', 'grip', 'stance', 'range of motion', 'tempo']
+                    if any(keyword in response.lower() for keyword in form_keywords):
+                        form_cues = response[:200] + "..." if len(response) > 200 else response
+                    
+                    coaching_context = f"Exercise: {exercise_mentioned}, Intent: {detected_intent}" if exercise_mentioned else f"Intent: {detected_intent}"
+
+                # Check for plan modifications mentioned in response
+                plan_modifications = None
+                if 'plan' in response.lower() and any(word in response.lower() for word in ['change', 'modify', 'update', 'suggest']):
+                    plan_modifications = response[:300] + "..." if len(response) > 300 else response
+
+                # Get or create conversation thread
+                cursor.execute('''
+                    SELECT id FROM conversation_threads 
+                    WHERE user_id = 1 AND is_active = TRUE 
+                    ORDER BY updated_timestamp DESC 
+                    LIMIT 1
+                ''')
+                thread_result = cursor.fetchone()
+                
+                if not thread_result:
+                    # Create new thread
+                    cursor.execute('''
+                        INSERT INTO conversation_threads 
+                        (user_id, thread_type, thread_subject, current_context, last_intent)
+                        VALUES (1, 'chat', ?, ?, ?)
+                    ''', (user_message[:50] + "..." if len(user_message) > 50 else user_message, 
+                          detected_intent, detected_intent))
+                    thread_id = cursor.lastrowid
+                else:
+                    thread_id = thread_result[0]
+                    # Update thread context
+                    cursor.execute('''
+                        UPDATE conversation_threads 
+                        SET current_context = ?, last_intent = ?, updated_timestamp = datetime('now', 'localtime')
+                        WHERE id = ?
+                    ''', (detected_intent, detected_intent, thread_id))
+
+                # Store enhanced conversation
                 cursor.execute('''
                     INSERT INTO conversations 
-                    (user_message, ai_response, detected_intent, exercise_mentioned, session_id, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (user_message, response, detected_intent, exercise_mentioned, session_id, 
-                      datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                    (user_message, ai_response, detected_intent, confidence_score, exercise_mentioned, 
+                     form_cues_given, coaching_context, plan_modifications, extracted_workout_data,
+                     session_id, conversation_thread_id, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (user_message, response, detected_intent, confidence_score, exercise_mentioned, 
+                      form_cues, coaching_context, plan_modifications, extracted_workout_data,
+                      session_id, thread_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+                conversation_id = cursor.lastrowid
+
+                # Store potential auto-actions for future execution
+                for action in potential_actions:
+                    cursor.execute('''
+                        INSERT INTO auto_actions 
+                        (conversation_id, action_type, action_data)
+                        VALUES (?, ?, ?)
+                    ''', (conversation_id, action['type'], json.dumps(action['data'])))
 
                 conn.commit()
                 conn.close()
-                print(f"💾 Stored conversation with intent: {detected_intent}")
+                print(f"💾 Stored conversation with intent: {detected_intent} (confidence: {confidence_score:.2f})")
+                if potential_actions:
+                    print(f"🤖 Detected {len(potential_actions)} potential auto-actions")
 
             except Exception as e:
                 print(f"⚠️ Failed to store conversation: {str(e)}")
@@ -1208,6 +1399,138 @@ Please be concise but capture the key insights from our discussion."""
 
         return jsonify({'success': True, 'message': 'AI analysis saved successfully!'})
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/execute_auto_actions', methods=['POST'])
+def execute_auto_actions():
+    """Execute auto-detected actions from conversations"""
+    try:
+        data = request.json
+        conversation_id = data.get('conversation_id')
+        
+        if not conversation_id:
+            return jsonify({'success': False, 'error': 'No conversation ID provided'})
+        
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get pending actions for this conversation
+        cursor.execute('''
+            SELECT id, action_type, action_data 
+            FROM auto_actions 
+            WHERE conversation_id = ? AND executed = FALSE
+        ''', (conversation_id,))
+        
+        pending_actions = cursor.fetchall()
+        results = []
+        
+        for action_id, action_type, action_data_json in pending_actions:
+            action_data = json.loads(action_data_json)
+            
+            try:
+                if action_type == 'log_workout':
+                    # Auto-log workout
+                    cursor.execute('''
+                        INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        action_data['exercise'],
+                        action_data['sets'],
+                        action_data['reps'],
+                        action_data['weight'],
+                        datetime.now().strftime('%Y-%m-%d'),
+                        'Auto-logged from conversation'
+                    ))
+                    
+                    results.append({
+                        'action_id': action_id,
+                        'type': action_type,
+                        'success': True,
+                        'message': f"Logged {action_data['exercise']}: {action_data['sets']}x{action_data['reps']}@{action_data['weight']}"
+                    })
+                    
+                elif action_type == 'modify_plan':
+                    # Plan modifications would need more complex logic
+                    results.append({
+                        'action_id': action_id,
+                        'type': action_type,
+                        'success': False,
+                        'message': 'Plan modifications require manual approval'
+                    })
+                
+                # Mark action as executed
+                cursor.execute('''
+                    UPDATE auto_actions 
+                    SET executed = TRUE, execution_result = ?
+                    WHERE id = ?
+                ''', (json.dumps(results[-1]), action_id))
+                
+            except Exception as e:
+                results.append({
+                    'action_id': action_id,
+                    'type': action_type,
+                    'success': False,
+                    'message': str(e)
+                })
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'executed_actions': results
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_conversation_context/<int:days>')
+def get_conversation_context_api(days):
+    """Get conversation context for the last N days"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        cursor.execute('''
+            SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
+                   c.exercise_mentioned, c.form_cues_given, c.coaching_context, 
+                   c.plan_modifications, c.timestamp,
+                   COUNT(aa.id) as auto_actions_count
+            FROM conversations c
+            LEFT JOIN auto_actions aa ON c.id = aa.conversation_id
+            WHERE c.timestamp >= ?
+            GROUP BY c.id
+            ORDER BY c.timestamp DESC
+            LIMIT 20
+        ''', (cutoff_date,))
+        
+        conversations = cursor.fetchall()
+        conn.close()
+        
+        context_data = []
+        for conv in conversations:
+            context_data.append({
+                'user_message': conv[0],
+                'ai_response': conv[1],
+                'intent': conv[2],
+                'confidence': conv[3],
+                'exercise_mentioned': conv[4],
+                'form_cues': conv[5],
+                'coaching_context': conv[6],
+                'plan_modifications': conv[7],
+                'timestamp': conv[8],
+                'auto_actions_count': conv[9]
+            })
+        
+        return jsonify({
+            'success': True,
+            'conversations': context_data,
+            'total_count': len(context_data)
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 

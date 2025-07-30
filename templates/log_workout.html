@@ -409,7 +409,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Set today's date for post-workout form
     const today = new Date().toISOString().split('T')[0];
-    document.getElementById('postWorkoutDate').value = today;
+    const postWorkoutDateElement = document.getElementById('postWorkoutDate');
+    if (postWorkoutDateElement) {
+        postWorkoutDateElement.value = today;
+    }
 
     // Post-workout form setup (no form element needed for current implementation)
 });
@@ -681,11 +684,16 @@ function loadCurrentExercise() {
 }
 
 function setupWorkoutStatusListeners() {
-    document.querySelectorAll('input[name="workoutStatus"]').forEach(radio => {
+    const workoutStatusRadios = document.querySelectorAll('input[name="workoutStatus"]');
+    if (workoutStatusRadios.length === 0) return;
+    
+    workoutStatusRadios.forEach(radio => {
         radio.addEventListener('change', function() {
             const skipContainer = document.getElementById('skipReasonContainer');
             const substitutionContainer = document.getElementById('substitutionContainer');
             const setsSection = document.getElementById('setsSection');
+
+            if (!skipContainer || !substitutionContainer || !setsSection) return;
 
             if (this.value === 'skipped') {
                 skipContainer.style.display = 'block';
