@@ -1251,12 +1251,13 @@ def chat():
 
 @app.route('/chat_stream', methods=['POST'])
 def chat_stream():
+    # Capture form data before starting the generator to avoid context issues
+    user_message = request.form.get('message', '')
+    conversation_history = request.form.get('conversation_history', '')
+    print(f"Chat request received: {user_message}")  # Debug log
+
     def generate():
         try:
-            # Get form data at the start of the generator to avoid context issues
-            user_message = request.form.get('message', '')
-            conversation_history = request.form.get('conversation_history', '')
-            print(f"Chat request received: {user_message}")  # Debug log
 
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
