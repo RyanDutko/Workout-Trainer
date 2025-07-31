@@ -70,6 +70,7 @@ let currentPlan = {};
 // Load philosophy on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadPhilosophy();
+    startPhilosophyWatcher();
 });
 
 // Refresh button handler
@@ -104,6 +105,12 @@ async function loadPhilosophy() {
         displayOverallPhilosophy(contextData);
         displayDailyBreakdown(contextData, planData);
 
+        // Show success message if this was triggered by an update
+        if (window.philosophyJustUpdated) {
+            showUpdateNotification();
+            window.philosophyJustUpdated = false;
+        }
+
     } catch (error) {
         console.error('Error loading philosophy:', error);
         document.getElementById('overallPhilosophy').innerHTML = `
@@ -113,6 +120,46 @@ async function loadPhilosophy() {
             </div>
         `;
     }
+}
+
+// Auto-refresh philosophy when updates are detected
+function startPhilosophyWatcher() {
+    // Check for updates every 5 seconds
+    setInterval(async () => {
+        try {
+            const response = await fetch('/get_stored_context');
+            const newData = await response.json();
+            
+            // Compare updated dates to detect changes
+            if (currentPhilosophy?.plan_context?.updated_date !== newData?.plan_context?.updated_date) {
+                console.log('🧠 Philosophy update detected, refreshing...');
+                window.philosophyJustUpdated = true;
+                loadPhilosophy();
+            }
+        } catch (error) {
+            // Silently handle errors in background polling
+        }
+    }, 5000);
+}
+
+function showUpdateNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; max-width: 400px;';
+    notification.innerHTML = `
+        <i class="fas fa-check-circle me-2"></i>
+        <strong>Philosophy Updated!</strong> Your training philosophy has been automatically updated based on your conversation with Grok.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
 }
 
 function displayOverallPhilosophy(data) {
