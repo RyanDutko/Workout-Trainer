@@ -2402,7 +2402,41 @@ def progression():
 
 @app.route('/history')
 def history():
-    return render_template('history.html')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get all workouts ordered by date (most recent first)
+    cursor.execute('''
+        SELECT id, exercise_name, sets, reps, weight, notes, date_logged,
+               substitution_reason, performance_context, environmental_factors, 
+               difficulty_rating, gym_location
+        FROM workouts 
+        ORDER BY date_logged DESC, id DESC
+        LIMIT 100
+    ''')
+    workouts = cursor.fetchall()
+    conn.close()
+    
+    # Convert to list of dictionaries for template
+    workout_list = []
+    for workout in workouts:
+        workout_dict = {
+            'id': workout[0],
+            'exercise_name': workout[1],
+            'sets': workout[2],
+            'reps': workout[3],
+            'weight': workout[4],
+            'notes': workout[5],
+            'date_logged': workout[6],
+            'substitution_reason': workout[7],
+            'performance_context': workout[8],
+            'environmental_factors': workout[9],
+            'difficulty_rating': workout[10],
+            'gym_location': workout[11]
+        }
+        workout_list.append(workout_dict)
+    
+    return render_template('history.html', workouts=workout_list)
 
 @app.route('/profile')
 def profile():
