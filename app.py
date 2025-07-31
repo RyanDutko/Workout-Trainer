@@ -647,6 +647,71 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
 
     return None
 
+def regenerate_exercise_metadata_from_plan():
+    """Regenerate exercise metadata when plan changes significantly"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Clear existing exercise metadata
+        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+        
+        # Get all exercises from current weekly plan
+        cursor.execute('''
+            SELECT DISTINCT exercise_name FROM weekly_plan 
+            ORDER BY exercise_name
+        ''')
+        exercises = cursor.fetchall()
+        
+        for (exercise_name,) in exercises:
+            exercise_lower = exercise_name.lower()
+            
+            # Determine purpose and progression based on exercise type
+            if any(word in exercise_lower for word in ['ab', 'crunch', 'core', 'woodchop', 'back extension']):
+                purpose = "Midsection hypertrophy for loose skin tightening"
+                progression_logic = "aggressive"
+                notes = "Core work treated as main lift per plan philosophy"
+            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'pull', 'squat', 'deadlift']):
+                purpose = "Compound strength and mass building"
+                progression_logic = "aggressive"
+                notes = "Main compound movement"
+            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'adductor']):
+                purpose = "Lower body isolation and hypertrophy"
+                progression_logic = "aggressive"
+                notes = "Machine-based isolation for joint safety"
+            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
+                purpose = "Upper body isolation hypertrophy"
+                progression_logic = "slow"
+                notes = "Isolation exercise for targeted growth"
+            elif any(word in exercise_lower for word in ['pushup', 'hanging leg', 'split squat', 'goblet']):
+                purpose = "Bodyweight strength and control"
+                progression_logic = "slow"
+                notes = "Bodyweight progression: reps → tempo → weight"
+            else:
+                purpose = "Hypertrophy and strength development"
+                progression_logic = "normal"
+                notes = "General hypertrophy and strength work"
+            
+            cursor.execute('''
+                INSERT INTO exercise_metadata
+                (user_id, exercise_name, exercise_type, primary_purpose,
+                 progression_logic, ai_notes, created_date)
+                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+            ''', (
+                exercise_name,
+                purpose,
+                progression_logic,
+                notes,
+                datetime.now().strftime('%Y-%m-%d')
+            ))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ Regenerated metadata for {len(exercises)} exercises")
+        
+    except Exception as e:
+        print(f"⚠️ Error regenerating exercise metadata: {str(e)}")
+
 def parse_preference_updates_from_conversation(ai_response, user_request):
     """Parse conversation to detect AI preference changes"""
     try:
@@ -1409,11 +1474,13 @@ def chat_stream():
                     try:
                         cursor.execute('''
                             INSERT OR REPLACE INTO plan_context
-                            (user_id, plan_philosophy, progression_strategy, special_considerations, 
+                            (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations, 
                              created_by_ai, creation_reasoning, created_date, updated_date)
-                            VALUES (1, ?, ?, ?, TRUE, ?, ?, ?)
+                            VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
                         ''', (
                             philosophy_update.get('plan_philosophy', ''),
+                            philosophy_update.get('training_style', ''),
+                            philosophy_update.get('weekly_structure', ''),
                             philosophy_update.get('progression_strategy', ''),
                             philosophy_update.get('special_considerations', ''),
                             philosophy_update.get('reasoning', ''),
@@ -1421,6 +1488,12 @@ def chat_stream():
                             datetime.now().strftime('%Y-%m-%d')
                         ))
                         print(f"🧠 Auto-updated training philosophy based on conversation")
+                        
+                        # If this was a comprehensive plan change, regenerate exercise metadata
+                        if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
+                            regenerate_exercise_metadata_from_plan()
+                            print(f"🔄 Regenerated exercise metadata for plan changes")
+                            
                     except Exception as e:
                         print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
