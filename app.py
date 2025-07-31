@@ -308,7 +308,7 @@ def init_db():
 def analyze_query_intent(prompt, conversation_context=None):
     """Enhanced intent detection with confidence scoring, multi-intent support, and context awareness"""
     prompt_lower = prompt.lower()
-    
+
     # Intent scoring system
     intents = {}
     detected_entities = {
@@ -317,25 +317,25 @@ def analyze_query_intent(prompt, conversation_context=None):
         'numbers': [],
         'references': []  # pronouns like "it", "that", "this"
     }
-    
+
     # Extract entities for context resolution
     exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-    
+
     for exercise in exercise_keywords:
         if exercise in prompt_lower:
             detected_entities['exercises'].append(exercise)
-    
+
     for day in days:
         if day in prompt_lower:
             detected_entities['days'].append(day)
-    
+
     # Detect references that need context resolution
     reference_words = ['it', 'that', 'this', 'the exercise', 'that workout', 'the one', 'instead', 'other']
     for ref in reference_words:
         if ref in prompt_lower:
             detected_entities['references'].append(ref)
-    
+
     # Full plan review (comprehensive analysis)
     if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
         return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
@@ -345,7 +345,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
     if live_score > 0:
         intents['live_workout'] = min(live_score * 0.4, 1.0)
-        
+
     # Workout logging intent
     log_keywords = ['did', 'completed', 'finished', 'logged', 'performed', 'x', 'sets', 'reps', '@']
     log_patterns = [r'\d+x\d+', r'\d+\s*sets?', r'\d+\s*reps?', r'@\s*\d+']
@@ -357,7 +357,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     # Plan modification intent
     plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace', 'adjust', 'tweak', 'switch']
     plan_score = sum(1 for word in plan_keywords if word in prompt_lower)
-    
+
     # Boost score if day mentioned or context suggests plan modification
     if any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
         plan_score += 2
@@ -365,7 +365,7 @@ def analyze_query_intent(prompt, conversation_context=None):
         plan_score += 1
     if any(phrase in prompt_lower for phrase in ['can you', 'could you', 'would you', 'please']):
         plan_score += 1
-        
+
     if plan_score > 0:
         intents['plan_modification'] = min(plan_score * 0.3, 1.0)
 
@@ -396,31 +396,31 @@ def analyze_query_intent(prompt, conversation_context=None):
     # Enhanced negation and correction detection
     negation_keywords = ['no', 'not', 'nope', 'incorrect', 'wrong', 'cancel', 'nevermind', 'actually']
     correction_keywords = ['instead', 'rather', 'meant', 'actually', 'correction', 'change that to']
-    
+
     negation_score = sum(1 for word in negation_keywords if word in prompt_lower)
     correction_score = sum(1 for word in correction_keywords if word in prompt_lower)
-    
+
     if negation_score > 0:
         intents['negation'] = min(negation_score * 0.4, 1.0)
-    
+
     if correction_score > 0:
         intents['correction'] = min(correction_score * 0.4, 1.0)
-    
+
     # Context-dependent intent boosting
     if conversation_context:
         last_intent = conversation_context.get('last_intent')
         last_entities = conversation_context.get('last_entities', {})
-        
+
         # If user is making references and we have context, boost contextual intents
         if detected_entities['references'] and last_intent:
             if last_intent == 'plan_modification':
                 intents['plan_modification'] = intents.get('plan_modification', 0) + 0.3
             elif last_intent == 'progression':
                 intents['progression'] = intents.get('progression', 0) + 0.3
-    
+
     # Multi-intent detection - return top intents if close in confidence
     sorted_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)
-    
+
     if len(sorted_intents) >= 2 and sorted_intents[1][1] > 0.4:
         # Multiple intents detected
         return {
@@ -448,7 +448,7 @@ def extract_potential_actions(prompt, intent):
     """Extract potential auto-executable actions from the prompt"""
     actions = []
     prompt_lower = prompt.lower()
-    
+
     if intent == 'workout_logging':
         # Look for workout data patterns
         workout_patterns = re.findall(r'(\d+)x(\d+)(?:@|\s*at\s*)(\d+(?:\.\d+)?)\s*(?:lbs?|kg)?\s+([a-zA-Z\s]+)', prompt)
@@ -462,7 +462,7 @@ def extract_potential_actions(prompt, intent):
                     'weight': f"{weight}lbs"
                 }
             })
-    
+
     elif intent == 'plan_modification':
         # Look for plan change requests with more detail
         days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -471,16 +471,16 @@ def extract_potential_actions(prompt, intent):
             if day in prompt_lower:
                 detected_day = day
                 break
-        
+
         # Try to extract exercise and modification details
         exercise_match = None
         modification_type = 'update'  # default
-        
+
         if any(word in prompt_lower for word in ['add', 'include']):
             modification_type = 'add'
         elif any(word in prompt_lower for word in ['remove', 'delete', 'drop']):
             modification_type = 'remove'
-        
+
         actions.append({
             'type': 'modify_plan',
             'data': {
@@ -489,7 +489,7 @@ def extract_potential_actions(prompt, intent):
                 'raw_request': prompt
             }
         })
-    
+
     return actions
 
 def parse_plan_modification_from_ai_response(ai_response, user_request):
@@ -497,26 +497,26 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
     try:
         # Look for patterns indicating Grok wants to make changes
         response_lower = ai_response.lower()
-        
+
         if not any(phrase in response_lower for phrase in ['can make', 'i can', 'absolutely', 'change', 'modify', 'update']):
             return None
-            
+
         # Extract exercise, sets, reps, weight from either user request or AI response
         exercise_pattern = r'(?:tricep|bicep|chest|shoulder|leg|back|ab|core)[\s\w]*(?:press|curl|extension|raise|pushdown|pulldown|fly|row|squat|deadlift)'
         sets_pattern = r'(\d+)\s*(?:sets?|x)'
         reps_pattern = r'(?:x|sets?\s*of\s*)(\d+(?:-\d+)?)'
         weight_pattern = r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg|pounds?)'
         day_pattern = r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
-        
+
         # Try to find these patterns in either the user request or AI response
         combined_text = f"{user_request} {ai_response}".lower()
-        
+
         exercise_match = re.search(exercise_pattern, combined_text)
         sets_match = re.search(sets_pattern, combined_text)
         reps_match = re.search(reps_pattern, combined_text)
         weight_match = re.search(weight_pattern, combined_text)
         day_match = re.search(day_pattern, combined_text)
-        
+
         if exercise_match:
             return {
                 'type': 'update',  # assume update unless specified
@@ -527,10 +527,10 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                 'weight': f"{weight_match.group(1)}lbs" if weight_match else None,
                 'reasoning': f"Modified based on conversation about {exercise_match.group(0)}"
             }
-            
+
     except Exception as e:
         print(f"Error parsing plan modification: {e}")
-        
+
     return None
 
 def parse_philosophy_update_from_conversation(ai_response, user_request):
@@ -539,7 +539,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
         combined_text = f"{user_request} {ai_response}".lower()
         user_request_lower = user_request.lower()
         ai_response_lower = ai_response.lower()
-        
+
         # Only trigger if Grok's response actually contains updated philosophy content
         # Look for signs that Grok is providing a NEW or UPDATED philosophy
         grok_update_indicators = [
@@ -552,10 +552,10 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             "new training philosophy",
             "updated training approach"
         ]
-        
+
         # Check if Grok is actually providing an updated philosophy
         grok_is_updating = any(indicator in ai_response_lower for indicator in grok_update_indicators)
-        
+
         # Also check if the AI response contains substantial philosophical content
         philosophy_content_indicators = [
             "training philosophy:",
@@ -566,9 +566,9 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             "emphasize",
             "prioritize"
         ]
-        
+
         has_philosophy_content = any(indicator in ai_response_lower for indicator in philosophy_content_indicators)
-        
+
         # Look for user requests that are asking for changes (but not just asking questions)
         user_change_requests = [
             'update my philosophy',
@@ -580,35 +580,35 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             'new philosophy',
             'different approach'
         ]
-        
+
         user_wants_change = any(request in user_request_lower for request in user_change_requests)
-        
+
         # Only proceed if BOTH conditions are met:
         # 1. User is requesting a change to philosophy
         # 2. Grok is actually providing updated content (not just acknowledging)
         if user_wants_change and (grok_is_updating or has_philosophy_content):
-            
+
             # Use Grok's response as the new philosophy if it contains substantial content
             if len(ai_response) > 100 and has_philosophy_content:
                 # Try to extract structured philosophy from Grok's response
                 philosophy_sections = {}
-                
+
                 # Look for specific philosophy elements in Grok's response
                 response_lines = ai_response.split('\n')
                 current_section = None
                 current_content = []
-                
+
                 for line in response_lines:
                     line = line.strip()
                     if not line:
                         continue
-                        
+
                     # Check for section headers
                     if any(header in line.lower() for header in ['philosophy:', 'approach:', 'strategy:', 'considerations:']):
                         # Save previous section
                         if current_section and current_content:
                             philosophy_sections[current_section] = ' '.join(current_content)
-                        
+
                         # Start new section
                         if 'philosophy' in line.lower():
                             current_section = 'plan_philosophy'
@@ -618,43 +618,43 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                             current_section = 'special_considerations'
                         else:
                             current_section = 'plan_philosophy'  # default
-                        
+
                         current_content = [line.split(':', 1)[-1].strip()] if ':' in line else []
                     else:
                         # Add to current section
                         if current_section:
                             current_content.append(line)
-                
+
                 # Save last section
                 if current_section and current_content:
                     philosophy_sections[current_section] = ' '.join(current_content)
-                
+
                 # If we didn't find structured sections, use the whole response as philosophy
                 if not philosophy_sections:
                     philosophy_sections['plan_philosophy'] = ai_response.strip()
-                
+
                 # Add reasoning
                 philosophy_sections['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
-                
+
                 print(f"🧠 Detected philosophy update request with substantial AI content")
                 return philosophy_sections
-                
+
         # No philosophy update detected
         return None
-                
+
     except Exception as e:
         print(f"Error parsing philosophy update: {e}")
-        
+
     return None
 
 def parse_preference_updates_from_conversation(ai_response, user_request):
     """Parse conversation to detect AI preference changes"""
     try:
         combined_text = f"{user_request} {ai_response}".lower()
-        
+
         # Look for preference change requests
         preference_changes = {}
-        
+
         # Tone preferences
         if any(phrase in combined_text for phrase in ['too long', 'shorter', 'more brief', 'less verbose', 'keep it short']):
             preference_changes['grok_detail_level'] = 'brief'
@@ -668,7 +668,7 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
             preference_changes['grok_tone'] = 'motivational'
         elif any(phrase in combined_text for phrase in ['more analytical', 'technical', 'data focused']):
             preference_changes['grok_tone'] = 'analytical'
-            
+
         # Format preferences
         if any(phrase in combined_text for phrase in ['bullet points', 'bulleted list', 'use bullets']):
             preference_changes['grok_format'] = 'bullet_points'
@@ -676,7 +676,7 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
             preference_changes['grok_format'] = 'paragraphs'
         elif any(phrase in combined_text for phrase in ['numbered list', 'numbers', 'step by step']):
             preference_changes['grok_format'] = 'numbered_lists'
-            
+
         # Communication style
         if any(phrase in combined_text for phrase in ['more direct', 'straight to the point', 'no fluff']):
             preference_changes['communication_style'] = 'direct'
@@ -684,12 +684,12 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
             preference_changes['communication_style'] = 'friendly'
         elif any(phrase in combined_text for phrase in ['more encouraging', 'supportive', 'positive']):
             preference_changes['communication_style'] = 'encouraging'
-            
+
         return preference_changes if preference_changes else None
-        
+
     except Exception as e:
         print(f"Error parsing preference updates: {e}")
-        
+
     return None
 
 def get_conversation_context(days_back=14, limit=10):
@@ -736,30 +736,30 @@ def resolve_contextual_references(prompt, entities, conversation_context):
     """Resolve pronouns and references using conversation context"""
     if not entities.get('references') or not conversation_context:
         return prompt, {}
-    
+
     resolved_entities = {}
-    
+
     # Get last conversation for context
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    
+
     cursor.execute('''
         SELECT user_message, ai_response, exercise_mentioned, plan_modifications
         FROM conversations 
         ORDER BY timestamp DESC 
         LIMIT 3
     ''')
-    
+
     recent_convs = cursor.fetchall()
     conn.close()
-    
+
     if not recent_convs:
         return prompt, resolved_entities
-    
+
     # Try to resolve "it", "that", "the exercise" etc.
     for conv in recent_convs:
         user_msg, ai_resp, exercise_mentioned, plan_mods = conv
-        
+
         # If previous conversation mentioned a specific exercise
         if exercise_mentioned:
             resolved_entities['exercise'] = exercise_mentioned
@@ -767,7 +767,7 @@ def resolve_contextual_references(prompt, entities, conversation_context):
             prompt = prompt.replace(' it ', f' {exercise_mentioned} ')
             prompt = prompt.replace(' that ', f' {exercise_mentioned} ')
             break
-        
+
         # If AI response mentioned specific exercises
         if ai_resp:
             import re
@@ -778,7 +778,7 @@ def resolve_contextual_references(prompt, entities, conversation_context):
                 prompt = prompt.replace(' it ', f' {exercise_match.group(1)} ')
                 prompt = prompt.replace(' that ', f' {exercise_match.group(1)} ')
                 break
-    
+
     return prompt, resolved_entities
 
 def get_conversation_state():
@@ -786,7 +786,7 @@ def get_conversation_state():
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get last conversation
         cursor.execute('''
             SELECT detected_intent, exercise_mentioned, plan_modifications, 
@@ -795,13 +795,13 @@ def get_conversation_state():
             ORDER BY timestamp DESC 
             LIMIT 1
         ''')
-        
+
         last_conv = cursor.fetchone()
         conn.close()
-        
+
         if not last_conv:
             return None
-            
+
         return {
             'last_intent': last_conv[0],
             'last_exercise': last_conv[1],
@@ -809,7 +809,7 @@ def get_conversation_state():
             'last_workout_data': last_conv[3],
             'timestamp': last_conv[4]
         }
-        
+
     except Exception as e:
         print(f"Error getting conversation state: {e}")
         return None
@@ -910,6 +910,35 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 if notes:
                     context_info += f" - {notes}"
                 context_info += "\n"
+
+        # Add complete weekly plan for context with proper formatting
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+        weekly_plan = cursor.fetchall()
+        if weekly_plan:
+            context_info += "\n\n=== CURRENT WEEKLY PLAN (ACCURATE DATA) ===\n"
+            current_day = ""
+            for row in weekly_plan:
+                day, exercise, sets, reps, weight, order = row
+                if day != current_day:
+                    if current_day:  # Add newline after previous day
+                        context_info += "\n"
+                    context_info += f"\n{day.upper()}:\n"
+                    current_day = day
+                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+            context_info += "\nIMPORTANT: Use ONLY the exercises listed above. Do not invent or add exercises that are not in this plan.\n"
 
         # Strip the trigger phrase from the actual prompt
         prompt = prompt.replace('FULL_PLAN_REVIEW_REQUEST:', '').strip()
@@ -1122,12 +1151,12 @@ def dashboard():
     # Get today's plan with completion status
     cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0) FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     plan_data = cursor.fetchall()
-    
+
     # Check completion status for each exercise
     today_plan = []
     for row in plan_data:
         exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
-        
+
         # Check if this exercise was logged today
         cursor.execute('''
             SELECT sets, reps, weight, notes 
@@ -1135,9 +1164,9 @@ def dashboard():
             WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
             ORDER BY id DESC LIMIT 1
         ''', (exercise_name, today_date))
-        
+
         logged_workout = cursor.fetchone()
-        
+
         completion_status = {
             'completed': False,
             'status_text': 'Not completed',
@@ -1147,7 +1176,7 @@ def dashboard():
             'logged_weight': None,
             'notes': None
         }
-        
+
         if logged_workout:
             logged_sets, logged_reps, logged_weight, logged_notes = logged_workout
             completion_status['completed'] = True
@@ -1155,12 +1184,12 @@ def dashboard():
             completion_status['logged_reps'] = logged_reps
             completion_status['logged_weight'] = logged_weight
             completion_status['notes'] = logged_notes
-            
+
             # Determine completion quality
             try:
                 target_sets_num = int(target_sets)
                 logged_sets_num = int(logged_sets)
-                
+
                 if logged_sets_num == target_sets_num:
                     completion_status['status_text'] = 'Completed'
                     completion_status['status_class'] = 'text-success'
@@ -1173,7 +1202,7 @@ def dashboard():
             except:
                 completion_status['status_text'] = 'Completed'
                 completion_status['status_class'] = 'text-success'
-        
+
         # Add completion status and newly_added flag to the row data
         today_plan.append((*row[:-1], completion_status, bool(newly_added)))
 
@@ -1185,7 +1214,7 @@ def dashboard():
     week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
     cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (week_ago,))
     week_workouts_data = cursor.fetchall()
-    
+
     week_volume = 0
     for exercise, sets, reps, weight in week_workouts_data:
         try:
@@ -1202,7 +1231,7 @@ def dashboard():
     month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
     cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (month_ago,))
     month_workouts_data = cursor.fetchall()
-    
+
     month_volume = 0
     for exercise, sets, reps, weight in month_workouts_data:
         try:
@@ -1314,7 +1343,7 @@ def chat_stream():
 
                 # Enhanced intent detection with confidence scoring and context
                 conversation_state = get_conversation_state()
-                
+
                 # Resolve contextual references first
                 original_message = message
                 current_message = message
@@ -1356,14 +1385,14 @@ def chat_stream():
                     form_keywords = ['form', 'technique', 'posture', 'grip', 'stance', 'range of motion', 'tempo']
                     if any(keyword in response.lower() for keyword in form_keywords):
                         form_cues = response[:200] + "..." if len(response) > 200 else response
-                    
+
                     coaching_context = f"Exercise: {exercise_mentioned}, Intent: {detected_intent}" if exercise_mentioned else f"Intent: {detected_intent}"
 
                 # Check for plan modifications mentioned in response
                 plan_modifications = None
                 if 'plan' in response.lower() and any(word in response.lower() for word in ['change', 'modify', 'update', 'suggest']):
                     plan_modifications = response[:300] + "..." if len(response) > 300 else response
-                
+
                 # Parse potential plan modification from Grok's response
                 plan_mod_data = parse_plan_modification_from_ai_response(response, current_message)
                 if plan_mod_data and detected_intent == 'plan_modification':
@@ -1372,7 +1401,7 @@ def chat_stream():
                         'type': 'modify_plan_suggestion',
                         'data': plan_mod_data
                     })
-                
+
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
                 if philosophy_update:
@@ -1414,7 +1443,7 @@ def chat_stream():
                     LIMIT 1
                 ''')
                 thread_result = cursor.fetchone()
-                
+
                 if not thread_result:
                     # Create new thread
                     cursor.execute('''
@@ -1709,7 +1738,8 @@ Please be concise but capture the key insights from our discussion."""
             ORDER BY 
                 CASE day_of_week 
                     WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2                     WHEN 'wednesday' THEN 3
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3
                     WHEN 'thursday' THEN 4
                     WHEN 'friday' THEN 5
                     WHEN 'saturday' THEN 6
@@ -1751,17 +1781,16 @@ Please be concise but capture the key insights from our discussion."""
                         variations.append({
                             'day': instance['day'],
                             'sets': instance['sets'],
-                            'reps': instance['reps'],
-                            'weight': instance['weight'],
+                            'reps': reps['weight': weight,
                             'volume': volume,
                             'weight_num': weight_num
                         })
                     except:
                         variations.append({
                             'day': instance['day'],
-                            'sets': instance['sets'],
-                            'reps': instance['reps'],
-                            'weight': instance['weight'],
+                            'sets': sets,
+                            'reps': reps,
+                            'weight': weight,
                             'volume': 0,
                             'weight_num': 0
                         })
@@ -1933,26 +1962,26 @@ def execute_auto_actions():
     try:
         data = request.json
         conversation_id = data.get('conversation_id')
-        
+
         if not conversation_id:
             return jsonify({'success': False, 'error': 'No conversation ID provided'})
-        
+
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get pending actions for this conversation
         cursor.execute('''
             SELECT id, action_type, action_data 
             FROM auto_actions 
             WHERE conversation_id = ? AND executed = FALSE
         ''', (conversation_id,))
-        
+
         pending_actions = cursor.fetchall()
         results = []
-        
+
         for action_id, action_type, action_data_json in pending_actions:
             action_data = json.loads(action_data_json)
-            
+
             try:
                 if action_type == 'log_workout':
                     # Auto-log workout
@@ -1967,14 +1996,14 @@ def execute_auto_actions():
                         datetime.now().strftime('%Y-%m-%d'),
                         'Auto-logged from conversation'
                     ))
-                    
+
                     results.append({
                         'action_id': action_id,
                         'type': action_type,
                         'success': True,
                         'message': f"Logged {action_data['exercise']}: {action_data['sets']}x{action_data['reps']}@{action_data['weight']}"
                     })
-                    
+
                 elif action_type == 'modify_plan':
                     # Plan modifications would need more complex logic
                     results.append({
@@ -1983,14 +2012,14 @@ def execute_auto_actions():
                         'success': False,
                         'message': 'Plan modifications require manual approval'
                     })
-                
+
                 # Mark action as executed
                 cursor.execute('''
                     UPDATE auto_actions 
                     SET executed = TRUE, execution_result = ?
                     WHERE id = ?
                 ''', (json.dumps(results[-1]), action_id))
-                
+
             except Exception as e:
                 results.append({
                     'action_id': action_id,
@@ -1998,15 +2027,15 @@ def execute_auto_actions():
                     'success': False,
                     'message': str(e)
                 })
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'executed_actions': results
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2022,10 +2051,10 @@ def modify_plan():
         reps = data.get('reps')
         weight = data.get('weight')
         reasoning = data.get('reasoning', '')
-        
+
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         if modification_type == 'update':
             # Update existing exercise
             cursor.execute('''
@@ -2033,29 +2062,29 @@ def modify_plan():
                 SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
                 WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (sets, reps, weight, reasoning, day, exercise_name))
-            
+
             message = f"Updated {exercise_name} on {day.title()}: {sets}x{reps}@{weight}"
-            
+
         elif modification_type == 'add':
             # Get next order for the day
             cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
             next_order = cursor.fetchone()[0]
-            
+
             cursor.execute('''
                 INSERT INTO weekly_plan 
                 (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
             ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
-            
+
             message = f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}"
-            
+
         elif modification_type == 'remove':
             cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
             message = f"Removed {exercise_name} from {day.title()}"
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'message': message,
@@ -2067,7 +2096,7 @@ def modify_plan():
                 'reasoning': reasoning
             }
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2084,11 +2113,11 @@ def propose_plan_change():
         reps = data.get('reps', '8-12')
         weight = data.get('weight', 'bodyweight')
         reasoning = data.get('reasoning', '')
-        
+
         # Store the proposal in the database for confirmation
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         proposal_data = {
             'type': modification_type,
             'day': day,
@@ -2098,23 +2127,23 @@ def propose_plan_change():
             'weight': weight,
             'reasoning': reasoning
         }
-        
+
         cursor.execute('''
             INSERT INTO auto_actions 
             (conversation_id, action_type, action_data, executed)
             VALUES (?, 'plan_modification_proposal', ?, FALSE)
         ''', (conversation_id, json.dumps(proposal_data)))
-        
+
         proposal_id = cursor.lastrowid
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'proposal_id': proposal_id,
             'proposal': proposal_data
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2124,24 +2153,24 @@ def confirm_plan_change():
     try:
         data = request.json
         proposal_id = data.get('proposal_id')
-        
+
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get the proposal
         cursor.execute('SELECT action_data FROM auto_actions WHERE id = ? AND executed = FALSE', (proposal_id,))
         result = cursor.fetchone()
-        
+
         if not result:
             return jsonify({'success': False, 'error': 'Proposal not found or already executed'})
-        
+
         proposal_data = json.loads(result[0])
-        
+
         # Execute the plan change
         if proposal_data['type'] == 'add':
             cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (proposal_data['day'],))
             next_order = cursor.fetchone()[0]
-            
+
             cursor.execute('''
                 INSERT INTO weekly_plan 
                 (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
@@ -2155,18 +2184,18 @@ def confirm_plan_change():
                 next_order, 
                 proposal_data['reasoning']
             ))
-        
+
         # Mark as executed
         cursor.execute('UPDATE auto_actions SET executed = TRUE WHERE id = ?', (proposal_id,))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'message': f"Added {proposal_data['exercise_name']} to {proposal_data['day'].title()}"
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2179,25 +2208,25 @@ def add_to_plan():
         sets = int(request.form.get('sets'))
         reps = request.form.get('reps')
         weight = request.form.get('weight')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get next order for the day
         cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
         next_order = cursor.fetchone()[0]
-        
+
         cursor.execute('''
             INSERT INTO weekly_plan 
             (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, newly_added, date_added)
             VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)
         ''', (day, exercise, sets, reps, weight, next_order, datetime.now().strftime('%Y-%m-%d')))
-        
+
         conn.commit()
         conn.close()
-        
+
         return redirect(url_for('weekly_plan'))
-        
+
     except Exception as e:
         print(f"Error adding exercise: {e}")
         return redirect(url_for('weekly_plan'))
@@ -2213,21 +2242,21 @@ def edit_exercise():
         weight = data.get('weight')
         exercise_name = data.get('exercise')
         notes = data.get('notes', '')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             UPDATE weekly_plan 
             SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
             WHERE id = ?
         ''', (sets, reps, weight, exercise_name, notes, exercise_id))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2238,17 +2267,17 @@ def delete_exercise():
         data = request.json
         day = data.get('day')
         exercise = data.get('exercise')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2260,14 +2289,14 @@ def reorder_exercise():
         day = data.get('day')
         exercise = data.get('exercise')
         direction = data.get('direction')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get current order
         cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
         current_order = cursor.fetchone()[0]
-        
+
         if direction == 'up' and current_order > 1:
             new_order = current_order - 1
         elif direction == 'down':
@@ -2279,17 +2308,17 @@ def reorder_exercise():
                 return jsonify({'success': False, 'error': 'Already at bottom'})
         else:
             return jsonify({'success': False, 'error': 'Cannot move further'})
-        
+
         # Swap orders
         cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (999, day, new_order))
         cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
         cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, 999))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2299,25 +2328,25 @@ def update_profile():
     try:
         field_name = request.form.get('field_name')
         value = request.form.get('value')
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Check if user_background record exists
         cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
         if cursor.fetchone()[0] == 0:
             # Create record
             cursor.execute('INSERT INTO user_background (user_id) VALUES (1)')
-        
+
         # Update the specific field
         update_query = f'UPDATE user_background SET {field_name} = ?, updated_date = ? WHERE user_id = 1'
         cursor.execute(update_query, (value, datetime.now().strftime('%Y-%m-%d')))
-        
+
         conn.commit()
         conn.close()
-        
+
         return redirect(url_for('profile'))
-        
+
     except Exception as e:
         print(f"Error updating profile: {e}")
         return redirect(url_for('profile'))
@@ -2328,7 +2357,7 @@ def api_weekly_plan():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
             FROM weekly_plan 
@@ -2343,10 +2372,10 @@ def api_weekly_plan():
                     WHEN 'sunday' THEN 7 
                 END, exercise_order
         ''')
-        
+
         plan_data = cursor.fetchall()
         conn.close()
-        
+
         # Organize by day
         plan_by_day = {}
         for day, exercise, sets, reps, weight, order in plan_data:
@@ -2359,9 +2388,9 @@ def api_weekly_plan():
                 'weight': weight,
                 'order': order
             })
-        
+
         return jsonify(plan_by_day)
-        
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -2371,7 +2400,7 @@ def get_weight_history():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Create a simple weight tracking table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS weight_logs (
@@ -2381,13 +2410,13 @@ def get_weight_history():
                 user_id INTEGER DEFAULT 1
             )
         ''')
-        
+
         cursor.execute('SELECT date_logged, weight FROM weight_logs WHERE user_id = 1 ORDER BY date_logged')
         weight_data = cursor.fetchall()
-        
+
         dates = [row[0] for row in weight_data]
         weights = [row[1] for row in weight_data]
-        
+
         conn.close()
         return jsonify({'dates': dates, 'weights': weights})
     except Exception as e:
@@ -2399,18 +2428,18 @@ def get_volume_history():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get weekly volume data for the last 8 weeks
         weekly_volumes = []
         week_labels = []
-        
+
         for week_offset in range(7, -1, -1):
             week_start = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday())).strftime('%Y-%m-%d')
             week_end = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday() - 6)).strftime('%Y-%m-%d')
-            
+
             cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged BETWEEN ? AND ?', (week_start, week_end))
             week_workouts = cursor.fetchall()
-            
+
             week_volume = 0
             for exercise, sets, reps, weight in week_workouts:
                 try:
@@ -2421,10 +2450,10 @@ def get_volume_history():
                         week_volume += weight_num * sets * reps_num
                 except (ValueError, AttributeError):
                     continue
-            
+
             weekly_volumes.append(int(week_volume))
             week_labels.append(f"Week {week_offset + 1}")
-        
+
         conn.close()
         return jsonify({'weeks': week_labels, 'volumes': weekly_volumes})
     except Exception as e:
@@ -2436,21 +2465,21 @@ def get_exercise_list():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get exercises from both workout logs and weekly plan
         cursor.execute('SELECT DISTINCT exercise_name FROM workouts WHERE exercise_name IS NOT NULL ORDER BY exercise_name')
         logged_exercises = [row[0] for row in cursor.fetchall()]
-        
+
         cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan WHERE exercise_name IS NOT NULL ORDER BY exercise_name')
         planned_exercises = [row[0] for row in cursor.fetchall()]
-        
+
         # Combine and deduplicate
         all_exercises = list(set(logged_exercises + planned_exercises))
         all_exercises.sort()
-        
+
         conn.close()
         return jsonify({'exercises': all_exercises})
-        
+
     except Exception as e:
         print(f"Error in get_exercise_list: {e}")
         return jsonify({'exercises': []})
@@ -2462,10 +2491,10 @@ def log_weight():
         data = request.json
         weight = float(data.get('weight'))
         date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Create weight_logs table if it doesn't exist
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS weight_logs (
@@ -2475,16 +2504,16 @@ def log_weight():
                 user_id INTEGER DEFAULT 1
             )
         ''')
-        
+
         # Insert or update weight for the date
         cursor.execute('DELETE FROM weight_logs WHERE date_logged = ? AND user_id = 1', (date,))
         cursor.execute('INSERT INTO weight_logs (weight, date_logged, user_id) VALUES (?, ?, 1)', (weight, date))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'success': True})
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2494,7 +2523,7 @@ def get_exercise_performance(exercise):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # More flexible exercise matching - try exact match first, then partial
         cursor.execute('''
             SELECT date_logged, sets, reps, weight 
@@ -2502,9 +2531,9 @@ def get_exercise_performance(exercise):
             WHERE LOWER(exercise_name) = LOWER(?) 
             ORDER BY date_logged
         ''', (exercise,))
-        
+
         performance_data = cursor.fetchall()
-        
+
         # If no exact match, try partial matching
         if not performance_data:
             cursor.execute('''
@@ -2514,24 +2543,24 @@ def get_exercise_performance(exercise):
                 ORDER BY date_logged
             ''', (f'%{exercise}%',))
             performance_data = cursor.fetchall()
-        
+
         dates = []
         max_weights = []
         volumes = []
-        
+
         print(f"🔍 Found {len(performance_data)} workout entries for '{exercise}'")  # Debug log
-        
+
         # Process actual logged data with improved reps parsing
         for date, sets, reps, weight in performance_data:
             try:
                 weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
                 if weight_str and weight_str != 'bodyweight':
                     weight_num = float(weight_str)
-                    
+
                     # Improved reps parsing to handle different formats
                     reps_str = str(reps).strip()
                     reps_num = 0
-                    
+
                     # Handle different reps formats
                     if '/' in reps_str:
                         # Format like "12/12/12" - take average or first value
@@ -2550,20 +2579,20 @@ def get_exercise_performance(exercise):
                     else:
                         # Simple format like "12"
                         reps_num = int(reps_str)
-                    
+
                     if reps_num > 0:
                         volume = weight_num * sets * reps_num
-                        
+
                         dates.append(date)
                         max_weights.append(weight_num)
                         volumes.append(volume)
-                        
+
                         print(f"📊 {date}: {sets}x{reps_num}@{weight_num}lbs = {volume} volume")  # Debug log
-                        
+
             except (ValueError, AttributeError) as e:
                 print(f"⚠️ Error parsing workout data: {date}, {sets}, {reps}, {weight} - {e}")
                 continue
-        
+
         # If no logged data, check weekly plan and create sample progression data
         if not dates:
             cursor.execute('''
@@ -2572,54 +2601,54 @@ def get_exercise_performance(exercise):
                 WHERE LOWER(exercise_name) LIKE LOWER(?)
                 LIMIT 1
             ''', (f'%{exercise}%',))
-            
+
             plan_data = cursor.fetchone()
-            
+
             if plan_data:
                 sets, reps, weight, day = plan_data
-                
+
                 # Generate sample progression data for visualization
                 from datetime import datetime, timedelta
-                
+
                 try:
                     weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
                     if weight_str and weight_str != 'bodyweight':
                         base_weight = float(weight_str)
                         base_reps = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
-                        
+
                         # Create 8 weeks of sample progression data
                         for i in range(8):
                             sample_date = (datetime.now() - timedelta(weeks=7-i)).strftime('%Y-%m-%d')
                             # Progressive increase in weight over time
                             sample_weight = base_weight + (i * 2.5)  # 2.5lb progression per week
                             sample_volume = sample_weight * sets * base_reps
-                            
+
                             dates.append(sample_date)
                             max_weights.append(sample_weight)
                             volumes.append(sample_volume)
-                            
+
                 except (ValueError, AttributeError):
                     pass
-        
+
         # Calculate stats
         best_weight = max(max_weights) if max_weights else 0
         best_date = dates[max_weights.index(best_weight)] if max_weights else 'N/A'
         recent_avg = sum(max_weights[-3:]) / len(max_weights[-3:]) if max_weights else 0
         total_sessions = len(dates)
-        
+
         # Calculate progress (recent vs older)
         if len(max_weights) >= 4:
             recent_weights = max_weights[-2:]
             older_weights = max_weights[:2]
-            
+
             recent_avg_calc = sum(recent_weights) / len(recent_weights)
             older_avg = sum(older_weights) / len(older_weights)
             progress = ((recent_avg_calc - older_avg) / older_avg * 100) if older_avg > 0 else 0
         else:
             progress = 0
-        
+
         conn.close()
-        
+
         return jsonify({
             'dates': dates,
             'max_weights': max_weights,
@@ -2631,7 +2660,7 @@ def get_exercise_performance(exercise):
             'total_sessions': total_sessions,
             'has_real_data': len(performance_data) > 0
         })
-        
+
     except Exception as e:
         print(f"Error in get_exercise_performance: {e}")
         return jsonify({
@@ -2652,38 +2681,38 @@ def delete_workout():
     try:
         data = request.json
         workout_id = data.get('workout_id')
-        
+
         if not workout_id:
             return jsonify({'success': False, 'error': 'Workout ID is required'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get exercise name before deleting to potentially restore newly_added flag
         cursor.execute('SELECT exercise_name FROM workouts WHERE id = ?', (workout_id,))
         result = cursor.fetchone()
-        
+
         if result:
             exercise_name = result[0]
-            
+
             # Delete the workout
             cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
-            
+
             # Check if this was the only log for this exercise
             cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
             remaining_logs = cursor.fetchone()[0]
-            
+
             print(f"🗑️ Deleted workout for {exercise_name}, remaining logs: {remaining_logs}")
-            
+
             if remaining_logs == 0:
                 # Check what's in the weekly plan for this exercise
                 cursor.execute('SELECT exercise_name, created_by, newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
                 plan_result = cursor.fetchone()
-                
+
                 if plan_result:
                     plan_exercise_name, created_by, currently_newly_added = plan_result
                     print(f"📋 Found in plan: '{plan_exercise_name}', created_by: '{created_by}', currently_newly_added: {currently_newly_added}")
-                    
+
                     # Restore newly_added flag if it was created by AI (regardless of current newly_added status)
                     if created_by == 'grok_ai':
                         cursor.execute('''
@@ -2691,7 +2720,7 @@ def delete_workout():
                             SET newly_added = TRUE
                             WHERE LOWER(exercise_name) = LOWER(?)
                         ''', (exercise_name,))
-                        
+
                         if cursor.rowcount > 0:
                             print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
                         else:
@@ -2700,15 +2729,15 @@ def delete_workout():
                         print(f"ℹ️ {exercise_name} exists in plan but created by '{created_by}', not restoring NEW flag")
                 else:
                     print(f"⚠️ {exercise_name} not found in weekly plan at all")
-            
+
             conn.commit()
             conn.close()
-            
+
             return jsonify({'success': True, 'message': 'Workout deleted successfully'})
         else:
             conn.close()
             return jsonify({'success': False, 'error': 'Workout not found'})
-        
+
     except Exception as e:
         print(f"Error deleting workout: {e}")
         return jsonify({'success': False, 'error': str(e)})
@@ -2724,25 +2753,25 @@ def save_workout():
         weight = data.get('weight', '')
         notes = data.get('notes', '')
         date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         if not exercise_name:
             return jsonify({'status': 'error', 'message': 'Exercise name is required'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (exercise_name, sets, reps, weight, notes, date))
-        
+
         # Remove newly_added flag for this exercise since it's been completed
         cursor.execute('''
             UPDATE weekly_plan 
             SET newly_added = FALSE 
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
-        
+
         # Check if we actually updated any rows (meaning it was newly added)
         if cursor.rowcount > 0:
             print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
@@ -2757,12 +2786,12 @@ def save_workout():
                     print(f"ℹ️ {exercise_name} was already marked as completed")
             else:
                 print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({'status': 'success', 'message': 'Workout logged successfully'})
-        
+
     except Exception as e:
         print(f"Error saving workout: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
@@ -2773,9 +2802,9 @@ def get_conversation_context_api(days):
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-        
+
         cursor.execute('''
             SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
                    c.exercise_mentioned, c.form_cues_given, c.coaching_context, 
@@ -2788,10 +2817,10 @@ def get_conversation_context_api(days):
             ORDER BY c.timestamp DESC
             LIMIT 20
         ''', (cutoff_date,))
-        
+
         conversations = cursor.fetchall()
         conn.close()
-        
+
         context_data = []
         for conv in conversations:
             context_data.append({
@@ -2806,13 +2835,13 @@ def get_conversation_context_api(days):
                 'timestamp': conv[8],
                 'auto_actions_count': conv[9]
             })
-        
+
         return jsonify({
             'success': True,
             'conversations': context_data,
             'total_count': len(context_data)
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2822,7 +2851,7 @@ def debug_newly_added():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get all exercises from weekly plan with their newly_added status
         cursor.execute('''
             SELECT exercise_name, newly_added, date_added, created_by 
@@ -2830,13 +2859,13 @@ def debug_newly_added():
             ORDER BY day_of_week, exercise_order
         ''')
         plan_exercises = cursor.fetchall()
-        
+
         # For each exercise, check if it has any logs
         results = []
         for exercise_name, newly_added, date_added, created_by in plan_exercises:
             cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
             log_count = cursor.fetchone()[0]
-            
+
             results.append({
                 'exercise': exercise_name,
                 'newly_added': bool(newly_added),
@@ -2845,10 +2874,10 @@ def debug_newly_added():
                 'log_count': log_count,
                 'should_be_new': log_count == 0 and created_by == 'grok_ai'
             })
-        
+
         conn.close()
         return jsonify(results)
-        
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -2858,19 +2887,19 @@ def fix_newly_added():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get all exercises from weekly plan
         cursor.execute('SELECT exercise_name, created_by FROM weekly_plan')
         exercises = cursor.fetchall()
-        
+
         fixed_count = 0
         details = []
-        
+
         for exercise_name, created_by in exercises:
             # Check if this exercise has any logs
             cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
             log_count = cursor.fetchone()[0]
-            
+
             if log_count == 0:
                 # No logs - should be marked as newly_added if it was created by AI
                 cursor.execute('''
@@ -2889,16 +2918,16 @@ def fix_newly_added():
                     WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
                 details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True, 
             'fixed_count': fixed_count,
             'details': details
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -2908,19 +2937,19 @@ def mark_exercise_new():
     try:
         data = request.json
         exercise_name = data.get('exercise_name')
-        
+
         if not exercise_name:
             return jsonify({'success': False, 'error': 'Exercise name required'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             UPDATE weekly_plan 
             SET newly_added = TRUE, created_by = 'grok_ai', date_added = ?
             WHERE LOWER(exercise_name) = LOWER(?)
         ''', (datetime.now().strftime('%Y-%m-%d'), exercise_name))
-        
+
         if cursor.rowcount > 0:
             conn.commit()
             conn.close()
@@ -2928,7 +2957,7 @@ def mark_exercise_new():
         else:
             conn.close()
             return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
