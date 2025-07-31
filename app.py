@@ -2924,6 +2924,51 @@ def debug_plan_context():
     except Exception as e:
         return jsonify({'error': str(e)})
 
+@app.route('/restore_philosophy', methods=['POST'])
+def restore_philosophy():
+    """Restore plan philosophy from backup entry"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get the full philosophy from the first entry
+        cursor.execute('''
+            SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
+            FROM plan_context 
+            WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
+        ''')
+        
+        backup_data = cursor.fetchone()
+        
+        if backup_data:
+            philosophy, progression, weekly, considerations = backup_data
+            
+            # Update the current entry with the backup data
+            cursor.execute('''
+                UPDATE plan_context 
+                SET plan_philosophy = ?, 
+                    progression_strategy = ?, 
+                    weekly_structure = ?,
+                    special_considerations = COALESCE(special_considerations, ?),
+                    updated_date = ?
+                WHERE id = (SELECT MAX(id) FROM plan_context WHERE user_id = 1)
+            ''', (philosophy, progression, weekly, considerations, datetime.now().strftime('%Y-%m-%d')))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True, 
+                'message': 'Philosophy restored successfully!',
+                'restored_philosophy': philosophy[:100] + "..." if len(philosophy) > 100 else philosophy
+            })
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'No backup philosophy found'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/fix_newly_added', methods=['POST'])
 def fix_newly_added():
     """Fix newly_added flags based on actual log data"""
