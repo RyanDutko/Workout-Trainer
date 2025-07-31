@@ -64,8 +64,8 @@
 
 {% block scripts %}
 <script>
-let currentPhilosophy = {};
-let currentPlan = {};
+let currentPhilosophy = null;
+let currentPlan = null;
 
 // Load philosophy on page load
 document.addEventListener('DOMContentLoaded', function() {
@@ -99,6 +99,7 @@ async function loadPhilosophy() {
         const contextData = await contextResponse.json();
         const planData = await planResponse.json();
 
+        // Set global variables for the watcher
         currentPhilosophy = contextData;
         currentPlan = planData;
 
@@ -124,22 +125,32 @@ async function loadPhilosophy() {
 
 // Auto-refresh philosophy when updates are detected
 function startPhilosophyWatcher() {
-    // Check for updates every 5 seconds
+    // Check for updates every 10 seconds (less frequent to reduce errors)
     setInterval(async () => {
         try {
             const response = await fetch('/get_stored_context');
+            if (!response.ok) {
+                console.log('Philosophy watcher: Server response not OK');
+                return;
+            }
+            
             const newData = await response.json();
             
-            // Compare updated dates to detect changes
-            if (currentPhilosophy?.plan_context?.updated_date !== newData?.plan_context?.updated_date) {
-                console.log('🧠 Philosophy update detected, refreshing...');
-                window.philosophyJustUpdated = true;
-                loadPhilosophy();
+            // Only check if we have both current and new data
+            if (currentPhilosophy && currentPhilosophy.plan_context && 
+                newData && newData.plan_context) {
+                
+                // Compare updated dates to detect changes
+                if (currentPhilosophy.plan_context.updated_date !== newData.plan_context.updated_date) {
+                    console.log('🧠 Philosophy update detected, refreshing...');
+                    window.philosophyJustUpdated = true;
+                    loadPhilosophy();
+                }
             }
         } catch (error) {
-            // Silently handle errors in background polling
+            console.log('Error checking for pending updates:', error);
         }
-    }, 5000);
+    }, 10000);
 }
 
 function showUpdateNotification() {
