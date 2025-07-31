@@ -562,7 +562,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             # Get current philosophy from database
             conn = sqlite3.connect('workout_logs.db')
             cursor = conn.cursor()
-
+            
             cursor.execute('''
                 SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
                 FROM plan_context 
@@ -570,13 +570,13 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                 ORDER BY created_date DESC 
                 LIMIT 1
             ''')
-
+            
             current_context = cursor.fetchone()
             conn.close()
-
+            
             if current_context:
                 current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
-
+                
                 # Create a comprehensive rewrite prompt for Grok
                 rewrite_prompt = f"""Here is my current training philosophy:
 
@@ -594,7 +594,6 @@ TRAINING_PHILOSOPHY: [updated philosophy text]
 WEEKLY_STRUCTURE: [updated weekly structure reasoning]
 PROGRESSION_STRATEGY: [updated progression approach]
 SPECIAL_CONSIDERATIONS: [updated special considerations]
-PLAN_PRIORITIES: [key priorities to focus on]
 
 Make sure to provide complete, updated versions of all sections, not just acknowledgments."""
 
@@ -602,7 +601,7 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                 try:
                     from openai import OpenAI
                     client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-
+                    
                     response = client.chat.completions.create(
                         model="grok-4-0709",
                         messages=[
@@ -611,13 +610,13 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                         ],
                         temperature=0.7
                     )
-
+                    
                     grok_rewrite = response.choices[0].message.content
-
+                    
                     # Parse Grok's structured response
                     lines = grok_rewrite.split('\n')
                     extracted_data = {}
-
+                    
                     for line in lines:
                         line = line.strip()
                         if 'TRAINING_PHILOSOPHY:' in line:
@@ -628,19 +627,17 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                             extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
                         elif 'SPECIAL_CONSIDERATIONS:' in line:
                             extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'PLAN_PRIORITIES:' in line:
-                            extracted_data['plan_priorities'] = line.split(':', 1)[1].strip() if ':' in line else ''
-
+                    
                     # Add reasoning
                     extracted_data['reasoning'] = f"Updated philosophy based on user request: {user_request[:100]}..."
-
+                    
                     print(f"🧠 Successfully rewrote philosophy with current context")
                     return extracted_data
-
+                    
                 except Exception as e:
                     print(f"⚠️ Failed to get Grok rewrite: {str(e)}")
                     return None
-
+            
             else:
                 print(f"⚠️ No existing philosophy found to rewrite")
                 return None
@@ -673,9 +670,6 @@ Make sure to provide complete, updated versions of all sections, not just acknow
 
         # Only proceed with legacy parsing if Grok provided substantial content
         if grok_is_updating or has_philosophy_content:
-            # Manually extract the plan priorities from the ChatGPT format
-            priorities_match = re.search(r'Plan Priorities:\s*(.*)', user_request, re.DOTALL)
-            priorities_text = priorities_match.group(1).strip() if priorities_match else None
 
             # Use Grok's response as the new philosophy if it contains substantial content
             if len(ai_response) > 100 and has_philosophy_content:
@@ -718,16 +712,9 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                 if current_section and current_content:
                     philosophy_sections[current_section] = ' '.join(current_content)
 
-                # If we didn't find structured sections, try to extract from natural language
+                # If we didn't find structured sections, use the whole response as philosophy
                 if not philosophy_sections:
                     philosophy_sections['plan_philosophy'] = ai_response.strip()
-
-                # Extract priorities from user message if present
-                if priorities_text:
-                    philosophy_sections['plan_priorities'] = priorities_text
-                elif "improving midsection density" in user_request_lower:
-                    # Extract from the specific ChatGPT message format
-                    philosophy_sections['plan_priorities'] = "Improving midsection density, building glutes, improving chest shape, adding shoulder width and arm fullness, ensuring sustainable injury-free progression"
 
                 # Add reasoning
                 philosophy_sections['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
@@ -748,20 +735,20 @@ def regenerate_exercise_metadata_from_plan():
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-
+        
         # Clear existing exercise metadata
         cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
-
+        
         # Get all exercises from current weekly plan
         cursor.execute('''
             SELECT DISTINCT exercise_name FROM weekly_plan 
             ORDER BY exercise_name
         ''')
         exercises = cursor.fetchall()
-
+        
         for (exercise_name,) in exercises:
             exercise_lower = exercise_name.lower()
-
+            
             # Determine purpose and progression based on exercise type
             if any(word in exercise_lower for word in ['ab', 'crunch', 'core', 'woodchop', 'back extension']):
                 purpose = "Midsection hypertrophy for loose skin tightening"
@@ -787,7 +774,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Hypertrophy and strength development"
                 progression_logic = "normal"
                 notes = "General hypertrophy and strength work"
-
+            
             cursor.execute('''
                 INSERT INTO exercise_metadata
                 (user_id, exercise_name, exercise_type, primary_purpose,
@@ -800,11 +787,11 @@ def regenerate_exercise_metadata_from_plan():
                 notes,
                 datetime.now().strftime('%Y-%m-%d')
             ))
-
+        
         conn.commit()
         conn.close()
         print(f"✅ Regenerated metadata for {len(exercises)} exercises")
-
+        
     except Exception as e:
         print(f"⚠️ Error regenerating exercise metadata: {str(e)}")
 
@@ -1274,7 +1261,7 @@ RESPONSE LENGTH GUIDELINES:
 
 GREETING BEHAVIOR:
 - For simple greetings (hello, hi, hey, what's up), respond like a normal person would
-- Don't immediately jump into fitness talk unless they ask about fitness
+- Don't immediately jump into fitness talk unless they mention workouts
 - Be casual and friendly - you're having a conversation, not giving a sales pitch
 - Examples: "Hey!" "What's going on?" "Hi there!" "Hello! How's it going?"
 
@@ -1487,1084 +1474,1751 @@ def chat_stream():
                 response = get_grok_response_with_context(message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
-        except Exception as e:
-            print(f"Error in chat_stream: {str(e)}")
-            response = "Sorry, I encountered an error processing your request. Please try again."
+            # Stream the response
+            for char in response:
+                yield f"data: {json.dumps({'content': char})}\n\n"
+                time.sleep(0.01)  # Small delay for streaming effect
 
-        for word in response.split():
-            yield word + " "
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+            # Store the conversation in database for future context
+            try:
+                conn = sqlite3.connect('workout_logs.db')
+                cursor = conn.cursor()
+
+                # Generate session ID for conversation grouping
+                session_id = str(uuid.uuid4())[:8]
+
+                # Enhanced intent detection with confidence scoring and context
+                conversation_state = get_conversation_state()
+
+                # Resolve contextual references first
+                original_message = message
+                current_message = message
+                if conversation_state:
+                    temp_analysis = analyze_query_intent(message)
+                    if temp_analysis.get('entities', {}).get('references'):
+                        current_message, resolved_refs = resolve_contextual_references(
+                            message, 
+                            temp_analysis['entities'], 
+                            conversation_state
+                        )
+                        print(f"🔗 Resolved references: {original_message} → {current_message}")
+
+                # Enhanced intent detection with confidence scoring
+                intent_analysis = analyze_query_intent(current_message, conversation_state)
+                detected_intent = intent_analysis['intent']
+                confidence_score = intent_analysis['confidence']
+                potential_actions = intent_analysis.get('actions', [])
+                detected_entities = intent_analysis.get('entities', {})
+
+                # Extract exercise mentions
+                exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
+                exercise_mentioned = None
+                for keyword in exercise_keywords:
+                    if keyword in current_message.lower():
+                        exercise_mentioned = keyword
+                        break
+
+                # Extract workout data if detected
+                extracted_workout_data = None
+                if detected_intent == 'workout_logging' and potential_actions:
+                    extracted_workout_data = json.dumps(potential_actions)
+
+                # Extract form cues and coaching context from AI response
+                form_cues = None
+                coaching_context = None
+                if detected_intent in ['live_workout', 'exercise_specific']:
+                    # Look for form-related keywords in AI response
+                    form_keywords = ['form', 'technique', 'posture', 'grip', 'stance', 'range of motion', 'tempo']
+                    if any(keyword in response.lower() for keyword in form_keywords):
+                        form_cues = response[:200] + "..." if len(response) > 200 else response
+
+                    coaching_context = f"Exercise: {exercise_mentioned}, Intent: {detected_intent}" if exercise_mentioned else f"Intent: {detected_intent}"
+
+                # Check for plan modifications mentioned in response
+                plan_modifications = None
+                if 'plan' in response.lower() and any(word in response.lower() for word in ['change', 'modify', 'update', 'suggest']):
+                    plan_modifications = response[:300] + "..." if len(response) > 300 else response
+
+                # Parse potential plan modification from Grok's response
+                plan_mod_data = parse_plan_modification_from_ai_response(response, current_message)
+                if plan_mod_data and detected_intent == 'plan_modification':
+                    # Store as potential auto-action for user confirmation
+                    potential_actions.append({
+                        'type': 'modify_plan_suggestion',
+                        'data': plan_mod_data
+                    })
+
+                # Parse potential philosophy updates from conversation
+                philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
+                if philosophy_update:
+                    # Auto-update philosophy in database
+                    try:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO plan_context
+                            (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations, 
+                             created_by_ai, creation_reasoning, created_date, updated_date)
+                            VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
+                        ''', (
+                            philosophy_update.get('plan_philosophy', ''),
+                            philosophy_update.get('training_style', ''),
+                            philosophy_update.get('weekly_structure', ''),
+                            philosophy_update.get('progression_strategy', ''),
+                            philosophy_update.get('special_considerations', ''),
+                            philosophy_update.get('reasoning', ''),
+                            datetime.now().strftime('%Y-%m-%d'),
+                            datetime.now().strftime('%Y-%m-%d')
+                        ))
+                        print(f"🧠 Auto-updated training philosophy based on conversation")
+                        
+                        # If this was a comprehensive plan change, regenerate exercise metadata
+                        if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
+                            regenerate_exercise_metadata_from_plan()
+                            print(f"🔄 Regenerated exercise metadata for plan changes")
+                            
+                    except Exception as e:
+                        print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
+
+                # Parse potential AI preference updates from conversation
+                preference_updates = parse_preference_updates_from_conversation(response, current_message)
+                if preference_updates:
+                    # Auto-update AI preferences in database
+                    try:
+                        for field, value in preference_updates.items():
+                            cursor.execute(f'UPDATE users SET {field} = ? WHERE id = 1', (value,))
+                        print(f"🤖 Auto-updated AI preferences: {list(preference_updates.keys())}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to auto-update preferences: {str(e)}")
+
+                # Get or create conversation thread
+                cursor.execute('''
+                    SELECT id FROM conversation_threads 
+                    WHERE user_id = 1 AND is_active = TRUE 
+                    ORDER BY updated_timestamp DESC 
+                    LIMIT 1
+                ''')
+                thread_result = cursor.fetchone()
+
+                if not thread_result:
+                    # Create new thread
+                    cursor.execute('''
+                        INSERT INTO conversation_threads 
+                        (user_id, thread_type, thread_subject, current_context, last_intent)
+                        VALUES (1, 'chat', ?, ?, ?)
+                    ''', (current_message[:50] + "..." if len(current_message) > 50 else current_message, 
+                          detected_intent, detected_intent))
+                    thread_id = cursor.lastrowid
+                else:
+                    thread_id = thread_result[0]
+                    # Update thread context
+                    cursor.execute('''
+                        UPDATE conversation_threads 
+                        SET current_context = ?, last_intent = ?, updated_timestamp = datetime('now', 'localtime')
+                        WHERE id = ?
+                    ''', (detected_intent, detected_intent, thread_id))
+
+                # Store enhanced conversation
+                cursor.execute('''
+                    INSERT INTO conversations 
+                    (user_message, ai_response, detected_intent, confidence_score, exercise_mentioned, 
+                     form_cues_given, coaching_context, plan_modifications, extracted_workout_data,
+                     session_id, conversation_thread_id, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (current_message, response, detected_intent, confidence_score, exercise_mentioned, 
+                      form_cues, coaching_context, plan_modifications, extracted_workout_data,
+                      session_id, thread_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+                conversation_id = cursor.lastrowid
+
+                # Store potential auto-actions for future execution
+                for action in potential_actions:
+                    cursor.execute('''
+                        INSERT INTO auto_actions 
+                        (conversation_id, action_type, action_data)
+                        VALUES (?, ?, ?)
+                    ''', (conversation_id, action['type'], json.dumps(action['data'])))
+
+                conn.commit()
+                conn.close()
+                print(f"💾 Stored conversation with intent: {detected_intent} (confidence: {confidence_score:.2f})")
+                if potential_actions:
+                    print(f"🤖 Detected {len(potential_actions)} potential auto-actions")
+
+            except Exception as e:
+                print(f"⚠️ Failed to store conversation: {str(e)}")
+
+        except Exception as e:
+            print(f"Chat stream error: {str(e)}")  # Debug log
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return Response(generate(user_message, conversation_history), mimetype='text/plain')
 
-@app.route('/log_workout', methods=['POST'])
-def log_workout():
-    data = request.get_json()
-    exercise_name = data['exercise_name']
-    sets = data['sets']
-    reps = data['reps']
-    weight = data['weight']
-    notes = data.get('notes', '')
-    date_logged = datetime.now().strftime('%Y-%m-%d')
-    substitution_reason = data.get('substitution_reason', '')
-    performance_context = data.get('performance_context', '')
-    environmental_factors = data.get('environmental_factors', '')
-    difficulty_rating = data.get('difficulty_rating', None)
-    gym_location = data.get('gym_location', '')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Execute query
-    cursor.execute('''
-        INSERT INTO workouts 
-        (exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
-         performance_context, environmental_factors, difficulty_rating, gym_location) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
-          performance_context, environmental_factors, difficulty_rating, gym_location))
-
-    # Commit changes
-    conn.commit()
-
-    # Fetch the newly inserted workout
-    cursor.execute('''
-        SELECT id, exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
-               performance_context, environmental_factors, difficulty_rating, gym_location
-        FROM workouts
-        WHERE exercise_name = ? AND date_logged = ?
-        ORDER BY id DESC
-        LIMIT 1
-    ''', (exercise_name, date_logged))
-
-    new_workout = cursor.fetchone()
-    conn.close()
-
-    # Convert the row to a dictionary (optional, but good practice)
-    if new_workout:
-        columns = [col[0] for col in cursor.description]
-        workout_dict = dict(zip(columns, new_workout))
-    else:
-        workout_dict = None
-
-    return jsonify({'message': 'Workout logged!', 'workout': workout_dict}), 200
-
-@app.route('/get_all_workouts', methods=['GET'])
-def get_all_workouts():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch all workouts
-    cursor.execute('SELECT * FROM workouts ORDER BY date_logged DESC LIMIT 100')
-    workouts = cursor.fetchall()
-
-    # Convert to list of dictionaries
-    workout_list = []
-    for workout in workouts:
-        workout_dict = {
-            'id': workout[0],
-            'exercise_name': workout[1],
-            'sets': workout[2],
-            'reps': workout[3],
-            'weight': workout[4],
-            'notes': workout[5],
-            'date_logged': workout[6],
-            'substitution_reason': workout[7],
-            'performance_context': workout[8],
-            'environmental_factors': workout[9],
-            'difficulty_rating': workout[10],
-            'gym_location': workout[11]
-        }
-        workout_list.append(workout_dict)
-
-    conn.close()
-    return jsonify(workout_list), 200
-
-@app.route('/get_exercise_history/<exercise_name>', methods=['GET'])
-def get_exercise_history(exercise_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch exercise history
-    cursor.execute('''
-        SELECT * FROM workouts 
-        WHERE LOWER(exercise_name) = LOWER(?)
-        ORDER BY date_logged DESC
-        LIMIT 50
-    ''', (exercise_name,))
-
-    workouts = cursor.fetchall()
-
-    # Convert to list of dictionaries
-    workout_list = []
-    for workout in workouts:
-        workout_dict = {
-            'id': workout[0],
-            'exercise_name': workout[1],
-            'sets': workout[2],
-            'reps': workout[3],
-            'weight': workout[4],
-            'notes': workout[5],
-            'date_logged': workout[6],
-            'substitution_reason': workout[7],
-            'performance_context': workout[8],
-            'environmental_factors': workout[9],
-            'difficulty_rating': workout[10],
-            'gym_location': workout[11]
-        }
-        workout_list.append(workout_dict)
-
-    conn.close()
-    return jsonify(workout_list), 200
-
-@app.route('/get_ai_suggestions', methods=['POST'])
-def get_ai_suggestions():
-    data = request.get_json()
-    exercise_name = data['exercise_name']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Get general tips for exercise
-    cursor.execute('SELECT ai_notes FROM exercise_metadata WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-    result = cursor.fetchone()
-    ai_notes = result[0] if result else "No AI tips found for this exercise."
-
-    # Get form cues from historical conversations
-    cursor.execute('''
-        SELECT DISTINCT form_cues_given
-        FROM conversations
-        WHERE LOWER(exercise_mentioned) = LOWER(?)
-        AND form_cues_given IS NOT NULL
-        ORDER BY timestamp DESC
-        LIMIT 5
-    ''', (exercise_name,))
-
-    form_cues_results = cursor.fetchall()
-    form_cues = [row[0] for row in form_cues_results if row[0]]
-
-    conn.close()
-    return jsonify({'ai_notes': ai_notes, 'form_cues': form_cues}), 200
-
-@app.route('/update_workout/<int:workout_id>', methods=['PUT'])
-def update_workout(workout_id):
-    data = request.get_json()
-    exercise_name = data['exercise_name']
-    sets = data['sets']
-    reps = data['reps']
-    weight = data['weight']
-    notes = data['notes']
-    substitution_reason = data.get('substitution_reason', '')
-    performance_context = data.get('performance_context', '')
-    environmental_factors = data.get('environmental_factors', '')
-    difficulty_rating = data.get('difficulty_rating', None)
-    gym_location = data.get('gym_location', '')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        UPDATE workouts 
-        SET exercise_name = ?, sets = ?, reps = ?, weight = ?, notes = ?,
-            substitution_reason = ?, performance_context = ?, environmental_factors = ?,
-            difficulty_rating = ?, gym_location = ?
-        WHERE id = ?
-    ''', (exercise_name, sets, reps, weight, notes, substitution_reason, performance_context,
-          environmental_factors, difficulty_rating, gym_location, workout_id))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Workout updated!'}), 200
-
-@app.route('/delete_workout/<int:workout_id>', methods=['DELETE'])
-def delete_workout(workout_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Workout deleted!'}), 200
-
-@app.route('/get_weekly_plan', methods=['GET'])
-def get_weekly_plan():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch weekly plan with proper ordering
-    cursor.execute('''
-        SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added
-        FROM weekly_plan 
-        ORDER BY 
-            CASE day_of_week 
-                WHEN 'monday' THEN 1 
-                WHEN 'tuesday' THEN 2 
-                WHEN 'wednesday' THEN 3 
-                WHEN 'thursday' THEN 4 
-                WHEN 'friday' THEN 5 
-                WHEN 'saturday' THEN 6 
-                WHEN 'sunday' THEN 7 
-            END, exercise_order
-    ''')
-    plan_data = cursor.fetchall()
-
-    # Convert to list of dictionaries
-    plan_list = []
-    for row in plan_data:
-        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
-        plan_list.append({
-            'id': exercise_id,
-            'day_of_week': day,
-            'exercise_name': exercise_name,
-            'target_sets': target_sets,
-            'target_reps': target_reps,
-            'target_weight': target_weight,
-            'exercise_order': order,
-            'notes': notes,
-            'newly_added': bool(newly_added)
-        })
-
-    conn.close()
-    return jsonify(plan_list), 200
-
-@app.route('/add_exercise_to_plan', methods=['POST'])
-def add_exercise_to_plan():
-    data = request.get_json()
-    day_of_week = data['day_of_week']
-    exercise_name = data['exercise_name']
-    target_sets = data['target_sets']
-    target_reps = data['target_reps']
-    target_weight = data['target_weight']
-    notes = data.get('notes', '')  # Optional notes field
-    newly_added = True  # Flag as newly added
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Find the highest existing order index for the given day
-    cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day_of_week,))
-    max_order = cursor.fetchone()[0] or 0  # If no exercises exist, start at 1
-
-    # Increment the order index
-    exercise_order = max_order + 1
-
-    # Get the current date
-    date_added = datetime.now().strftime('%Y-%m-%d')
-
-    # Execute query with notes and newly_added flag
-    cursor.execute('''
-        INSERT INTO weekly_plan 
-        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added, date_added) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added, date_added))
-
-    # Commit changes
-    conn.commit()
-
-    # Fetch the newly inserted exercise
-    cursor.execute('''
-        SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added
-        FROM weekly_plan 
-        WHERE day_of_week = ? AND exercise_name = ?
-        ORDER BY id DESC
-        LIMIT 1
-    ''', (day_of_week, exercise_name))
-
-    new_exercise = cursor.fetchone()
-    conn.close()
-
-    # Convert the row to a dictionary
-    if new_exercise:
-        columns = [col[0] for col in cursor.description]
-        exercise_dict = dict(zip(columns, new_exercise))
-    else:
-        exercise_dict = None
-
-    return jsonify({'message': 'Exercise added to plan!', 'exercise': exercise_dict}), 200
-
-@app.route('/update_exercise_in_plan/<int:exercise_id>', methods=['PUT'])
-def update_exercise_in_plan(exercise_id):
-    data = request.get_json()
-    day_of_week = data['day_of_week']
-    exercise_name = data['exercise_name']
-    target_sets = data['target_sets']
-    target_reps = data['target_reps']
-    target_weight = data['target_weight']
-    exercise_order = data['exercise_order']  # Include exercise_order
-    notes = data.get('notes', '')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Execute query with exercise_order
-    cursor.execute('''
-        UPDATE weekly_plan 
-        SET day_of_week = ?, exercise_name = ?, target_sets = ?, target_reps = ?, 
-            target_weight = ?, exercise_order = ?, notes = ?
-        WHERE id = ?
-    ''', (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, exercise_id))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Exercise in plan updated!'}), 200
-
-@app.route('/delete_exercise_from_plan/<int:exercise_id>', methods=['DELETE'])
-def delete_exercise_from_plan(exercise_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM weekly_plan WHERE id = ?', (exercise_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Exercise deleted from plan!'}), 200
-
-@app.route('/clear_newly_added_flags', methods=['POST'])
-def clear_newly_added_flags():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('UPDATE weekly_plan SET newly_added = 0')
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Newly added flags cleared!'}), 200
-
-@app.route('/get_plan_context', methods=['GET'])
-def get_plan_context():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch plan context
-    cursor.execute('''
-        SELECT plan_philosophy, training_style, weekly_structure, 
-               progression_strategy, special_considerations
-        FROM plan_context 
-        WHERE user_id = 1
-        ORDER BY created_date DESC
-        LIMIT 1
-    ''')
-    context_data = cursor.fetchone()
-
-    conn.close()
-
-    if context_data:
-        # Convert to dictionary
-        context_dict = {
-            'plan_philosophy': context_data[0],
-            'training_style': context_data[1],
-            'weekly_structure': context_data[2],
-            'progression_strategy': context_data[3],
-            'special_considerations': context_data[4]
-        }
-        return jsonify(context_dict), 200
-    else:
-        return jsonify({'message': 'No plan context found.'}), 404
-
-@app.route('/update_plan_context', methods=['POST'])
-def update_plan_context():
-    data = request.get_json()
-    plan_philosophy = data['plan_philosophy']
-    training_style = data['training_style']
-    weekly_structure = data['weekly_structure']
-    progression_strategy = data['progression_strategy']
-    special_considerations = data['special_considerations']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Get current timestamp
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    # Insert new context data
-    cursor.execute('''
-        INSERT INTO plan_context 
-        (user_id, plan_philosophy, training_style, weekly_structure, 
-         progression_strategy, special_considerations, created_date) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (1, plan_philosophy, training_style, weekly_structure, 
-          progression_strategy, special_considerations, now))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Plan context updated!'}), 200
-
-@app.route('/get_exercise_metadata/<exercise_name>', methods=['GET'])
-def get_exercise_metadata(exercise_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch metadata
-    cursor.execute('''
-        SELECT exercise_type, primary_purpose, progression_logic, ai_notes
-        FROM exercise_metadata 
-        WHERE LOWER(exercise_name) = LOWER(?)
-        AND user_id = 1
-    ''', (exercise_name,))
-    metadata = cursor.fetchone()
-
-    conn.close()
-
-    if metadata:
-        # Convert to dictionary
-        metadata_dict = {
-            'exercise_type': metadata[0],
-            'primary_purpose': metadata[1],
-            'progression_logic': metadata[2],
-            'ai_notes': metadata[3]
-        }
-        return jsonify(metadata_dict), 200
-    else:
-        return jsonify({'message': 'No metadata found for this exercise.'}), 404
-
-@app.route('/update_exercise_metadata/<exercise_name>', methods=['PUT'])
-def update_exercise_metadata(exercise_name):
-    data = request.get_json()
-    exercise_type = data['exercise_type']
-    primary_purpose = data['primary_purpose']
-    progression_logic = data['progression_logic']
-    ai_notes = data['ai_notes']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Update metadata
-    cursor.execute('''
-        UPDATE exercise_metadata 
-        SET exercise_type = ?, primary_purpose = ?, progression_logic = ?, ai_notes = ?
-        WHERE LOWER(exercise_name) = LOWER(?)
-        AND user_id = 1
-    ''', (exercise_type, primary_purpose, progression_logic, ai_notes, exercise_name))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Exercise metadata updated!'}), 200
-
-@app.route('/get_user_preferences', methods=['GET'])
-def get_user_preferences():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch user preferences
-    cursor.execute('SELECT * FROM users WHERE id = 1')
-    user_data = cursor.fetchone()
-
-    conn.close()
-
-    if user_data:
-        # Convert to dictionary
-        user_dict = {
-            'id': user_data[0],
-            'goal': user_data[1],
-            'weekly_split': user_data[2],
-            'preferences': user_data[3],
-            'grok_tone': user_data[4],
-            'grok_detail_level': user_data[5],
-            'grok_format': user_data[6],
-            'preferred_units': user_data[7],
-            'communication_style': user_data[8],
-            'technical_level': user_data[9]
-        }
-        return jsonify(user_dict), 200
-    else:
-        return jsonify({'message': 'No user preferences found.'}), 404
-
-@app.route('/update_user_preferences', methods=['POST'])
-def update_user_preferences():
-    data = request.get_json()
-    goal = data['goal']
-    weekly_split = data['weekly_split']
-    preferences = data['preferences']
-    grok_tone = data['grok_tone']
-    grok_detail_level = data['grok_detail_level']
-    grok_format = data['grok_format']
-    preferred_units = data['preferred_units']
-    communication_style = data['communication_style']
-    technical_level = data['technical_level']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Update user preferences
-    cursor.execute('''
-        UPDATE users 
-        SET goal = ?, weekly_split = ?, preferences = ?, grok_tone = ?,
-            grok_detail_level = ?, grok_format = ?, preferred_units = ?,
-            communication_style = ?, technical_level = ?
-        WHERE id = 1
-    ''', (goal, weekly_split, preferences, grok_tone, grok_detail_level,
-          grok_format, preferred_units, communication_style, technical_level))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'User preferences updated!'}), 200
-
-@app.route('/log_conversation', methods=['POST'])
-def log_conversation():
-    data = request.get_json()
-    user_message = data['user_message']
-    ai_response = data['ai_response']
-    detected_intent = data.get('detected_intent', None)
-    confidence_score = data.get('confidence_score', 0.0)
-    actions_taken = data.get('actions_taken', None)
-    workout_context = data.get('workout_context', None)
-    exercise_mentioned = data.get('exercise_mentioned', None)
-    form_cues_given = data.get('form_cues_given', None)
-    performance_notes = data.get('performance_notes', None)
-    plan_modifications = data.get('plan_modifications', None)
-    auto_executed_actions = data.get('auto_executed_actions', None)
-    extracted_workout_data = data.get('extracted_workout_data', None)
-    coaching_context = data.get('coaching_context', None)
-    session_id = data.get('session_id', None)
-    conversation_thread_id = data.get('conversation_thread_id', None)
-    parent_conversation_id = data.get('parent_conversation_id', None)
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Log conversation
-    cursor.execute('''
-        INSERT INTO conversations 
-        (user_id, user_message, ai_response, detected_intent, confidence_score,
-         actions_taken, workout_context, exercise_mentioned, form_cues_given,
-         performance_notes, plan_modifications, auto_executed_actions,
-         extracted_workout_data, coaching_context, timestamp, session_id,
-         conversation_thread_id, parent_conversation_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (1, user_message, ai_response, detected_intent, confidence_score,
-          actions_taken, workout_context, exercise_mentioned, form_cues_given,
-          performance_notes, plan_modifications, auto_executed_actions,
-          extracted_workout_data, coaching_context, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-          session_id, conversation_thread_id, parent_conversation_id))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Conversation logged!'}), 200
-
-@app.route('/get_conversation_history', methods=['GET'])
-def get_conversation_history():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch conversation history (last 50 messages)
-    cursor.execute('''
-        SELECT user_message, ai_response, timestamp
-        FROM conversations
-        ORDER BY timestamp DESC
-        LIMIT 50
-    ''')
-    conversations = cursor.fetchall()
-
-    conn.close()
-
-    # Convert to list of dictionaries
-    conversation_list = []
-    for conv in conversations:
-        conversation_list.append({
-            'user_message': conv[0],
-            'ai_response': conv[1],
-            'timestamp': conv[2]
-        })
-
-    return jsonify(conversation_list), 200
-
-@app.route('/get_exercise_relationships/<primary_exercise>', methods=['GET'])
-def get_exercise_relationships(primary_exercise):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch relationships
-    cursor.execute('''
-        SELECT related_exercise, relationship_type, relevance_score
-        FROM exercise_relationships
-        WHERE LOWER(primary_exercise) = LOWER(?)
-    ''', (primary_exercise,))
-    relationships = cursor.fetchall()
-
-    conn.close()
-
-    # Convert to list of dictionaries
-    relationship_list = []
-    for rel in relationships:
-        relationship_list.append({
-            'related_exercise': rel[0],
-            'relationship_type': rel[1],
-            'relevance_score': rel[2]
-        })
-
-    return jsonify(relationship_list), 200
-
-@app.route('/create_exercise_relationship', methods=['POST'])
-def create_exercise_relationship():
-    data = request.get_json()
-    primary_exercise = data['primary_exercise']
-    related_exercise = data['related_exercise']
-    relationship_type = data['relationship_type']
-    relevance_score = data.get('relevance_score', 1.0)
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Create relationship
-    cursor.execute('''
-        INSERT INTO exercise_relationships 
-        (primary_exercise, related_exercise, relationship_type, relevance_score)
-        VALUES (?, ?, ?, ?)
-    ''', (primary_exercise, related_exercise, relationship_type, relevance_score))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Exercise relationship created!'}), 200
-
-@app.route('/delete_exercise_relationship', methods=['DELETE'])
-def delete_exercise_relationship():
-    data = request.get_json()
-    primary_exercise = data['primary_exercise']
-    related_exercise = data['related_exercise']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Delete relationship
-    cursor.execute('''
-        DELETE FROM exercise_relationships
-        WHERE LOWER(primary_exercise) = LOWER(?) AND LOWER(related_exercise) = LOWER(?)
-    ''', (primary_exercise, related_exercise))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Exercise relationship deleted!'}), 200
-
-@app.route('/get_user_background', methods=['GET'])
-def get_user_background():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch user background
-    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
-    bg_data = cursor.fetchone()
-
-    conn.close()
-
-    if bg_data:
-        # Get column names
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM user_background WHERE user_id = 1 LIMIT 1')
-        columns = [description[0] for description in cursor.description]
-
-        # Convert to dictionary
-        bg_dict = dict(zip(columns, bg_data))
-        return jsonify(bg_dict), 200
-    else:
-        return jsonify({'message': 'No user background found.'}), 404
-
-@app.route('/update_user_background', methods=['POST'])
-def update_user_background():
-    data = request.get_json()
-
-    # Extract data from request
-    age = data.get('age')
-    gender = data.get('gender')
-    height = data.get('height')
-    current_weight = data.get('current_weight')
-    fitness_level = data.get('fitness_level')
-    years_training = data.get('years_training')
-    primary_goal = data.get('primary_goal')
-    secondary_goals = data.get('secondary_goals')
-    injuries_history = data.get('injuries_history')
-    current_limitations = data.get('current_limitations')
-    past_weight_loss = data.get('past_weight_loss')
-    past_weight_gain = data.get('past_weight_gain')
-    medical_conditions = data.get('medical_conditions')
-    training_frequency = data.get('training_frequency')
-    available_equipment = data.get('available_equipment')
-    time_per_session = data.get('time_per_session')
-    preferred_training_style = data.get('preferred_training_style')
-    motivation_factors = data.get('motivation_factors')
-    biggest_challenges = data.get('biggest_challenges')
-    past_program_experience = data.get('past_program_experience')
-    nutrition_approach = data.get('nutrition_approach')
-    sleep_quality = data.get('sleep_quality')
-    stress_level = data.get('stress_level')
-    additional_notes = data.get('additional_notes')
-    chat_response_style = data.get('chat_response_style')
-    chat_progression_detail = data.get('chat_progression_detail')
-    onboarding_completed = data.get('onboarding_completed')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Get current timestamp
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    # Insert/Update user background
-    cursor.execute('''
-        INSERT INTO user_background (
-            user_id, age, gender, height, current_weight, fitness_level, years_training,
-            primary_goal, secondary_goals, injuries_history, current_limitations,
-            past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
-            available_equipment, time_per_session, preferred_training_style,
-            motivation_factors, biggest_challenges, past_program_experience,
-            nutrition_approach, sleep_quality, stress_level, additional_notes,
-            chat_response_style, chat_progression_detail, onboarding_completed,
-            created_date, updated_date
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-        ON CONFLICT(user_id) DO UPDATE SET
-            age=excluded.age, gender=excluded.gender, height=excluded.height,
-            current_weight=excluded.current_weight, fitness_level=excluded.fitness_level,
-            years_training=excluded.years_training, primary_goal=excluded.primary_goal,
-            secondary_goals=excluded.secondary_goals, injuries_history=excluded.injuries_history,
-            current_limitations=excluded.current_limitations, past_weight_loss=excluded.past_weight_loss,
-            past_weight_gain=excluded.past_weight_gain, medical_conditions=excluded.medical_conditions,
-            training_frequency=excluded.training_frequency, available_equipment=excluded.available_equipment,
-            time_per_session=excluded.time_per_session, preferred_training_style=excluded.preferred_training_style,
-            motivation_factors=excluded.motivation_factors, biggest_challenges=excluded.biggest_challenges,
-            past_program_experience=excluded.past_program_experience, nutrition_approach=excluded.nutrition_approach,
-            sleep_quality=excluded.sleep_quality, stress_level=excluded.stress_level,
-            additional_notes=excluded.additional_notes, chat_response_style=excluded.chat_response_style,
-            chat_progression_detail=excluded.chat_progression_detail, onboarding_completed=excluded.onboarding_completed,
-            updated_date=?
-    ''', (
-        1, age, gender, height, current_weight, fitness_level, years_training,
-        primary_goal, secondary_goals, injuries_history, current_limitations,
-        past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
-        available_equipment, time_per_session, preferred_training_style,
-        motivation_factors, biggest_challenges, past_program_experience,
-        nutrition_approach, sleep_quality, stress_level, additional_notes,
-        chat_response_style, chat_progression_detail, onboarding_completed,
-        now, now
-    ))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'User background updated!'}), 200
-
-@app.route('/create_conversation_thread', methods=['POST'])
-def create_conversation_thread():
-    data = request.get_json()
-    thread_type = data.get('thread_type', 'chat')
-    thread_subject = data.get('thread_subject', None)
-    current_context = data.get('current_context', None)
-    last_intent = data.get('last_intent', None)
-    active_workout_session = data.get('active_workout_session', False)
-    workout_session_data = data.get('workout_session_data', None)
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Create conversation thread
-    cursor.execute('''
-        INSERT INTO conversation_threads (
-            user_id, thread_type, thread_subject, current_context, last_intent,
-            active_workout_session, workout_session_data, created_timestamp, updated_timestamp
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-    ''', (
-        1, thread_type, thread_subject, current_context, last_intent,
-        active_workout_session, workout_session_data, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    ))
-
-    thread_id = cursor.lastrowid  # Get the ID of the new thread
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Conversation thread created!', 'thread_id': thread_id}), 200
-
-@app.route('/get_conversation_thread/<int:thread_id>', methods=['GET'])
-def get_conversation_thread(thread_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch thread
-    cursor.execute('''
-        SELECT * FROM conversation_threads WHERE id = ?
-    ''', (thread_id,))
-    thread_data = cursor.fetchone()
-
-    conn.close()
-
-    if thread_data:
-        # Get column names
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM conversation_threads WHERE id = ? LIMIT 1', (thread_id,))
-        columns = [description[0] for description in cursor.description]
-
-        # Convert to dictionary
-        thread_dict = dict(zip(columns, thread_data))
-        return jsonify(thread_dict), 200
-    else:
-        return jsonify({'message': 'Conversation thread not found.'}), 404
-@app.route('/update_conversation_thread/<int:thread_id>', methods=['PUT'])
-def update_conversation_thread(thread_id):
-    data = request.get_json()
-    thread_type = data.get('thread_type')
-    thread_subject = data.get('thread_subject')
-    current_context = data.get('current_context')
-    last_intent = data.get('last_intent')
-    active_workout_session = data.get('active_workout_session')
-    workout_session_data = data.get('workout_session_data')
-    is_active = data.get('is_active')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Update thread
-    cursor.execute('''
-        UPDATE conversation_threads SET
-            thread_type = ?, thread_subject = ?, current_context = ?, last_intent = ?,
-            active_workout_session = ?, workout_session_data = ?, updated_timestamp = ?,
-            is_active = ?
-        WHERE id = ?
-    ''', (
-        thread_type, thread_subject, current_context, last_intent,
-        active_workout_session, workout_session_data, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        is_active, thread_id
-    ))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'message': 'Conversation thread updated!'}), 200
-
-@app.route('/get_conversations_in_thread/<thread_id>', methods=['GET'])
-def get_conversations_in_thread(thread_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Fetch conversations
-    cursor.execute('''
-        SELECT user_message, ai_response, timestamp
-        FROM conversations
-        WHERE conversation_thread_id = ?
-        ORDER BY timestamp ASC
-    ''', (thread_id,))
-    conversations = cursor.fetchall()
-
-    conn.close()
-
-    # Convert to list of dictionaries
-    conversation_list = []
-    for conv in conversations:
-        conversation_list.append({
-            'user_message': conv[0],
-            'ai_response': conv[1],
-            'timestamp': conv[2]
-        })
-
-    return jsonify(conversation_list), 200
-
 @app.route('/log_workout')
-def log_workout_page():
-    return render_template('log_workout.html')
+def log_workout():
+    today = datetime.now().strftime('%Y-%m-%d')
+    today_name = datetime.now().strftime('%A')
+    return render_template('log_workout.html', today=today, today_name=today_name)
+
+@app.route('/history')
+def history():
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged, notes, id FROM workouts ORDER BY date_logged DESC')
+    workouts = cursor.fetchall()
+    conn.close()
+    return render_template('history.html', workouts=workouts)
 
 @app.route('/weekly_plan')
 def weekly_plan():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Get weekly plan data
-    cursor.execute('''
-        SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added
-        FROM weekly_plan 
-        ORDER BY 
-            CASE day_of_week 
-                WHEN 'monday' THEN 1 
-                WHEN 'tuesday' THEN 2 
-                WHEN 'wednesday' THEN 3 
-                WHEN 'thursday' THEN 4 
-                WHEN 'friday' THEN 5 
-                WHEN 'saturday' THEN 6 
-                WHEN 'sunday' THEN 7 
-            END, exercise_order
-    ''')
+    # Check what columns actually exist
+    cursor.execute("PRAGMA table_info(weekly_plan)")
+    columns = [col[1] for col in cursor.fetchall()]
+
+    # Use the correct column names based on what exists
+    if 'target_sets' in columns:
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0) FROM weekly_plan ORDER BY day_of_week, exercise_order')
+    else:
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0 FROM weekly_plan ORDER BY day_of_week, order_index')
+
     plan_data = cursor.fetchall()
     conn.close()
 
-    # Organize data by day
+    # Organize plan by day
     plan_by_day = {}
     for row in plan_data:
-        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
+        id, day, exercise, sets, reps, weight, order, notes, newly_added = row
         if day not in plan_by_day:
             plan_by_day[day] = []
-
         plan_by_day[day].append({
-            'id': exercise_id,
-            'exercise': exercise_name,
-            'sets': target_sets,
-            'reps': target_reps,
-            'weight': target_weight,
+            'id': id,
+            'exercise': exercise,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
             'order': order,
-            'notes': notes or '',
+            'notes': notes or "",
             'newly_added': bool(newly_added)
         })
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
+@app.route('/profile')
+def profile():
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+
+    # Get user background
+    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+    bg_result = cursor.fetchone()
+    background = None
+
+    if bg_result:
+        columns = [description[0] for description in cursor.description]
+        background = dict(zip(columns, bg_result))
+
+    # Get user preferences
+    cursor.execute('SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level FROM users WHERE id = 1')
+    pref_result = cursor.fetchone()
+
+    preferences = {
+        'tone': pref_result[0] if pref_result else 'motivational',
+        'detail_level': pref_result[1] if pref_result else 'concise',
+        'format': pref_result[2] if pref_result else 'bullet_points',
+        'units': pref_result[3] if pref_result else 'lbs',
+        'communication_style': pref_result[4] if pref_result else 'encouraging',
+        'technical_level': pref_result[5] if pref_result else 'beginner'
+    }
+
+    conn.close()
+    return render_template('profile.html', background=background, preferences=preferences)
+
 @app.route('/progression')
 def progression():
     return render_template('progression.html')
 
-@app.route('/history')
-def history():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Get all workouts ordered by date (most recent first)
-    cursor.execute('''
-        SELECT id, exercise_name, sets, reps, weight, notes, date_logged,
-               substitution_reason, performance_context, environmental_factors, 
-               difficulty_rating, gym_location
-        FROM workouts 
-        ORDER BY date_logged DESC, id DESC
-        LIMIT 100
-    ''')
-    workouts = cursor.fetchall()
-    conn.close()
-    
-    # Convert to list of dictionaries for template
-    workout_list = []
-    for workout in workouts:
-        workout_dict = {
-            'id': workout[0],
-            'exercise_name': workout[1],
-            'sets': workout[2],
-            'reps': workout[3],
-            'weight': workout[4],
-            'notes': workout[5],
-            'date_logged': workout[6],
-            'substitution_reason': workout[7],
-            'performance_context': workout[8],
-            'environmental_factors': workout[9],
-            'difficulty_rating': workout[10],
-            'gym_location': workout[11]
-        }
-        workout_list.append(workout_dict)
-    
-    return render_template('history.html', workouts=workout_list)
-
-@app.route('/profile')
-def profile():
-    return render_template('profile.html')
+@app.route('/analytics')
+def analytics():
+    return render_template('analytics.html')
 
 @app.route('/analyze_plan')
 def analyze_plan():
     return render_template('analyze_plan.html')
 
-@app.route('/save_workout', methods=['POST'])
-def save_workout():
-    data = request.get_json()
-    exercise_name = data['exercise_name']
-    sets = data['sets']
-    reps = data['reps']
-    weight = data['weight']
-    notes = data.get('notes', '')
-    date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+@app.route('/get_stored_context')
+def get_stored_context():
+    """Get currently stored plan context for debugging/editing"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+        # Get plan context
+        cursor.execute('''
+            SELECT plan_philosophy, training_style, weekly_structure, progression_strategy,
+                   special_considerations, created_by_ai, creation_reasoning, created_date, updated_date
+            FROM plan_context 
+            WHERE user_id = 1 
+            ORDER BY created_date DESC 
+            LIMIT 1
+        ''')
 
-    cursor.execute('''
-        INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (exercise_name, sets, reps, weight, notes, date))
+        plan_result = cursor.fetchone()
+        plan_context = None
 
-    conn.commit()
-    conn.close()
-    return jsonify({'status': 'success', 'message': 'Workout saved successfully!'}), 200
+        if plan_result:
+            plan_context = {
+                'plan_philosophy': plan_result[0],
+                'training_style': plan_result[1],
+                'weekly_structure': plan_result[2],
+                'progression_strategy': plan_result[3],
+                'special_considerations': plan_result[4],
+                'created_by_ai': bool(plan_result[5]),
+                'creation_reasoning': plan_result[6],
+                'created_date': plan_result[7],
+                'updated_date': plan_result[8]
+            }
 
-@app.route('/get_weight_history', methods=['GET'])
-def get_weight_history():
-    # Placeholder for weight tracking - you can implement this later
-    return jsonify({'dates': [], 'weights': []}), 200
+        # Get exercise metadata
+        cursor.execute('''
+            SELECT exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date
+            FROM exercise_metadata 
+            WHERE user_id = 1
+            ORDER BY exercise_name
+        ''')
 
-@app.route('/get_volume_history', methods=['GET'])
-def get_volume_history():
-    # Placeholder for volume tracking - you can implement this later
-    return jsonify({'weeks': [], 'volumes': []}), 200
+        exercise_results = cursor.fetchall()
+        exercise_metadata = []
 
-@app.route('/get_exercise_list', methods=['GET'])
-def get_exercise_list():
-    conn = get_db_connection()
-    cursor = conn.cursor()
+        for row in exercise_results:
+            exercise_metadata.append({
+                'exercise_name': row[0],
+                'exercise_type': row[1],
+                'primary_purpose': row[2],
+                'progression_logic': row[3],
+                'ai_notes': row[4],
+                'created_date': row[5]
+            })
 
-    cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan ORDER BY exercise_name')
-    exercises = [row[0] for row in cursor.fetchall()]
+        conn.close()
 
-    conn.close()
-    return jsonify({'exercises': exercises}), 200
+        return jsonify({
+            'plan_context': plan_context,
+            'exercise_metadata': exercise_metadata
+        })
 
-@app.route('/get_exercise_performance/<exercise_name>', methods=['GET'])
-def get_exercise_performance(exercise_name):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
-    cursor.execute('''
-        SELECT date_logged, weight, sets, reps
-        FROM workouts 
-        WHERE LOWER(exercise_name) = LOWER(?)
-        ORDER BY date_logged
-    ''', (exercise_name,))
+@app.route('/extract_plan_context', methods=['POST'])
+def extract_plan_context():
+    """Extract structured plan context from AI conversation"""
+    try:
+        data = request.json
+        conversation = data.get('conversation', '')
 
-    data = cursor.fetchall()
-    conn.close()
+        # Create a more specific prompt for extraction
+        extraction_prompt = f"""Please analyze this conversation about my workout plan and extract the following information in the exact format shown:
 
-    if not data:
-        return jsonify({'dates': [], 'max_weights': [], 'has_real_data': False}), 200
+TRAINING_PHILOSOPHY: [brief summary of the overall training approach discussed]
+WEEKLY_STRUCTURE: [reasoning behind how the week is organized]  
+PROGRESSION_STRATEGY: [approach to progressive overload and advancement]
+SPECIAL_CONSIDERATIONS: [any limitations, injuries, or special notes mentioned]
+REASONING: [overall reasoning behind the plan design]
 
-    dates = [row[0] for row in data]
-    weights = []
+Here's the conversation to analyze:
+{conversation}
 
-    for row in data:
-        try:
-            weight_str = str(row[1]).replace('lbs', '').replace('kg', '').strip()
-            if weight_str.lower() != 'bodyweight':
-                weights.append(float(weight_str))
+Please be concise but capture the key insights from our discussion."""
+
+        # Use Grok to extract structured data from conversation
+        response = get_grok_response_with_context(extraction_prompt)
+
+        # Parse Grok's structured response - look for fields anywhere in the response
+        lines = response.split('\n')
+        extracted_data = {}
+
+        for line in lines:
+            line = line.strip()
+            if 'TRAINING_PHILOSOPHY:' in line or 'PLAN_PHILOSOPHY:' in line:
+                extracted_data['philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'WEEKLY_STRUCTURE:' in line:
+                extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'PROGRESSION_STRATEGY:' in line:
+                extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'SPECIAL_CONSIDERATIONS:' in line:
+                extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
+            elif 'REASONING:' in line:
+                extracted_data['reasoning'] = line.split(':', 1)[1].strip() if ':' in line else ''
+
+        # If we didn't get structured fields, try to extract from natural language
+        if not any(extracted_data.values()):
+            # Extract from natural language response as fallback
+            response_lower = response.lower()
+            if 'philosophy' in response_lower or 'approach' in response_lower:
+                # Extract a reasonable section as philosophy
+                sentences = response.split('. ')
+                extracted_data['philosophy'] = '. '.join(sentences[:2]) + '.' if sentences else response[:200]
+
+            extracted_data['reasoning'] = response  # Store full response as reasoning
+
+        # Save to database
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT OR REPLACE INTO plan_context
+            (user_id, plan_philosophy, weekly_structure, progression_strategy, 
+             special_considerations, created_by_ai, creation_reasoning, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, TRUE, ?, ?, ?)
+        ''', (
+            extracted_data.get('philosophy', ''),
+            extracted_data.get('weekly_structure', ''),
+            extracted_data.get('progression_strategy', ''),
+            extracted_data.get('special_considerations', ''),
+            extracted_data.get('reasoning', ''),
+            datetime.now().strftime('%Y-%m-%d'),
+            datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        # NOW GET ALL EXERCISES FROM WEEKLY PLAN AND CREATE METADATA
+        # Clear existing exercise metadata
+        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
+
+        # Get ALL exercises from weekly plan in proper day/order structure
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
+                END, exercise_order
+        ''')
+        all_exercises = cursor.fetchall()
+
+        print(f"📊 Processing {len(all_exercises)} exercises from weekly plan")  # Debug log
+
+        # Group exercises by name to detect variations
+        exercise_groups = {}
+        for day, exercise_name, sets, reps, weight, order in all_exercises:
+            if exercise_name not in exercise_groups:
+                exercise_groups[exercise_name] = []
+            exercise_groups[exercise_name].append({
+                'day': day,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': order
+            })
+
+        created_contexts = 0
+
+        # Process each exercise group
+        for exercise_name, instances in exercise_groups.items():
+            exercise_lower = exercise_name.lower()
+
+            # Check if this exercise has significantly different variations across days
+            if len(instances) > 1:
+                # Extract numeric values for comparison
+                variations = []
+                for instance in instances:
+                    try:
+                        weight_num = float(re.search(r'(\d+\.?\d*)', str(instance['weight'])).group(1)) if instance['weight'] != 'bodyweight' else 0
+                        reps_num = int(re.search(r'(\d+)', str(instance['reps'])).group(1)) if instance['reps'].isdigit() else 10
+                        volume = weight_num * instance['sets'] * reps_num
+                        variations.append({
+                            'day': instance['day'],
+                            'sets': instance['sets'],
+                            'reps': instance['reps'],
+                            'weight': instance['weight'],
+                            'volume': volume,
+                            'weight_num': weight_num
+                        })
+                    except:
+                        variations.append({
+                            'day': instance['day'],
+                            'sets': sets,
+                            'reps': reps,
+                            'weight': weight,
+                            'volume': 0,
+                            'weight_num': 0
+                        })
+
+                # Sort by volume to identify light vs heavy versions
+                variations.sort(key=lambda x: x['volume'])
+
+                # If there's a significant difference (>20% volume difference), create separate contexts
+                if len(variations) >= 2:
+                    volume_diff = (variations[-1]['volume'] - variations[0]['volume']) / max(variations[0]['volume'], 1)
+
+                    if volume_diff > 0.2:  # 20% difference threshold
+                        # Create separate contexts for light and heavy versions
+                        for i, variation in enumerate(variations):
+                            suffix = ""
+                            if i == 0:
+                                suffix = " (Light)"
+                            elif i == len(variations) - 1:
+                                suffix = " (Heavy)"
+                            else:
+                                suffix = f" (Day {i+1})"
+
+                            context_name = f"{exercise_name}{suffix}"
+
+                            # Determine purpose and progression based on exercise type
+                            if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                                purpose = "Midsection hypertrophy for loose skin tightening"
+                                progression_logic = "aggressive"
+                                notes = "Core work treated as main lift per plan philosophy"
+                            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                                purpose = "Compound strength and mass building"
+                                progression_logic = "aggressive"
+                                notes = "Main compound movement"
+                            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                                purpose = "Lower body isolation and hypertrophy"
+                                progression_logic = "aggressive"
+                                notes = "Machine-based isolation for joint safety"
+                            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                                purpose = "Upper body isolation hypertrophy"
+                                progression_logic = "slow"
+                                notes = "Isolation exercise for targeted growth"
+                            elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                                purpose = "Bodyweight strength and control"
+                                progression_logic = "slow"
+                                notes = "Bodyweight progression: reps → tempo → weight"
+                            elif 'finisher' in exercise_lower:
+                                purpose = "High-rep endurance and muscle pump"
+                                progression_logic = "maintain"
+                                notes = "High-rep finisher work"
+                            else:
+                                purpose = "Hypertrophy and strength development"
+                                progression_logic = "normal"
+                                notes = "General hypertrophy and strength work"
+
+                            cursor.execute('''
+                                INSERT INTO exercise_metadata
+                                (user_id, exercise_name, exercise_type, primary_purpose,
+                                 progression_logic, ai_notes, created_date)
+                                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                            ''', (
+                                context_name,
+                                purpose,
+                                progression_logic,
+                                notes,
+                                datetime.now().strftime('%Y-%m-%d')
+                            ))
+                            created_contexts += 1
+
+                    else:
+                        # Similar variations, create one context
+                        if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                            purpose = "Midsection hypertrophy for loose skin tightening"
+                            progression_logic = "aggressive"
+                            notes = "Core work treated as main lift per plan philosophy"
+                        elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                            purpose = "Compound strength and mass building"
+                            progression_logic = "aggressive"
+                            notes = "Main compound movement"
+                        elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                            purpose = "Lower body isolation and hypertrophy"
+                            progression_logic = "aggressive"
+                            notes = "Machine-based isolation for joint safety"
+                        elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                            purpose = "Upper body isolation hypertrophy"
+                            progression_logic = "slow"
+                            notes = "Isolation exercise for targeted growth"
+                        elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                            purpose = "Bodyweight strength and control"
+                            progression_logic = "slow"
+                            notes = "Bodyweight progression: reps → tempo → weight"
+                        elif 'finisher' in exercise_lower:
+                            purpose = "High-rep endurance and muscle pump"
+                            progression_logic = "maintain"
+                            notes = "High-rep finisher work"
+                        else:
+                            purpose = "Hypertrophy and strength development"
+                            progression_logic = "normal"
+                            notes = "General hypertrophy and strength work"
+
+                        cursor.execute('''
+                            INSERT INTO exercise_metadata
+                            (user_id, exercise_name, exercise_type, primary_purpose,
+                             progression_logic, ai_notes, created_date)
+                            VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                        ''', (
+                            exercise_name,
+                            purpose,
+                            progression_logic,
+                            notes,
+                            datetime.now().strftime('%Y-%m-%d')
+                        ))
+                        created_contexts += 1
             else:
-                weights.append(0)
-        except:
-            weights.append(0)
+                # Single instance of the exercise
+                if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
+                    purpose = "Midsection hypertrophy for loose skin tightening"
+                    progression_logic = "aggressive"
+                    notes = "Core work treated as main lift per plan philosophy"
+                elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
+                    purpose = "Compound strength and mass building"
+                    progression_logic = "aggressive"
+                    notes = "Main compound movement"
+                elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
+                    purpose = "Lower body isolation and hypertrophy"
+                    progression_logic = "aggressive"
+                    notes = "Machine-based isolation for joint safety"
+                elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
+                    purpose = "Upper body isolation hypertrophy"
+                    progression_logic = "slow"
+                    notes = "Isolation exercise for targeted growth"
+                elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
+                    purpose = "Bodyweight strength and control"
+                    progression_logic = "slow"
+                    notes = "Bodyweight progression: reps → tempo → weight"
+                elif 'finisher' in exercise_lower:
+                    purpose = "High-rep endurance and muscle pump"
+                    progression_logic = "maintain"
+                    notes = "High-rep finisher work"
+                else:
+                    purpose = "Hypertrophy and strength development"
+                    progression_logic = "normal"
+                    notes = "General hypertrophy and strength work"
 
-    return jsonify({
-        'dates': dates,
-        'max_weights': weights,
-        'best_weight': max(weights) if weights else 0,
-        'best_date': dates[weights.index(max(weights))] if weights else '',
-        'total_sessions': len(dates),
-        'progress': ((weights[-1] - weights[0]) / weights[0] * 100) if len(weights) > 1 and weights[0] > 0 else 0,
-        'has_real_data': True
-    }), 200
+                cursor.execute('''
+                    INSERT INTO exercise_metadata
+                    (user_id, exercise_name, exercise_type, primary_purpose,
+                     progression_logic, ai_notes, created_date)
+                    VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                ''', (
+                    exercise_name,
+                    purpose,
+                    progression_logic,
+                    notes,
+                    datetime.now().strftime('%Y-%m-%d')
+                ))
+                created_contexts += 1
 
-@app.route('/log_weight', methods=['POST'])
-def log_weight():
-    # Placeholder for weight logging - you can implement this later
-    return jsonify({'success': True}), 200
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'AI analysis saved successfully!'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/execute_auto_actions', methods=['POST'])
+def execute_auto_actions():
+    """Execute auto-detected actions from conversations"""
+    try:
+        data = request.json
+        conversation_id = data.get('conversation_id')
+
+        if not conversation_id:
+            return jsonify({'success': False, 'error': 'No conversation ID provided'})
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get pending actions for this conversation
+        cursor.execute('''
+            SELECT id, action_type, action_data 
+            FROM auto_actions 
+            WHERE conversation_id = ? AND executed = FALSE
+        ''', (conversation_id,))
+
+        pending_actions = cursor.fetchall()
+        results = []
+
+        for action_id, action_type, action_data_json in pending_actions:
+            action_data = json.loads(action_data_json)
+
+            try:
+                if action_type == 'log_workout':
+                    # Auto-log workout
+                    cursor.execute('''
+                        INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        action_data['exercise'],
+                        action_data['sets'],
+                        action_data['reps'],
+                        action_data['weight'],
+                        datetime.now().strftime('%Y-%m-%d'),
+                        'Auto-logged from conversation'
+                    ))
+
+                    results.append({
+                        'action_id': action_id,
+                        'type': action_type,
+                        'success': True,
+                        'message': f"Logged {action_data['exercise']}: {action_data['sets']}x{action_data['reps']}@{action_data['weight']}"
+                    })
+
+                elif action_type == 'modify_plan':
+                    # Plan modifications would need more complex logic
+                    results.append({
+                        'action_id': action_id,
+                        'type': action_type,
+                        'success': False,
+                        'message': 'Plan modifications require manual approval'
+                    })
+
+                # Mark action as executed
+                cursor.execute('''
+                    UPDATE auto_actions 
+                    SET executed = TRUE, execution_result = ?
+                    WHERE id = ?
+                ''', (json.dumps(results[-1]), action_id))
+
+            except Exception as e:
+                results.append({
+                    'action_id': action_id,
+                    'type': action_type,
+                    'success': False,
+                    'message': str(e)
+                })
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'executed_actions': results
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/modify_plan', methods=['POST'])
+def modify_plan():
+    """Allow Grok to propose and execute plan modifications"""
+    try:
+        data = request.json
+        modification_type = data.get('type')  # 'update', 'add', 'remove'
+        day = data.get('day', '').lower()
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        reasoning = data.get('reasoning', '')
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        if modification_type == 'update':
+            # Update existing exercise
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (sets, reps, weight, reasoning, day, exercise_name))
+
+            message = f"Updated {exercise_name} on {day.title()}: {sets}x{reps}@{weight}"
+
+        elif modification_type == 'add':
+            # Get next order for the day
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+            next_order = cursor.fetchone()[0]
+
+            cursor.execute('''
+                INSERT INTO weekly_plan 
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
+
+            message = f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}"
+
+        elif modification_type == 'remove':
+            cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
+            message = f"Removed {exercise_name} from {day.title()}"
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'change_made': {
+                'type': modification_type,
+                'day': day,
+                'exercise': exercise_name,
+                'details': f"{sets}x{reps}@{weight}" if sets else None,
+                'reasoning': reasoning
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/propose_plan_change', methods=['POST'])
+def propose_plan_change():
+    """Create a plan change proposal for user confirmation"""
+    try:
+        data = request.json
+        conversation_id = data.get('conversation_id')
+        modification_type = data.get('type', 'add')
+        day = data.get('day', '').lower()
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 3)
+        reps = data.get('reps', '8-12')
+        weight = data.get('weight', 'bodyweight')
+        reasoning = data.get('reasoning', '')
+
+        # Store the proposal in the database for confirmation
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        proposal_data = {
+            'type': modification_type,
+            'day': day,
+            'exercise_name': exercise_name,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'reasoning': reasoning
+        }
+
+        cursor.execute('''
+            INSERT INTO auto_actions 
+            (conversation_id, action_type, action_data, executed)
+            VALUES (?, 'plan_modification_proposal', ?, FALSE)
+        ''', (conversation_id, json.dumps(proposal_data)))
+
+        proposal_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'proposal_id': proposal_id,
+            'proposal': proposal_data
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/confirm_plan_change', methods=['POST'])
+def confirm_plan_change():
+    """Execute a confirmed plan change"""
+    try:
+        data = request.json
+        proposal_id = data.get('proposal_id')
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get the proposal
+        cursor.execute('SELECT action_data FROM auto_actions WHERE id = ? AND executed = FALSE', (proposal_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            return jsonify({'success': False, 'error': 'Proposal not found or already executed'})
+
+        proposal_data = json.loads(result[0])
+
+        # Execute the plan change
+        if proposal_data['type'] == 'add':
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (proposal_data['day'],))
+            next_order = cursor.fetchone()[0]
+
+            cursor.execute('''
+                INSERT INTO weekly_plan 
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
+            ''', (
+                proposal_data['day'], 
+                proposal_data['exercise_name'], 
+                proposal_data['sets'], 
+                proposal_data['reps'], 
+                proposal_data['weight'], 
+                next_order, 
+                proposal_data['reasoning']
+            ))
+
+        # Mark as executed
+        cursor.execute('UPDATE auto_actions SET executed = TRUE WHERE id = ?', (proposal_id,))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f"Added {proposal_data['exercise_name']} to {proposal_data['day'].title()}"
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_to_plan', methods=['POST'])
+def add_to_plan():
+    """Add exercise to weekly plan"""
+    try:
+        day = request.form.get('day').lower()
+        exercise = request.form.get('exercise')
+        sets = int(request.form.get('sets'))
+        reps = request.form.get('reps')
+        weight = request.form.get('weight')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get next order for the day
+        cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+        next_order = cursor.fetchone()[0]
+
+        cursor.execute('''
+            INSERT INTO weekly_plan 
+            (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, newly_added, date_added)
+            VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)
+        ''', (day, exercise, sets, reps, weight, next_order, datetime.now().strftime('%Y-%m-%d')))
+
+        conn.commit()
+        conn.close()
+
+        return redirect(url_for('weekly_plan'))
+
+    except Exception as e:
+        print(f"Error adding exercise: {e}")
+        return redirect(url_for('weekly_plan'))
+
+@app.route('/edit_exercise', methods=['POST'])
+def edit_exercise():
+    """Edit exercise in weekly plan"""
+    try:
+        data = request.json
+        exercise_id = data.get('id')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        exercise_name = data.get('exercise')
+        notes = data.get('notes', '')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
+            WHERE id = ?
+        ''', (sets, reps, weight, exercise_name, notes, exercise_id))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/delete_exercise', methods=['POST'])
+def delete_exercise():
+    """Delete exercise from weekly plan"""
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/reorder_exercise', methods=['POST'])
+def reorder_exercise():
+    """Reorder exercises in weekly plan"""
+    try:
+        data = request.json
+        day = data.get('day')
+        exercise = data.get('exercise')
+        direction = data.get('direction')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get current order
+        cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
+        current_order = cursor.fetchone()[0]
+
+        if direction == 'up' and current_order > 1:
+            new_order = current_order - 1
+        elif direction == 'down':
+            cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day,))
+            max_order = cursor.fetchone()[0]
+            if current_order < max_order:
+                new_order = current_order + 1
+            else:
+                return jsonify({'success': False, 'error': 'Already at bottom'})
+        else:
+            return jsonify({'success': False, 'error': 'Cannot move further'})
+
+        # Swap orders
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (999, day, new_order))
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, 999))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
-    field_name = request.form.get('field_name')
-    value = request.form.get('value')
+    """Update user profile field"""
+    try:
+        field_name = request.form.get('field_name')
+        value = request.form.get('value')
 
-    if not field_name or not value:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check if user_background record exists
+        cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
+        if cursor.fetchone()[0] == 0:
+            # Create record
+            cursor.execute('INSERT INTO user_background (user_id) VALUES (1)')
+
+        # Update the specific field
+        update_query = f'UPDATE user_background SET {field_name} = ?, updated_date = ? WHERE user_id = 1'
+        cursor.execute(update_query, (value, datetime.now().strftime('%Y-%m-%d')))
+
+        conn.commit()
+        conn.close()
+
         return redirect(url_for('profile'))
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    except Exception as e:
+        print(f"Error updating profile: {e}")
+        return redirect(url_for('profile'))
 
-    # Map form field names to database columns
-    field_map = {
-        'current_weight': 'current_weight',
-        'injuries_history': 'injuries_history',
-        'current_limitations': 'current_limitations',
-        'primary_goal': 'primary_goal',
-        'fitness_level': 'fitness_level',
-        'training_frequency': 'training_frequency'
-    }
+@app.route('/api/weekly_plan')
+def api_weekly_plan():
+    """API endpoint for weekly plan data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    if field_name in field_map:
-        db_field = field_map[field_name]
-        cursor.execute(f'UPDATE user_background SET {db_field} = ?, updated_date = ? WHERE user_id = 1', 
-                      (value, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+
+        plan_data = cursor.fetchall()
+        conn.close()
+
+        # Organize by day
+        plan_by_day = {}
+        for day, exercise, sets, reps, weight, order in plan_data:
+            if day not in plan_by_day:
+                plan_by_day[day] = []
+            plan_by_day[day].append({
+                'exercise': exercise,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': order
+            })
+
+        return jsonify(plan_by_day)
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/get_weight_history')
+def get_weight_history():
+    """Get weight history for analytics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Create a simple weight tracking table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weight_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weight REAL NOT NULL,
+                date_logged TEXT NOT NULL,
+                user_id INTEGER DEFAULT 1
+            )
+        ''')
+
+        cursor.execute('SELECT date_logged, weight FROM weight_logs WHERE user_id = 1 ORDER BY date_logged')
+        weight_data = cursor.fetchall()
+
+        dates = [row[0] for row in weight_data]
+        weights = [row[1] for row in weight_data]
+
+        conn.close()
+        return jsonify({'dates': dates, 'weights': weights})
+    except Exception as e:
+        return jsonify({'dates': [], 'weights': []})
+
+@app.route('/get_volume_history')
+def get_volume_history():
+    """Get volume history for analytics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get weekly volume data for the last 8 weeks
+        weekly_volumes = []
+        week_labels = []
+
+        for week_offset in range(7, -1, -1):
+            week_start = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday())).strftime('%Y-%m-%d')
+            week_end = (datetime.now() - timedelta(weeks=week_offset, days=datetime.now().weekday() - 6)).strftime('%Y-%m-%d')
+
+            cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged BETWEEN ? AND ?', (week_start, week_end))
+            week_workouts = cursor.fetchall()
+
+            week_volume = 0
+            for exercise, sets, reps, weight in week_workouts:
+                try:
+                    weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                    if weight_str != 'bodyweight' and weight_str:
+                        weight_num = float(weight_str)
+                        reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                        week_volume += weight_num * sets * reps_num
+                except (ValueError, AttributeError):
+                    continue
+
+            weekly_volumes.append(int(week_volume))
+            week_labels.append(f"Week {week_offset + 1}")
+
+        conn.close()
+        return jsonify({'weeks': week_labels, 'volumes': weekly_volumes})
+    except Exception as e:
+        return jsonify({'weeks': [], 'volumes': []})
+
+@app.route('/get_exercise_list')
+def get_exercise_list():
+    """Get exercise list for analytics"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get exercises from both workout logs and weekly plan
+        cursor.execute('SELECT DISTINCT exercise_name FROM workouts WHERE exercise_name IS NOT NULL ORDER BY exercise_name')
+        logged_exercises = [row[0] for row in cursor.fetchall()]
+
+        cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan WHERE exercise_name IS NOT NULL ORDER BY exercise_name')
+        planned_exercises = [row[0] for row in cursor.fetchall()]
+
+        # Combine and deduplicate
+        all_exercises = list(set(logged_exercises + planned_exercises))
+        all_exercises.sort()
+
+        conn.close()
+        return jsonify({'exercises': all_exercises})
+
+    except Exception as e:
+        print(f"Error in get_exercise_list: {e}")
+        return jsonify({'exercises': []})
+
+@app.route('/log_weight', methods=['POST'])
+def log_weight():
+    """Log weight entry"""
+    try:
+        data = request.json
+        weight = float(data.get('weight'))
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Create weight_logs table if it doesn't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS weight_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                weight REAL NOT NULL,
+                date_logged TEXT NOT NULL,
+                user_id INTEGER DEFAULT 1
+            )
+        ''')
+
+        # Insert or update weight for the date
+        cursor.execute('DELETE FROM weight_logs WHERE date_logged = ? AND user_id = 1', (date,))
+        cursor.execute('INSERT INTO weight_logs (weight, date_logged, user_id) VALUES (?, ?, 1)', (weight, date))
+
         conn.commit()
+        conn.close()
 
-    conn.close()
-    return redirect(url_for('profile'))
+        return jsonify({'success': True})
 
-# Flask app configuration to run properly on Replit
-if __name__ == "__main__":
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_exercise_performance/<exercise>')
+def get_exercise_performance(exercise):
+    """Get exercise performance data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # More flexible exercise matching - try exact match first, then partial
+        cursor.execute('''
+            SELECT date_logged, sets, reps, weight 
+            FROM workouts 
+            WHERE LOWER(exercise_name) = LOWER(?) 
+            ORDER BY date_logged
+        ''', (exercise,))
+
+        performance_data = cursor.fetchall()
+
+        # If no exact match, try partial matching
+        if not performance_data:
+            cursor.execute('''
+                SELECT date_logged, sets, reps, weight 
+                FROM workouts 
+                WHERE LOWER(exercise_name) LIKE LOWER(?) 
+                ORDER BY date_logged
+            ''', (f'%{exercise}%',))
+            performance_data = cursor.fetchall()
+
+        dates = []
+        max_weights = []
+        volumes = []
+
+        print(f"🔍 Found {len(performance_data)} workout entries for '{exercise}'")  # Debug log
+
+        # Process actual logged data with improved reps parsing
+        for date, sets, reps, weight in performance_data:
+            try:
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str and weight_str != 'bodyweight':
+                    weight_num = float(weight_str)
+
+                    # Improved reps parsing to handle different formats
+                    reps_str = str(reps).strip()
+                    reps_num = 0
+
+                    # Handle different reps formats
+                    if '/' in reps_str:
+                        # Format like "12/12/12" - take average or first value
+                        reps_parts = reps_str.split('/')
+                        reps_values = []
+                        for part in reps_parts:
+                            try:
+                                reps_values.append(int(part.strip()))
+                            except ValueError:
+                                continue
+                        if reps_values:
+                            reps_num = max(reps_values)  # Use max reps for weight calculation
+                    elif '-' in reps_str:
+                        # Format like "8-12" - use first number
+                        reps_num = int(reps_str.split('-')[0])
+                    else:
+                        # Simple format like "12"
+                        reps_num = int(reps_str)
+
+                    if reps_num > 0:
+                        volume = weight_num * sets * reps_num
+
+                        dates.append(date)
+                        max_weights.append(weight_num)
+                        volumes.append(volume)
+
+                        print(f"📊 {date}: {sets}x{reps_num}@{weight_num}lbs = {volume} volume")  # Debug log
+
+            except (ValueError, AttributeError) as e:
+                print(f"⚠️ Error parsing workout data: {date}, {sets}, {reps}, {weight} - {e}")
+                continue
+
+        # If no logged data, check weekly plan and create sample progression data
+        if not dates:
+            cursor.execute('''
+                SELECT target_sets, target_reps, target_weight, day_of_week
+                FROM weekly_plan 
+                WHERE LOWER(exercise_name) LIKE LOWER(?)
+                LIMIT 1
+            ''', (f'%{exercise}%',))
+
+            plan_data = cursor.fetchone()
+
+            if plan_data:
+                sets, reps, weight, day = plan_data
+
+                # Generate sample progression data for visualization
+                from datetime import datetime, timedelta
+
+                try:
+                    weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                    if weight_str and weight_str != 'bodyweight':
+                        base_weight = float(weight_str)
+                        base_reps = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+
+                        # Create 8 weeks of sample progression data
+                        for i in range(8):
+                            sample_date = (datetime.now() - timedelta(weeks=7-i)).strftime('%Y-%m-%d')
+                            # Progressive increase in weight over time
+                            sample_weight = base_weight + (i * 2.5)  # 2.5lb progression per week
+                            sample_volume = sample_weight * sets * base_reps
+
+                            dates.append(sample_date)
+                            max_weights.append(sample_weight)
+                            volumes.append(sample_volume)
+
+                except (ValueError, AttributeError):
+                    pass
+
+        # Calculate stats
+        best_weight = max(max_weights) if max_weights else 0
+        best_date = dates[max_weights.index(best_weight)] if max_weights else 'N/A'
+        recent_avg = sum(max_weights[-3:]) / len(max_weights[-3:]) if max_weights else 0
+        total_sessions = len(dates)
+
+        # Calculate progress (recent vs older)
+        if len(max_weights) >= 4:
+            recent_weights = max_weights[-2:]
+            older_weights = max_weights[:2]
+
+            recent_avg_calc = sum(recent_weights) / len(recent_weights)
+            older_avg = sum(older_weights) / len(older_weights)
+            progress = ((recent_avg_calc - older_avg) / older_avg * 100) if older_avg > 0 else 0
+        else:
+            progress = 0
+
+        conn.close()
+
+        return jsonify({
+            'dates': dates,
+            'max_weights': max_weights,
+            'volumes': volumes,
+            'best_weight': best_weight,
+            'best_date': best_date,
+            'recent_avg': round(recent_avg, 1),
+            'progress': round(progress, 1),
+            'total_sessions': total_sessions,
+            'has_real_data': len(performance_data) > 0
+        })
+
+    except Exception as e:
+        print(f"Error in get_exercise_performance: {e}")
+        return jsonify({
+            'dates': [],
+            'max_weights': [],
+            'volumes': [],
+            'best_weight': 0,
+            'best_date': 'N/A',
+            'recent_avg': 0,
+            'progress': 0,
+            'total_sessions': 0,
+            'has_real_data': False
+        })
+
+@app.route('/delete_workout', methods=['POST'])
+def delete_workout():
+    """Delete a workout entry"""
+    try:
+        data = request.json
+        workout_id = data.get('workout_id')
+
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get exercise name before deleting to potentially restore newly_added flag
+        cursor.execute('SELECT exercise_name FROM workouts WHERE id = ?', (workout_id,))
+        result = cursor.fetchone()
+
+        if result:
+            exercise_name = result[0]
+
+            # Delete the workout
+            cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+
+            # Check if this was the only log for this exercise
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            remaining_logs = cursor.fetchone()[0]
+
+            print(f"🗑️ Deleted workout for {exercise_name}, remaining logs: {remaining_logs}")
+
+            if remaining_logs == 0:
+                # Check what's in the weekly plan for this exercise
+                cursor.execute('SELECT exercise_name, created_by, newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                plan_result = cursor.fetchone()
+
+                if plan_result:
+                    plan_exercise_name, created_by, currently_newly_added = plan_result
+                    print(f"📋 Found in plan: '{plan_exercise_name}', created_by: '{created_by}', currently_newly_added: {currently_newly_added}")
+
+                    # Restore newly_added flag if it was created by AI (regardless of current newly_added status)
+                    if created_by == 'grok_ai':
+                        cursor.execute('''
+                            UPDATE weekly_plan 
+                            SET newly_added = TRUE
+                            WHERE LOWER(exercise_name) = LOWER(?)
+                        ''', (exercise_name,))
+
+                        if cursor.rowcount > 0:
+                            print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
+                        else:
+                            print(f"⚠️ Failed to update newly_added flag for {exercise_name}")
+                    else:
+                        print(f"ℹ️ {exercise_name} exists in plan but created by '{created_by}', not restoring NEW flag")
+                else:
+                    print(f"⚠️ {exercise_name} not found in weekly plan at all")
+
+            conn.commit()
+            conn.close()
+
+            return jsonify({'success': True, 'message': 'Workout deleted successfully'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+
+    except Exception as e:
+        print(f"Error deleting workout: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/save_workout', methods=['POST'])
+def save_workout():
+    """Save a single workout entry"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 1)
+        reps = data.get('reps', '')
+        weight = data.get('weight', '')
+        notes = data.get('notes', '')
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        if not exercise_name:
+            return jsonify({'status': 'error', 'message': 'Exercise name is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, reps, weight, notes, date))
+
+        # Remove newly_added flag for this exercise since it's been completed
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET newly_added = FALSE 
+            WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
+        ''', (exercise_name,))
+
+        # Check if we actually updated any rows (meaning it was newly added)
+        if cursor.rowcount > 0:
+            print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
+        else:
+            # Check if exercise exists in plan
+            cursor.execute('SELECT newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            plan_result = cursor.fetchone()
+            if plan_result:
+                if plan_result[0]:
+                    print(f"⚠️ {exercise_name} still shows as newly_added despite logging")
+                else:
+                    print(f"ℹ️ {exercise_name} was already marked as completed")
+            else:
+                print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'status': 'success', 'message': 'Workout logged successfully'})
+
+    except Exception as e:
+        print(f"Error saving workout: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/get_conversation_context/<int:days>')
+def get_conversation_context_api(days):
+    """Get conversation context for the last N days"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+        cursor.execute('''
+            SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
+                   c.exercise_mentioned, c.form_cues_given, c.coaching_context, 
+                   c.plan_modifications, c.timestamp,
+                   COUNT(aa.id) as auto_actions_count
+            FROM conversations c
+            LEFT JOIN auto_actions aa ON c.id = aa.conversation_id
+            WHERE c.timestamp >= ?
+            GROUP BY c.id
+            ORDER BY c.timestamp DESC
+            LIMIT 20
+        ''', (cutoff_date,))
+
+        conversations = cursor.fetchall()
+        conn.close()
+
+        context_data = []
+        for conv in conversations:
+            context_data.append({
+                'user_message': conv[0],
+                'ai_response': conv[1],
+                'intent': conv[2],
+                'confidence': conv[3],
+                'exercise_mentioned': conv[4],
+                'form_cues': conv[5],
+                'coaching_context': conv[6],
+                'plan_modifications': conv[7],
+                'timestamp': conv[8],
+                'auto_actions_count': conv[9]
+            })
+
+        return jsonify({
+            'success': True,
+            'conversations': context_data,
+            'total_count': len(context_data)
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/debug_newly_added')
+def debug_newly_added():
+    """Debug endpoint to check newly_added status"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get all exercises from weekly plan with their newly_added status
+        cursor.execute('''
+            SELECT exercise_name, newly_added, date_added, created_by 
+            FROM weekly_plan 
+            ORDER BY day_of_week, exercise_order
+        ''')
+        plan_exercises = cursor.fetchall()
+
+        # For each exercise, check if it has any logs
+        results = []
+        for exercise_name, newly_added, date_added, created_by in plan_exercises:
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            log_count = cursor.fetchone()[0]
+
+            results.append({
+                'exercise': exercise_name,
+                'newly_added': bool(newly_added),
+                'date_added': date_added,
+                'created_by': created_by,
+                'log_count': log_count,
+                'should_be_new': log_count == 0 and created_by == 'grok_ai'
+            })
+
+        conn.close()
+        return jsonify(results)
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/debug_plan_context')
+def debug_plan_context():
+    """Debug endpoint to check plan context data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check plan_context table
+        cursor.execute('SELECT * FROM plan_context ORDER BY created_date DESC')
+        plan_contexts = cursor.fetchall()
+
+        # Get column names
+        cursor.execute("PRAGMA table_info(plan_context)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        context_data = []
+        for row in plan_contexts:
+            context_data.append(dict(zip(columns, row)))
+
+        # Get what the app actually uses (latest entry)
+        cursor.execute('SELECT * FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        active_context = cursor.fetchone()
+        active_data = dict(zip(columns, active_context)) if active_context else None
+
+        # Count non-empty fields in active context
+        active_field_count = 0
+        if active_data:
+            for field in ['plan_philosophy', 'training_style', 'weekly_structure', 'progression_strategy', 'special_considerations']:
+                if active_data.get(field) and active_data[field].strip():
+                    active_field_count += 1
+
+        # Check exercise_metadata table
+        cursor.execute('SELECT * FROM exercise_metadata ORDER BY created_date DESC')
+        exercise_metadata = cursor.fetchall()
+
+        cursor.execute("PRAGMA table_info(exercise_metadata)")
+        metadata_columns = [col[1] for col in cursor.fetchall()]
+
+        metadata_data = []
+        for row in exercise_metadata:
+            metadata_data.append(dict(zip(metadata_columns, row)))
+
+        conn.close()
+
+        return jsonify({
+            'plan_contexts': context_data,
+            'active_context': active_data,
+            'active_field_count': active_field_count,
+            'exercise_metadata': metadata_data,
+            'context_count': len(context_data),
+            'metadata_count': len(metadata_data)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+@app.route('/restore_philosophy', methods=['GET', 'POST'])
+def restore_philosophy():
+    """Restore plan philosophy from backup entry"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get the full philosophy from the first entry
+        cursor.execute('''
+            SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
+            FROM plan_context 
+            WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
+        ''')
+        
+        backup_data = cursor.fetchone()
+        
+        if backup_data:
+            philosophy, progression, weekly, considerations = backup_data
+            
+            # Update the current entry with the backup data
+            cursor.execute('''
+                UPDATE plan_context 
+                SET plan_philosophy = ?, 
+                    progression_strategy = ?, 
+                    weekly_structure = ?,
+                    special_considerations = COALESCE(special_considerations, ?),
+                    updated_date = ?
+                WHERE id = (SELECT MAX(id) FROM plan_context WHERE user_id = 1)
+            ''', (philosophy, progression, weekly, considerations, datetime.now().strftime('%Y-%m-%d')))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True, 
+                'message': 'Philosophy restored successfully!',
+                'restored_philosophy': philosophy[:100] + "..." if len(philosophy) > 100 else philosophy
+            })
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'No backup philosophy found'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/fix_newly_added', methods=['POST'])
+def fix_newly_added():
+    """Fix newly_added flags based on actual log data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get all exercises from weekly plan
+        cursor.execute('SELECT exercise_name, created_by FROM weekly_plan')
+        exercises = cursor.fetchall()
+
+        fixed_count = 0
+        details = []
+
+        for exercise_name, created_by in exercises:
+            # Check if this exercise has any logs
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+            log_count = cursor.fetchone()[0]
+
+            if log_count == 0:
+                # No logs - should be marked as newly_added if it was created by AI
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                    WHERE LOWER(exercise_name) = LOWER(?)
+                ''', (exercise_name,))
+                if cursor.rowcount > 0:
+                    fixed_count += 1
+                    details.append(f"✅ Set {exercise_name} as NEW (no logs)")
+            else:
+                # Has logs - should not be marked as newly_added
+                cursor.execute('''
+                    UPDATE weekly_plan 
+                    SET newly_added = FALSE 
+                    WHERE LOWER(exercise_name) = LOWER(?)
+                ''', (exercise_name,))
+                details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True, 
+            'fixed_count': fixed_count,
+            'details': details
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/mark_exercise_new', methods=['POST'])
+def mark_exercise_new():
+    """Manually mark an exercise as newly added"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name')
+
+        if not exercise_name:
+            return jsonify({'success': False, 'error': 'Exercise name required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET newly_added = TRUE, created_by = 'grok_ai', date_added = ?
+            WHERE LOWER(exercise_name) = LOWER(?)
+        ''', (datetime.now().strftime('%Y-%m-%d'), exercise_name))
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'message': f'Marked {exercise_name} as NEW!'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+if __name__ == '__main__':
     init_db()
+    app.run(host='0.0.0.0', port=5000, debug=True)
