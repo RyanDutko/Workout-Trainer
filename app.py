@@ -2901,6 +2901,18 @@ def debug_plan_context():
         for row in plan_contexts:
             context_data.append(dict(zip(columns, row)))
 
+        # Get what the app actually uses (latest entry)
+        cursor.execute('SELECT * FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        active_context = cursor.fetchone()
+        active_data = dict(zip(columns, active_context)) if active_context else None
+
+        # Count non-empty fields in active context
+        active_field_count = 0
+        if active_data:
+            for field in ['plan_philosophy', 'training_style', 'weekly_structure', 'progression_strategy', 'special_considerations']:
+                if active_data.get(field) and active_data[field].strip():
+                    active_field_count += 1
+
         # Check exercise_metadata table
         cursor.execute('SELECT * FROM exercise_metadata ORDER BY created_date DESC')
         exercise_metadata = cursor.fetchall()
@@ -2916,6 +2928,8 @@ def debug_plan_context():
 
         return jsonify({
             'plan_contexts': context_data,
+            'active_context': active_data,
+            'active_field_count': active_field_count,
             'exercise_metadata': metadata_data,
             'context_count': len(context_data),
             'metadata_count': len(metadata_data)
