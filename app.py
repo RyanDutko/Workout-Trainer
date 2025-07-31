@@ -2284,7 +2284,6 @@ def get_conversation_thread(thread_id):
         # Get column names
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM conversation_threads WHERE id = ? LIMIT 1', (thread_id,))
-        ```text
         columns = [description[0] for description in cursor.description]
 
         # Convert to dictionary
