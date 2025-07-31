@@ -1251,14 +1251,17 @@ def chat():
 
 @app.route('/chat_stream', methods=['POST'])
 def chat_stream():
-    # Capture form data before starting the generator to avoid context issues
-    user_message = request.form.get('message', '')
-    conversation_history = request.form.get('conversation_history', '')
-    print(f"Chat request received: {user_message}")  # Debug log
+    # Capture ALL form data outside the generator to avoid Flask context issues
+    try:
+        user_message = request.form.get('message', '')
+        conversation_history = request.form.get('conversation_history', '')
+        print(f"Chat request received: {user_message}")  # Debug log
+    except Exception as e:
+        print(f"Error getting form data: {e}")
+        return Response(f"data: {json.dumps({'error': 'Failed to get request data'})}\n\n", mimetype='text/plain')
 
     def generate():
         try:
-
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
             cursor = conn.cursor()
