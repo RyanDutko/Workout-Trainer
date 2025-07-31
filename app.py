@@ -2882,6 +2882,48 @@ def debug_newly_added():
     except Exception as e:
         return jsonify({'error': str(e)})
 
+@app.route('/debug_plan_context')
+def debug_plan_context():
+    """Debug endpoint to check plan context data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Check plan_context table
+        cursor.execute('SELECT * FROM plan_context ORDER BY created_date DESC')
+        plan_contexts = cursor.fetchall()
+
+        # Get column names
+        cursor.execute("PRAGMA table_info(plan_context)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        context_data = []
+        for row in plan_contexts:
+            context_data.append(dict(zip(columns, row)))
+
+        # Check exercise_metadata table
+        cursor.execute('SELECT * FROM exercise_metadata ORDER BY created_date DESC')
+        exercise_metadata = cursor.fetchall()
+
+        cursor.execute("PRAGMA table_info(exercise_metadata)")
+        metadata_columns = [col[1] for col in cursor.fetchall()]
+
+        metadata_data = []
+        for row in exercise_metadata:
+            metadata_data.append(dict(zip(metadata_columns, row)))
+
+        conn.close()
+
+        return jsonify({
+            'plan_contexts': context_data,
+            'exercise_metadata': metadata_data,
+            'context_count': len(context_data),
+            'metadata_count': len(metadata_data)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/fix_newly_added', methods=['POST'])
 def fix_newly_added():
     """Fix newly_added flags based on actual log data"""
