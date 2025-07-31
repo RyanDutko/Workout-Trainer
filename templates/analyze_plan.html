@@ -71,7 +71,6 @@ let currentPlan = {};
 document.addEventListener('DOMContentLoaded', function() {
     loadPhilosophy();
     startPhilosophyWatcher();
-    checkForPendingUpdates();
 });
 
 // Refresh button handler
@@ -128,10 +127,6 @@ function startPhilosophyWatcher() {
     // Check for updates every 5 seconds
     setInterval(async () => {
         try {
-            // Check for pending updates first
-            checkForPendingUpdates();
-            
-            // Then check for actual philosophy changes
             const response = await fetch('/get_stored_context');
             const newData = await response.json();
             
@@ -167,157 +162,7 @@ function showUpdateNotification() {
     }, 5000);
 }
 
-// Check for pending philosophy updates from chat
-async function checkForPendingUpdates() {
-    try {
-        const response = await fetch('/api/get_pending_philosophy_update');
-        const data = await response.json();
-        
-        if (data.has_pending) {
-            showPhilosophyConfirmationDialog(data);
-        }
-    } catch (error) {
-        console.error('Error checking for pending updates:', error);
-    }
-}
 
-function showPhilosophyConfirmationDialog(updateData) {
-    const modal = document.createElement('div');
-    modal.className = 'modal fade';
-    modal.id = 'philosophyConfirmModal';
-    modal.innerHTML = `
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-warning text-white">
-                    <h5 class="modal-title">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Confirm Philosophy Update
-                    </h5>
-                </div>
-                <div class="modal-body">
-                    <div class="alert alert-info">
-                        <strong>Your Request:</strong> "${updateData.user_request}"
-                    </div>
-                    
-                    <p><strong>Grok wants to update your training philosophy. Here are the proposed changes:</strong></p>
-                    
-                    <div class="row">
-                        ${updateData.plan_philosophy ? `
-                        <div class="col-12 mb-3">
-                            <h6><i class="fas fa-brain me-2 text-primary"></i>Core Philosophy</h6>
-                            <div class="border border-primary rounded p-3">
-                                ${updateData.plan_philosophy}
-                            </div>
-                        </div>
-                        ` : ''}
-                        
-                        ${updateData.weekly_structure ? `
-                        <div class="col-md-6 mb-3">
-                            <h6><i class="fas fa-calendar me-2 text-success"></i>Weekly Structure</h6>
-                            <div class="border border-success rounded p-2">
-                                ${updateData.weekly_structure}
-                            </div>
-                        </div>
-                        ` : ''}
-                        
-                        ${updateData.progression_strategy ? `
-                        <div class="col-md-6 mb-3">
-                            <h6><i class="fas fa-chart-line me-2 text-info"></i>Progression Strategy</h6>
-                            <div class="border border-info rounded p-2">
-                                ${updateData.progression_strategy}
-                            </div>
-                        </div>
-                        ` : ''}
-                        
-                        ${updateData.special_considerations ? `
-                        <div class="col-12 mb-3">
-                            <h6><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Special Considerations</h6>
-                            <div class="border border-warning rounded p-2">
-                                ${updateData.special_considerations}
-                            </div>
-                        </div>
-                        ` : ''}
-                    </div>
-                    
-                    ${updateData.reasoning ? `
-                    <div class="mt-3">
-                        <small class="text-muted">
-                            <strong>Reasoning:</strong> ${updateData.reasoning}
-                        </small>
-                    </div>
-                    ` : ''}
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" onclick="rejectPhilosophyUpdate(${updateData.update_id})">
-                        <i class="fas fa-times me-2"></i>Reject Changes
-                    </button>
-                    <button type="button" class="btn btn-success" onclick="confirmPhilosophyUpdate(${updateData.update_id})">
-                        <i class="fas fa-check me-2"></i>Apply Changes
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    // Show the modal
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
-    
-    // Clean up when modal is hidden
-    modal.addEventListener('hidden.bs.modal', () => {
-        modal.remove();
-    });
-}
-
-async function confirmPhilosophyUpdate(updateId) {
-    try {
-        const response = await fetch('/api/confirm_philosophy_update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ update_id: updateId })
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Close modal
-            const modal = bootstrap.Modal.getInstance(document.getElementById('philosophyConfirmModal'));
-            modal.hide();
-            
-            // Refresh philosophy and show success
-            loadPhilosophy();
-            showUpdateNotification();
-        } else {
-            alert('Error applying changes: ' + result.error);
-        }
-    } catch (error) {
-        alert('Error applying changes: ' + error.message);
-    }
-}
-
-async function rejectPhilosophyUpdate(updateId) {
-    try {
-        const response = await fetch('/api/reject_philosophy_update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ update_id: updateId })
-        });
-        
-        const result = await response.json();
-        
-        // Close modal regardless of result
-        const modal = bootstrap.Modal.getInstance(document.getElementById('philosophyConfirmModal'));
-        modal.hide();
-        
-        if (result.success) {
-            console.log('Philosophy update rejected');
-        }
-    } catch (error) {
-        console.error('Error rejecting update:', error);
-    }
-}
 
 function displayOverallPhilosophy(data) {
     const container = document.getElementById('overallPhilosophy');
