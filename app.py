@@ -540,8 +540,109 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
         user_request_lower = user_request.lower()
         ai_response_lower = ai_response.lower()
 
-        # Only trigger if Grok's response actually contains updated philosophy content
-        # Look for signs that Grok is providing a NEW or UPDATED philosophy
+        # Look for user requests that are asking for changes (but not just asking questions)
+        user_change_requests = [
+            'update my philosophy',
+            'change my approach',
+            'modify my philosophy',
+            'tweak my philosophy',
+            'revise my approach',
+            'adjust my philosophy',
+            'new philosophy',
+            'different approach',
+            'remove any mention of',
+            'remove from my philosophy',
+            'rewrite my philosophy'
+        ]
+
+        user_wants_change = any(request in user_request_lower for request in user_change_requests)
+
+        # If user wants a philosophy change, we need to help Grok by providing current context
+        if user_wants_change:
+            # Get current philosophy from database
+            conn = sqlite3.connect('workout_logs.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
+                FROM plan_context 
+                WHERE user_id = 1 
+                ORDER BY created_date DESC 
+                LIMIT 1
+            ''')
+            
+            current_context = cursor.fetchone()
+            conn.close()
+            
+            if current_context:
+                current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
+                
+                # Create a comprehensive rewrite prompt for Grok
+                rewrite_prompt = f"""Here is my current training philosophy:
+
+CURRENT PHILOSOPHY:
+Training Philosophy: {current_philosophy or 'Not set'}
+Weekly Structure: {weekly_structure or 'Not set'}
+Progression Strategy: {progression_strategy or 'Not set'}
+Special Considerations: {special_considerations or 'Not set'}
+
+USER REQUEST: {user_request}
+
+Please provide a complete updated philosophy that addresses the user's request. Format your response with these exact sections:
+
+TRAINING_PHILOSOPHY: [updated philosophy text]
+WEEKLY_STRUCTURE: [updated weekly structure reasoning]
+PROGRESSION_STRATEGY: [updated progression approach]
+SPECIAL_CONSIDERATIONS: [updated special considerations]
+
+Make sure to provide complete, updated versions of all sections, not just acknowledgments."""
+
+                # Get Grok's structured rewrite
+                try:
+                    from openai import OpenAI
+                    client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+                    
+                    response = client.chat.completions.create(
+                        model="grok-4-0709",
+                        messages=[
+                            {"role": "system", "content": "You are updating a user's training philosophy. Provide complete, structured sections as requested."},
+                            {"role": "user", "content": rewrite_prompt}
+                        ],
+                        temperature=0.7
+                    )
+                    
+                    grok_rewrite = response.choices[0].message.content
+                    
+                    # Parse Grok's structured response
+                    lines = grok_rewrite.split('\n')
+                    extracted_data = {}
+                    
+                    for line in lines:
+                        line = line.strip()
+                        if 'TRAINING_PHILOSOPHY:' in line:
+                            extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                        elif 'WEEKLY_STRUCTURE:' in line:
+                            extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                        elif 'PROGRESSION_STRATEGY:' in line:
+                            extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                        elif 'SPECIAL_CONSIDERATIONS:' in line:
+                            extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    
+                    # Add reasoning
+                    extracted_data['reasoning'] = f"Updated philosophy based on user request: {user_request[:100]}..."
+                    
+                    print(f"🧠 Successfully rewrote philosophy with current context")
+                    return extracted_data
+                    
+                except Exception as e:
+                    print(f"⚠️ Failed to get Grok rewrite: {str(e)}")
+                    return None
+            
+            else:
+                print(f"⚠️ No existing philosophy found to rewrite")
+                return None
+
+        # Legacy logic for responses that already contain philosophy content
         grok_update_indicators = [
             "i'll update your philosophy",
             "here's your updated",
@@ -553,10 +654,8 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             "updated training approach"
         ]
 
-        # Check if Grok is actually providing an updated philosophy
         grok_is_updating = any(indicator in ai_response_lower for indicator in grok_update_indicators)
 
-        # Also check if the AI response contains substantial philosophical content
         philosophy_content_indicators = [
             "training philosophy:",
             "approach:",
@@ -569,24 +668,8 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
 
         has_philosophy_content = any(indicator in ai_response_lower for indicator in philosophy_content_indicators)
 
-        # Look for user requests that are asking for changes (but not just asking questions)
-        user_change_requests = [
-            'update my philosophy',
-            'change my approach',
-            'modify my philosophy',
-            'tweak my philosophy',
-            'revise my approach',
-            'adjust my philosophy',
-            'new philosophy',
-            'different approach'
-        ]
-
-        user_wants_change = any(request in user_request_lower for request in user_change_requests)
-
-        # Only proceed if BOTH conditions are met:
-        # 1. User is requesting a change to philosophy
-        # 2. Grok is actually providing updated content (not just acknowledging)
-        if user_wants_change and (grok_is_updating or has_philosophy_content):
+        # Only proceed with legacy parsing if Grok provided substantial content
+        if grok_is_updating or has_philosophy_content:
 
             # Use Grok's response as the new philosophy if it contains substantial content
             if len(ai_response) > 100 and has_philosophy_content:
