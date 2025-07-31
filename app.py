@@ -1781,7 +1781,8 @@ Please be concise but capture the key insights from our discussion."""
                         variations.append({
                             'day': instance['day'],
                             'sets': instance['sets'],
-                            'reps': reps['weight': weight,
+                            'reps': instance['reps'],
+                            'weight': instance['weight'],
                             'volume': volume,
                             'weight_num': weight_num
                         })
