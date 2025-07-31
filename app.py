@@ -775,7 +775,8 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Lower body isolation and hypertrophy"
                 progression_logic = "aggressive"
                 notes = "Machine-based isolation for joint safety"
-            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
+            elif any(word in exercise_lower```python
+ for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
                 purpose = "Upper body isolation hypertrophy"
                 progression_logic = "slow"
                 notes = "Isolation exercise for targeted growth"
@@ -2383,7 +2384,7 @@ def weekly_plan():
         exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
         if day not in plan_by_day:
             plan_by_day[day] = []
-        
+
         plan_by_day[day].append({
             'id': exercise_id,
             'exercise': exercise_name,
@@ -2449,10 +2450,10 @@ def get_volume_history():
 def get_exercise_list():
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan ORDER BY exercise_name')
     exercises = [row[0] for row in cursor.fetchall()]
-    
+
     conn.close()
     return jsonify({'exercises': exercises}), 200
 
@@ -2460,23 +2461,23 @@ def get_exercise_list():
 def get_exercise_performance(exercise_name):
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute('''
         SELECT date_logged, weight, sets, reps
         FROM workouts 
         WHERE LOWER(exercise_name) = LOWER(?)
         ORDER BY date_logged
     ''', (exercise_name,))
-    
+
     data = cursor.fetchall()
     conn.close()
-    
+
     if not data:
         return jsonify({'dates': [], 'max_weights': [], 'has_real_data': False}), 200
-    
+
     dates = [row[0] for row in data]
     weights = []
-    
+
     for row in data:
         try:
             weight_str = str(row[1]).replace('lbs', '').replace('kg', '').strip()
@@ -2486,7 +2487,7 @@ def get_exercise_performance(exercise_name):
                 weights.append(0)
         except:
             weights.append(0)
-    
+
     return jsonify({
         'dates': dates,
         'max_weights': weights,
@@ -2502,141 +2503,36 @@ def log_weight():
     # Placeholder for weight logging - you can implement this later
     return jsonify({'success': True}), 200
 
-@app.route('/add_to_plan', methods=['POST'])
-def add_to_plan():
-    day = request.form['day']
-    exercise = request.form['exercise']
-    sets = int(request.form['sets'])
-    reps = request.form['reps']
-    weight = request.form['weight']
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    field_name = request.form.get('field_name')
+    value = request.form.get('value')
+
+    if not field_name or not value:
+        return redirect(url_for('profile'))
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Get next order number for the day
-    cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day,))
-    max_order = cursor.fetchone()[0] or 0
-    exercise_order = max_order + 1
+    # Map form field names to database columns
+    field_map = {
+        'current_weight': 'current_weight',
+        'injuries_history': 'injuries_history',
+        'current_limitations': 'current_limitations',
+        'primary_goal': 'primary_goal',
+        'fitness_level': 'fitness_level',
+        'training_frequency': 'training_frequency'
+    }
 
-    cursor.execute('''
-        INSERT INTO weekly_plan (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, newly_added, date_added)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (day, exercise, sets, reps, weight, exercise_order, True, datetime.now().strftime('%Y-%m-%d')))
-
-    conn.commit()
-    conn.close()
-    return redirect(url_for('weekly_plan'))
-
-@app.route('/edit_exercise', methods=['POST'])
-def edit_exercise():
-    data = request.get_json()
-    exercise_id = data['id']
-    day = data['day']
-    exercise_name = data['exercise']
-    sets = data['sets']
-    reps = data['reps']
-    weight = data['weight']
-    notes = data.get('notes', '')
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        UPDATE weekly_plan 
-        SET day_of_week = ?, exercise_name = ?, target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
-        WHERE id = ?
-    ''', (day, exercise_name, sets, reps, weight, notes, exercise_id))
-
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
-
-@app.route('/delete_exercise', methods=['POST'])
-def delete_exercise():
-    data = request.get_json()
-    day = data['day']
-    exercise = data['exercise']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
-
-@app.route('/reorder_exercise', methods=['POST'])
-def reorder_exercise():
-    data = request.get_json()
-    day = data['day']
-    exercise = data['exercise']
-    direction = data['direction']
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Get current exercise order
-    cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
-    result = cursor.fetchone()
-    if not result:
-        return jsonify({'success': False, 'error': 'Exercise not found'})
-    
-    current_order = result[0]
-    new_order = current_order - 1 if direction == 'up' else current_order + 1
-
-    # Check if new position exists
-    cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ? AND exercise_order = ?', (day, new_order))
-    swap_exercise = cursor.fetchone()
-    
-    if swap_exercise:
-        # Swap the orders
-        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (current_order, day, swap_exercise[0]))
-        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
+    if field_name in field_map:
+        db_field = field_map[field_name]
+        cursor.execute(f'UPDATE user_background SET {db_field} = ?, updated_date = ? WHERE user_id = 1', 
+                      (value, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
-        conn.close()
-        return jsonify({'success': True})
-    else:
-        conn.close()
-        return jsonify({'success': False, 'error': 'Cannot move in that direction'})
 
-@app.route('/get_stored_context', methods=['GET'])
-def get_stored_context():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT plan_philosophy, training_style, weekly_structure, 
-               progression_strategy, special_considerations
-        FROM plan_context 
-        WHERE user_id = 1
-        ORDER BY created_date DESC
-        LIMIT 1
-    ''')
-    context_data = cursor.fetchone()
     conn.close()
-
-    if context_data:
-        return jsonify({
-            'plan_philosophy': context_data[0] or '',
-            'training_style': context_data[1] or '',
-            'weekly_structure': context_data[2] or '',
-            'progression_strategy': context_data[3] or '',
-            'special_considerations': context_data[4] or ''
-        })
-    else:
-        return jsonify({
-            'plan_philosophy': '',
-            'training_style': '',
-            'weekly_structure': '',
-            'progression_strategy': '',
-            'special_considerations': ''
-        })
-
-@app.route('/api/weekly_plan', methods=['GET'])
-def api_weekly_plan():
-    return get_weekly_plan()
+    return redirect(url_for('profile'))
 
 # Flask app configuration to run properly on Replit
 if __name__ == "__main__":
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=True)
