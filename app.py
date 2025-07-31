@@ -775,7 +775,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Lower body isolation and hypertrophy"
                 progression_logic = "aggressive"
                 notes = "Machine-based isolation for joint safety"
-            elif anything in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
+            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
                 purpose = "Upper body isolation hypertrophy"
                 progression_logic = "slow"
                 notes = "Isolation exercise for targeted growth"
