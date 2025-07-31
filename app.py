@@ -775,12 +775,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Lower body isolation and hypertrophy"
                 progression_logic = "aggressive"
                 notes = "Machine-based isolation for joint safety"
-            elif any(word in exercise_lower```python
- for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
-                purpose = "Upper body isolation hypertrophy"
-                progression_logic = "slow"
-                notes = "Isolation exercise for targeted growth"
-            elif any(word in exercise_lower for word in ['pushup', 'hanging leg', 'split squat', 'goblet']):
+            elif any(word in exercise_lower):
                 purpose = "Bodyweight strength and control"
                 progression_logic = "slow"
                 notes = "Bodyweight progression: reps → tempo → weight"
@@ -1275,7 +1270,7 @@ RESPONSE LENGTH GUIDELINES:
 
 GREETING BEHAVIOR:
 - For simple greetings (hello, hi, hey, what's up), respond like a normal person would
-- Don't immediately jump into fitness talk unless they mention workouts
+- Don't immediately jump into fitness talk unless they ask about fitness
 - Be casual and friendly - you're having a conversation, not giving a sales pitch
 - Examples: "Hey!" "What's going on?" "Hi there!" "Hello! How's it going?"
 
@@ -2292,7 +2287,6 @@ def get_conversation_thread(thread_id):
         return jsonify(thread_dict), 200
     else:
         return jsonify({'message': 'Conversation thread not found.'}), 404
-
 @app.route('/update_conversation_thread/<int:thread_id>', methods=['PUT'])
 def update_conversation_thread(thread_id):
     data = request.get_json()
