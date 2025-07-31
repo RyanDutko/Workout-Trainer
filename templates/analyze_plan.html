@@ -125,13 +125,12 @@ async function loadPhilosophy() {
 
 // Auto-refresh philosophy when updates are detected
 function startPhilosophyWatcher() {
-    // Check for updates every 10 seconds (less frequent to reduce errors)
+    // Check for updates every 30 seconds and handle errors gracefully
     setInterval(async () => {
         try {
             const response = await fetch('/get_stored_context');
             if (!response.ok) {
-                console.log('Philosophy watcher: Server response not OK');
-                return;
+                return; // Silently fail instead of logging
             }
             
             const newData = await response.json();
@@ -148,9 +147,10 @@ function startPhilosophyWatcher() {
                 }
             }
         } catch (error) {
-            console.log('Error checking for pending updates:', error);
+            // Silently handle errors instead of logging them repeatedly
+            return;
         }
-    }, 10000);
+    }, 30000); // Increased to 30 seconds
 }
 
 function showUpdateNotification() {
