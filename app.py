@@ -1486,3 +1486,7 @@ def chat_stream():
                 # First message or no significant history
                 response = get_grok_response_with_context(message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
+
+        except Exception as e:
+            print(f"Error in chat_stream: {str(e)}")
+            response = "Sorry, I encountered an error processing your request. Please try again."
