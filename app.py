@@ -775,7 +775,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Lower body isolation and hypertrophy"
                 progression_logic = "aggressive"
                 notes = "Machine-based isolation for joint safety"
-            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
+            elif anything in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
                 purpose = "Upper body isolation hypertrophy"
                 progression_logic = "slow"
                 notes = "Isolation exercise for targeted growth"
@@ -1487,7 +1487,7 @@ def chat_stream():
                 response = get_grok_response_with_context(message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
-                except Exception as e:
+        except Exception as e:
             print(f"Error in chat_stream: {str(e)}")
             response = "Sorry, I encountered an error processing your request. Please try again."
 
@@ -2284,6 +2284,7 @@ def get_conversation_thread(thread_id):
         # Get column names
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM conversation_threads WHERE id = ? LIMIT 1', (thread_id,))
+        ```text
         columns = [description[0] for description in cursor.description]
 
         # Convert to dictionary
