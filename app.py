@@ -305,16 +305,40 @@ def init_db():
     conn.commit()
     conn.close()
 
-def analyze_query_intent(prompt):
-    """Enhanced intent detection with confidence scoring and action identification"""
+def analyze_query_intent(prompt, conversation_context=None):
+    """Enhanced intent detection with confidence scoring, multi-intent support, and context awareness"""
     prompt_lower = prompt.lower()
     
     # Intent scoring system
     intents = {}
+    detected_entities = {
+        'exercises': [],
+        'days': [],
+        'numbers': [],
+        'references': []  # pronouns like "it", "that", "this"
+    }
+    
+    # Extract entities for context resolution
+    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    
+    for exercise in exercise_keywords:
+        if exercise in prompt_lower:
+            detected_entities['exercises'].append(exercise)
+    
+    for day in days:
+        if day in prompt_lower:
+            detected_entities['days'].append(day)
+    
+    # Detect references that need context resolution
+    reference_words = ['it', 'that', 'this', 'the exercise', 'that workout', 'the one', 'instead', 'other']
+    for ref in reference_words:
+        if ref in prompt_lower:
+            detected_entities['references'].append(ref)
     
     # Full plan review (comprehensive analysis)
     if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
-        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': []}
+        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
 
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
@@ -369,17 +393,56 @@ def analyze_query_intent(prompt):
     if general_score > 0:
         intents['general'] = min(general_score * 0.15, 1.0)
 
-    # Return highest confidence intent
-    if intents:
-        best_intent = max(intents.items(), key=lambda x: x[1])
+    # Enhanced negation and correction detection
+    negation_keywords = ['no', 'not', 'nope', 'incorrect', 'wrong', 'cancel', 'nevermind', 'actually']
+    correction_keywords = ['instead', 'rather', 'meant', 'actually', 'correction', 'change that to']
+    
+    negation_score = sum(1 for word in negation_keywords if word in prompt_lower)
+    correction_score = sum(1 for word in correction_keywords if word in prompt_lower)
+    
+    if negation_score > 0:
+        intents['negation'] = min(negation_score * 0.4, 1.0)
+    
+    if correction_score > 0:
+        intents['correction'] = min(correction_score * 0.4, 1.0)
+    
+    # Context-dependent intent boosting
+    if conversation_context:
+        last_intent = conversation_context.get('last_intent')
+        last_entities = conversation_context.get('last_entities', {})
+        
+        # If user is making references and we have context, boost contextual intents
+        if detected_entities['references'] and last_intent:
+            if last_intent == 'plan_modification':
+                intents['plan_modification'] = intents.get('plan_modification', 0) + 0.3
+            elif last_intent == 'progression':
+                intents['progression'] = intents.get('progression', 0) + 0.3
+    
+    # Multi-intent detection - return top intents if close in confidence
+    sorted_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)
+    
+    if len(sorted_intents) >= 2 and sorted_intents[1][1] > 0.4:
+        # Multiple intents detected
+        return {
+            'intent': 'multi_intent',
+            'primary_intent': sorted_intents[0][0],
+            'secondary_intent': sorted_intents[1][0],
+            'confidence': sorted_intents[0][1],
+            'all_intents': intents,
+            'entities': detected_entities,
+            'actions': extract_potential_actions(prompt, sorted_intents[0][0])
+        }
+    elif intents:
+        best_intent = sorted_intents[0]
         return {
             'intent': best_intent[0], 
             'confidence': best_intent[1],
             'all_intents': intents,
+            'entities': detected_entities,
             'actions': extract_potential_actions(prompt, best_intent[0])
         }
     else:
-        return {'intent': 'general', 'confidence': 0.1, 'actions': []}
+        return {'intent': 'general', 'confidence': 0.1, 'actions': [], 'entities': detected_entities}
 
 def extract_potential_actions(prompt, intent):
     """Extract potential auto-executable actions from the prompt"""
@@ -668,6 +731,88 @@ def get_conversation_context(days_back=14, limit=10):
     except Exception as e:
         print(f"Error getting conversation context: {str(e)}")
         return ""
+
+def resolve_contextual_references(prompt, entities, conversation_context):
+    """Resolve pronouns and references using conversation context"""
+    if not entities.get('references') or not conversation_context:
+        return prompt, {}
+    
+    resolved_entities = {}
+    
+    # Get last conversation for context
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT user_message, ai_response, exercise_mentioned, plan_modifications
+        FROM conversations 
+        ORDER BY timestamp DESC 
+        LIMIT 3
+    ''')
+    
+    recent_convs = cursor.fetchall()
+    conn.close()
+    
+    if not recent_convs:
+        return prompt, resolved_entities
+    
+    # Try to resolve "it", "that", "the exercise" etc.
+    for conv in recent_convs:
+        user_msg, ai_resp, exercise_mentioned, plan_mods = conv
+        
+        # If previous conversation mentioned a specific exercise
+        if exercise_mentioned:
+            resolved_entities['exercise'] = exercise_mentioned
+            # Replace references in prompt
+            prompt = prompt.replace(' it ', f' {exercise_mentioned} ')
+            prompt = prompt.replace(' that ', f' {exercise_mentioned} ')
+            break
+        
+        # If AI response mentioned specific exercises
+        if ai_resp:
+            import re
+            exercise_pattern = r'(tricep extension|bicep curl|bench press|squat|deadlift|overhead press|lat pulldown|chest press|leg press)'
+            exercise_match = re.search(exercise_pattern, ai_resp.lower())
+            if exercise_match:
+                resolved_entities['exercise'] = exercise_match.group(1)
+                prompt = prompt.replace(' it ', f' {exercise_match.group(1)} ')
+                prompt = prompt.replace(' that ', f' {exercise_match.group(1)} ')
+                break
+    
+    return prompt, resolved_entities
+
+def get_conversation_state():
+    """Get current conversation state for context-aware responses"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get last conversation
+        cursor.execute('''
+            SELECT detected_intent, exercise_mentioned, plan_modifications, 
+                   extracted_workout_data, timestamp
+            FROM conversations 
+            ORDER BY timestamp DESC 
+            LIMIT 1
+        ''')
+        
+        last_conv = cursor.fetchone()
+        conn.close()
+        
+        if not last_conv:
+            return None
+            
+        return {
+            'last_intent': last_conv[0],
+            'last_exercise': last_conv[1],
+            'last_plan_mods': last_conv[2],
+            'last_workout_data': last_conv[3],
+            'timestamp': last_conv[4]
+        }
+        
+    except Exception as e:
+        print(f"Error getting conversation state: {e}")
+        return None
 
 def build_smart_context(prompt, query_intent, user_background=None):
     """Build context based on query intent to avoid overwhelming Grok"""
@@ -1168,11 +1313,27 @@ def chat_stream():
                 # Generate session ID for conversation grouping
                 session_id = str(uuid.uuid4())[:8]
 
+                # Enhanced intent detection with confidence scoring and context
+                conversation_state = get_conversation_state()
+                
+                # Resolve contextual references first
+                original_message = user_message
+                if conversation_state:
+                    temp_analysis = analyze_query_intent(user_message)
+                    if temp_analysis.get('entities', {}).get('references'):
+                        user_message, resolved_refs = resolve_contextual_references(
+                            user_message, 
+                            temp_analysis['entities'], 
+                            conversation_state
+                        )
+                        print(f"🔗 Resolved references: {original_message} → {user_message}")
+
                 # Enhanced intent detection with confidence scoring
-                intent_analysis = analyze_query_intent(user_message)
+                intent_analysis = analyze_query_intent(user_message, conversation_state)
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
+                detected_entities = intent_analysis.get('entities', {})
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
