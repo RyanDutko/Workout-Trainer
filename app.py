@@ -1256,7 +1256,7 @@ def chat_stream():
     conversation_history = request.form.get('conversation_history', '')
     print(f"Chat request received: {user_message}")  # Debug log
 
-    def generate():
+    def generate(message, conv_history):
         try:
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
@@ -1288,13 +1288,13 @@ def chat_stream():
             print(f"Database queries completed successfully")  # Debug log
 
             # Build context-aware prompt with conversation history for follow-ups
-            if conversation_history and len(conversation_history) > 50:
+            if conv_history and len(conv_history) > 50:
                 # This is a follow-up question - include recent conversation context
-                context_prompt = f"PREVIOUS CONVERSATION:\n{conversation_history[-1000:]}\n\nUSER'S FOLLOW-UP: {user_message}"
+                context_prompt = f"PREVIOUS CONVERSATION:\n{conv_history[-1000:]}\n\nUSER'S FOLLOW-UP: {message}"
                 response = get_grok_response_with_context(context_prompt, user_background, recent_workouts)
             else:
                 # First message or no significant history
-                response = get_grok_response_with_context(user_message, user_background, recent_workouts)
+                response = get_grok_response_with_context(message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
             # Stream the response
@@ -1316,19 +1316,20 @@ def chat_stream():
                 conversation_state = get_conversation_state()
                 
                 # Resolve contextual references first
-                original_message = user_message
+                original_message = message
+                current_message = message
                 if conversation_state:
-                    temp_analysis = analyze_query_intent(user_message)
+                    temp_analysis = analyze_query_intent(message)
                     if temp_analysis.get('entities', {}).get('references'):
-                        user_message, resolved_refs = resolve_contextual_references(
-                            user_message, 
+                        current_message, resolved_refs = resolve_contextual_references(
+                            message, 
                             temp_analysis['entities'], 
                             conversation_state
                         )
-                        print(f"🔗 Resolved references: {original_message} → {user_message}")
+                        print(f"🔗 Resolved references: {original_message} → {current_message}")
 
                 # Enhanced intent detection with confidence scoring
-                intent_analysis = analyze_query_intent(user_message, conversation_state)
+                intent_analysis = analyze_query_intent(current_message, conversation_state)
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
@@ -1338,7 +1339,7 @@ def chat_stream():
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
                 exercise_mentioned = None
                 for keyword in exercise_keywords:
-                    if keyword in user_message.lower():
+                    if keyword in current_message.lower():
                         exercise_mentioned = keyword
                         break
 
@@ -1364,7 +1365,7 @@ def chat_stream():
                     plan_modifications = response[:300] + "..." if len(response) > 300 else response
                 
                 # Parse potential plan modification from Grok's response
-                plan_mod_data = parse_plan_modification_from_ai_response(response, user_message)
+                plan_mod_data = parse_plan_modification_from_ai_response(response, current_message)
                 if plan_mod_data and detected_intent == 'plan_modification':
                     # Store as potential auto-action for user confirmation
                     potential_actions.append({
@@ -1373,7 +1374,7 @@ def chat_stream():
                     })
                 
                 # Parse potential philosophy updates from conversation
-                philosophy_update = parse_philosophy_update_from_conversation(response, user_message)
+                philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
                 if philosophy_update:
                     # Auto-update philosophy in database
                     try:
@@ -1395,7 +1396,7 @@ def chat_stream():
                         print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
                 # Parse potential AI preference updates from conversation
-                preference_updates = parse_preference_updates_from_conversation(response, user_message)
+                preference_updates = parse_preference_updates_from_conversation(response, current_message)
                 if preference_updates:
                     # Auto-update AI preferences in database
                     try:
@@ -1420,7 +1421,7 @@ def chat_stream():
                         INSERT INTO conversation_threads 
                         (user_id, thread_type, thread_subject, current_context, last_intent)
                         VALUES (1, 'chat', ?, ?, ?)
-                    ''', (user_message[:50] + "..." if len(user_message) > 50 else user_message, 
+                    ''', (current_message[:50] + "..." if len(current_message) > 50 else current_message, 
                           detected_intent, detected_intent))
                     thread_id = cursor.lastrowid
                 else:
@@ -1439,7 +1440,7 @@ def chat_stream():
                      form_cues_given, coaching_context, plan_modifications, extracted_workout_data,
                      session_id, conversation_thread_id, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (user_message, response, detected_intent, confidence_score, exercise_mentioned, 
+                ''', (current_message, response, detected_intent, confidence_score, exercise_mentioned, 
                       form_cues, coaching_context, plan_modifications, extracted_workout_data,
                       session_id, thread_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
@@ -1466,7 +1467,7 @@ def chat_stream():
             print(f"Chat stream error: {str(e)}")  # Debug log
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    return Response(generate(), mimetype='text/plain')
+    return Response(generate(user_message, conversation_history), mimetype='text/plain')
 
 @app.route('/log_workout')
 def log_workout():
