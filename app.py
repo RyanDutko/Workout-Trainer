@@ -1487,6 +1487,870 @@ def chat_stream():
                 response = get_grok_response_with_context(message, user_background, recent_workouts)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
-        except Exception as e:
+                except Exception as e:
             print(f"Error in chat_stream: {str(e)}")
             response = "Sorry, I encountered an error processing your request. Please try again."
+
+        for word in response.split():
+            yield word + " "
+
+    return Response(generate(user_message, conversation_history), mimetype='text/plain')
+
+@app.route('/log_workout', methods=['POST'])
+def log_workout():
+    data = request.get_json()
+    exercise_name = data['exercise_name']
+    sets = data['sets']
+    reps = data['reps']
+    weight = data['weight']
+    notes = data.get('notes', '')
+    date_logged = datetime.now().strftime('%Y-%m-%d')
+    substitution_reason = data.get('substitution_reason', '')
+    performance_context = data.get('performance_context', '')
+    environmental_factors = data.get('environmental_factors', '')
+    difficulty_rating = data.get('difficulty_rating', None)
+    gym_location = data.get('gym_location', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Execute query
+    cursor.execute('''
+        INSERT INTO workouts 
+        (exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
+         performance_context, environmental_factors, difficulty_rating, gym_location) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
+          performance_context, environmental_factors, difficulty_rating, gym_location))
+
+    # Commit changes
+    conn.commit()
+
+    # Fetch the newly inserted workout
+    cursor.execute('''
+        SELECT id, exercise_name, sets, reps, weight, notes, date_logged, substitution_reason, 
+               performance_context, environmental_factors, difficulty_rating, gym_location
+        FROM workouts
+        WHERE exercise_name = ? AND date_logged = ?
+        ORDER BY id DESC
+        LIMIT 1
+    ''', (exercise_name, date_logged))
+
+    new_workout = cursor.fetchone()
+    conn.close()
+
+    # Convert the row to a dictionary (optional, but good practice)
+    if new_workout:
+        columns = [col[0] for col in cursor.description]
+        workout_dict = dict(zip(columns, new_workout))
+    else:
+        workout_dict = None
+
+    return jsonify({'message': 'Workout logged!', 'workout': workout_dict}), 200
+
+@app.route('/get_all_workouts', methods=['GET'])
+def get_all_workouts():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch all workouts
+    cursor.execute('SELECT * FROM workouts ORDER BY date_logged DESC LIMIT 100')
+    workouts = cursor.fetchall()
+
+    # Convert to list of dictionaries
+    workout_list = []
+    for workout in workouts:
+        workout_dict = {
+            'id': workout[0],
+            'exercise_name': workout[1],
+            'sets': workout[2],
+            'reps': workout[3],
+            'weight': workout[4],
+            'notes': workout[5],
+            'date_logged': workout[6],
+            'substitution_reason': workout[7],
+            'performance_context': workout[8],
+            'environmental_factors': workout[9],
+            'difficulty_rating': workout[10],
+            'gym_location': workout[11]
+        }
+        workout_list.append(workout_dict)
+
+    conn.close()
+    return jsonify(workout_list), 200
+
+@app.route('/get_exercise_history/<exercise_name>', methods=['GET'])
+def get_exercise_history(exercise_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch exercise history
+    cursor.execute('''
+        SELECT * FROM workouts 
+        WHERE LOWER(exercise_name) = LOWER(?)
+        ORDER BY date_logged DESC
+        LIMIT 50
+    ''', (exercise_name,))
+
+    workouts = cursor.fetchall()
+
+    # Convert to list of dictionaries
+    workout_list = []
+    for workout in workouts:
+        workout_dict = {
+            'id': workout[0],
+            'exercise_name': workout[1],
+            'sets': workout[2],
+            'reps': workout[3],
+            'weight': workout[4],
+            'notes': workout[5],
+            'date_logged': workout[6],
+            'substitution_reason': workout[7],
+            'performance_context': workout[8],
+            'environmental_factors': workout[9],
+            'difficulty_rating': workout[10],
+            'gym_location': workout[11]
+        }
+        workout_list.append(workout_dict)
+
+    conn.close()
+    return jsonify(workout_list), 200
+
+@app.route('/get_ai_suggestions', methods=['POST'])
+def get_ai_suggestions():
+    data = request.get_json()
+    exercise_name = data['exercise_name']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Get general tips for exercise
+    cursor.execute('SELECT ai_notes FROM exercise_metadata WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+    result = cursor.fetchone()
+    ai_notes = result[0] if result else "No AI tips found for this exercise."
+
+    # Get form cues from historical conversations
+    cursor.execute('''
+        SELECT DISTINCT form_cues_given
+        FROM conversations
+        WHERE LOWER(exercise_mentioned) = LOWER(?)
+        AND form_cues_given IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 5
+    ''', (exercise_name,))
+
+    form_cues_results = cursor.fetchall()
+    form_cues = [row[0] for row in form_cues_results if row[0]]
+
+    conn.close()
+    return jsonify({'ai_notes': ai_notes, 'form_cues': form_cues}), 200
+
+@app.route('/update_workout/<int:workout_id>', methods=['PUT'])
+def update_workout(workout_id):
+    data = request.get_json()
+    exercise_name = data['exercise_name']
+    sets = data['sets']
+    reps = data['reps']
+    weight = data['weight']
+    notes = data['notes']
+    substitution_reason = data.get('substitution_reason', '')
+    performance_context = data.get('performance_context', '')
+    environmental_factors = data.get('environmental_factors', '')
+    difficulty_rating = data.get('difficulty_rating', None)
+    gym_location = data.get('gym_location', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        UPDATE workouts 
+        SET exercise_name = ?, sets = ?, reps = ?, weight = ?, notes = ?,
+            substitution_reason = ?, performance_context = ?, environmental_factors = ?,
+            difficulty_rating = ?, gym_location = ?
+        WHERE id = ?
+    ''', (exercise_name, sets, reps, weight, notes, substitution_reason, performance_context,
+          environmental_factors, difficulty_rating, gym_location, workout_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Workout updated!'}), 200
+
+@app.route('/delete_workout/<int:workout_id>', methods=['DELETE'])
+def delete_workout(workout_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Workout deleted!'}), 200
+
+@app.route('/get_weekly_plan', methods=['GET'])
+def get_weekly_plan():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch weekly plan with proper ordering
+    cursor.execute('''
+        SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added
+        FROM weekly_plan 
+        ORDER BY 
+            CASE day_of_week 
+                WHEN 'monday' THEN 1 
+                WHEN 'tuesday' THEN 2 
+                WHEN 'wednesday' THEN 3 
+                WHEN 'thursday' THEN 4 
+                WHEN 'friday' THEN 5 
+                WHEN 'saturday' THEN 6 
+                WHEN 'sunday' THEN 7 
+            END, exercise_order
+    ''')
+    plan_data = cursor.fetchall()
+
+    # Convert to list of dictionaries
+    plan_list = []
+    for row in plan_data:
+        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
+        plan_list.append({
+            'id': exercise_id,
+            'day_of_week': day,
+            'exercise_name': exercise_name,
+            'target_sets': target_sets,
+            'target_reps': target_reps,
+            'target_weight': target_weight,
+            'exercise_order': order,
+            'notes': notes,
+            'newly_added': bool(newly_added)
+        })
+
+    conn.close()
+    return jsonify(plan_list), 200
+
+@app.route('/add_exercise_to_plan', methods=['POST'])
+def add_exercise_to_plan():
+    data = request.get_json()
+    day_of_week = data['day_of_week']
+    exercise_name = data['exercise_name']
+    target_sets = data['target_sets']
+    target_reps = data['target_reps']
+    target_weight = data['target_weight']
+    notes = data.get('notes', '')  # Optional notes field
+    newly_added = True  # Flag as newly added
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Find the highest existing order index for the given day
+    cursor.execute('SELECT MAX(exercise_order) FROM weekly_plan WHERE day_of_week = ?', (day_of_week,))
+    max_order = cursor.fetchone()[0] or 0  # If no exercises exist, start at 1
+
+    # Increment the order index
+    exercise_order = max_order + 1
+
+    # Get the current date
+    date_added = datetime.now().strftime('%Y-%m-%d')
+
+    # Execute query with notes and newly_added flag
+    cursor.execute('''
+        INSERT INTO weekly_plan 
+        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added, date_added) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added, date_added))
+
+    # Commit changes
+    conn.commit()
+
+    # Fetch the newly inserted exercise
+    cursor.execute('''
+        SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, newly_added
+        FROM weekly_plan 
+        WHERE day_of_week = ? AND exercise_name = ?
+        ORDER BY id DESC
+        LIMIT 1
+    ''', (day_of_week, exercise_name))
+
+    new_exercise = cursor.fetchone()
+    conn.close()
+
+    # Convert the row to a dictionary
+    if new_exercise:
+        columns = [col[0] for col in cursor.description]
+        exercise_dict = dict(zip(columns, new_exercise))
+    else:
+        exercise_dict = None
+
+    return jsonify({'message': 'Exercise added to plan!', 'exercise': exercise_dict}), 200
+
+@app.route('/update_exercise_in_plan/<int:exercise_id>', methods=['PUT'])
+def update_exercise_in_plan(exercise_id):
+    data = request.get_json()
+    day_of_week = data['day_of_week']
+    exercise_name = data['exercise_name']
+    target_sets = data['target_sets']
+    target_reps = data['target_reps']
+    target_weight = data['target_weight']
+    exercise_order = data['exercise_order']  # Include exercise_order
+    notes = data.get('notes', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Execute query with exercise_order
+    cursor.execute('''
+        UPDATE weekly_plan 
+        SET day_of_week = ?, exercise_name = ?, target_sets = ?, target_reps = ?, 
+            target_weight = ?, exercise_order = ?, notes = ?
+        WHERE id = ?
+    ''', (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, exercise_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Exercise in plan updated!'}), 200
+
+@app.route('/delete_exercise_from_plan/<int:exercise_id>', methods=['DELETE'])
+def delete_exercise_from_plan(exercise_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM weekly_plan WHERE id = ?', (exercise_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Exercise deleted from plan!'}), 200
+
+@app.route('/clear_newly_added_flags', methods=['POST'])
+def clear_newly_added_flags():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE weekly_plan SET newly_added = 0')
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Newly added flags cleared!'}), 200
+
+@app.route('/get_plan_context', methods=['GET'])
+def get_plan_context():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch plan context
+    cursor.execute('''
+        SELECT plan_philosophy, training_style, weekly_structure, 
+               progression_strategy, special_considerations
+        FROM plan_context 
+        WHERE user_id = 1
+        ORDER BY created_date DESC
+        LIMIT 1
+    ''')
+    context_data = cursor.fetchone()
+
+    conn.close()
+
+    if context_data:
+        # Convert to dictionary
+        context_dict = {
+            'plan_philosophy': context_data[0],
+            'training_style': context_data[1],
+            'weekly_structure': context_data[2],
+            'progression_strategy': context_data[3],
+            'special_considerations': context_data[4]
+        }
+        return jsonify(context_dict), 200
+    else:
+        return jsonify({'message': 'No plan context found.'}), 404
+
+@app.route('/update_plan_context', methods=['POST'])
+def update_plan_context():
+    data = request.get_json()
+    plan_philosophy = data['plan_philosophy']
+    training_style = data['training_style']
+    weekly_structure = data['weekly_structure']
+    progression_strategy = data['progression_strategy']
+    special_considerations = data['special_considerations']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Get current timestamp
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Insert new context data
+    cursor.execute('''
+        INSERT INTO plan_context 
+        (user_id, plan_philosophy, training_style, weekly_structure, 
+         progression_strategy, special_considerations, created_date) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (1, plan_philosophy, training_style, weekly_structure, 
+          progression_strategy, special_considerations, now))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Plan context updated!'}), 200
+
+@app.route('/get_exercise_metadata/<exercise_name>', methods=['GET'])
+def get_exercise_metadata(exercise_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch metadata
+    cursor.execute('''
+        SELECT exercise_type, primary_purpose, progression_logic, ai_notes
+        FROM exercise_metadata 
+        WHERE LOWER(exercise_name) = LOWER(?)
+        AND user_id = 1
+    ''', (exercise_name,))
+    metadata = cursor.fetchone()
+
+    conn.close()
+
+    if metadata:
+        # Convert to dictionary
+        metadata_dict = {
+            'exercise_type': metadata[0],
+            'primary_purpose': metadata[1],
+            'progression_logic': metadata[2],
+            'ai_notes': metadata[3]
+        }
+        return jsonify(metadata_dict), 200
+    else:
+        return jsonify({'message': 'No metadata found for this exercise.'}), 404
+
+@app.route('/update_exercise_metadata/<exercise_name>', methods=['PUT'])
+def update_exercise_metadata(exercise_name):
+    data = request.get_json()
+    exercise_type = data['exercise_type']
+    primary_purpose = data['primary_purpose']
+    progression_logic = data['progression_logic']
+    ai_notes = data['ai_notes']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Update metadata
+    cursor.execute('''
+        UPDATE exercise_metadata 
+        SET exercise_type = ?, primary_purpose = ?, progression_logic = ?, ai_notes = ?
+        WHERE LOWER(exercise_name) = LOWER(?)
+        AND user_id = 1
+    ''', (exercise_type, primary_purpose, progression_logic, ai_notes, exercise_name))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Exercise metadata updated!'}), 200
+
+@app.route('/get_user_preferences', methods=['GET'])
+def get_user_preferences():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch user preferences
+    cursor.execute('SELECT * FROM users WHERE id = 1')
+    user_data = cursor.fetchone()
+
+    conn.close()
+
+    if user_data:
+        # Convert to dictionary
+        user_dict = {
+            'id': user_data[0],
+            'goal': user_data[1],
+            'weekly_split': user_data[2],
+            'preferences': user_data[3],
+            'grok_tone': user_data[4],
+            'grok_detail_level': user_data[5],
+            'grok_format': user_data[6],
+            'preferred_units': user_data[7],
+            'communication_style': user_data[8],
+            'technical_level': user_data[9]
+        }
+        return jsonify(user_dict), 200
+    else:
+        return jsonify({'message': 'No user preferences found.'}), 404
+
+@app.route('/update_user_preferences', methods=['POST'])
+def update_user_preferences():
+    data = request.get_json()
+    goal = data['goal']
+    weekly_split = data['weekly_split']
+    preferences = data['preferences']
+    grok_tone = data['grok_tone']
+    grok_detail_level = data['grok_detail_level']
+    grok_format = data['grok_format']
+    preferred_units = data['preferred_units']
+    communication_style = data['communication_style']
+    technical_level = data['technical_level']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Update user preferences
+    cursor.execute('''
+        UPDATE users 
+        SET goal = ?, weekly_split = ?, preferences = ?, grok_tone = ?,
+            grok_detail_level = ?, grok_format = ?, preferred_units = ?,
+            communication_style = ?, technical_level = ?
+        WHERE id = 1
+    ''', (goal, weekly_split, preferences, grok_tone, grok_detail_level,
+          grok_format, preferred_units, communication_style, technical_level))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'User preferences updated!'}), 200
+
+@app.route('/log_conversation', methods=['POST'])
+def log_conversation():
+    data = request.get_json()
+    user_message = data['user_message']
+    ai_response = data['ai_response']
+    detected_intent = data.get('detected_intent', None)
+    confidence_score = data.get('confidence_score', 0.0)
+    actions_taken = data.get('actions_taken', None)
+    workout_context = data.get('workout_context', None)
+    exercise_mentioned = data.get('exercise_mentioned', None)
+    form_cues_given = data.get('form_cues_given', None)
+    performance_notes = data.get('performance_notes', None)
+    plan_modifications = data.get('plan_modifications', None)
+    auto_executed_actions = data.get('auto_executed_actions', None)
+    extracted_workout_data = data.get('extracted_workout_data', None)
+    coaching_context = data.get('coaching_context', None)
+    session_id = data.get('session_id', None)
+    conversation_thread_id = data.get('conversation_thread_id', None)
+    parent_conversation_id = data.get('parent_conversation_id', None)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Log conversation
+    cursor.execute('''
+        INSERT INTO conversations 
+        (user_id, user_message, ai_response, detected_intent, confidence_score,
+         actions_taken, workout_context, exercise_mentioned, form_cues_given,
+         performance_notes, plan_modifications, auto_executed_actions,
+         extracted_workout_data, coaching_context, timestamp, session_id,
+         conversation_thread_id, parent_conversation_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (1, user_message, ai_response, detected_intent, confidence_score,
+          actions_taken, workout_context, exercise_mentioned, form_cues_given,
+          performance_notes, plan_modifications, auto_executed_actions,
+          extracted_workout_data, coaching_context, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+          session_id, conversation_thread_id, parent_conversation_id))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Conversation logged!'}), 200
+
+@app.route('/get_conversation_history', methods=['GET'])
+def get_conversation_history():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch conversation history (last 50 messages)
+    cursor.execute('''
+        SELECT user_message, ai_response, timestamp
+        FROM conversations
+        ORDER BY timestamp DESC
+        LIMIT 50
+    ''')
+    conversations = cursor.fetchall()
+
+    conn.close()
+
+    # Convert to list of dictionaries
+    conversation_list = []
+    for conv in conversations:
+        conversation_list.append({
+            'user_message': conv[0],
+            'ai_response': conv[1],
+            'timestamp': conv[2]
+        })
+
+    return jsonify(conversation_list), 200
+
+@app.route('/get_exercise_relationships/<primary_exercise>', methods=['GET'])
+def get_exercise_relationships(primary_exercise):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch relationships
+    cursor.execute('''
+        SELECT related_exercise, relationship_type, relevance_score
+        FROM exercise_relationships
+        WHERE LOWER(primary_exercise) = LOWER(?)
+    ''', (primary_exercise,))
+    relationships = cursor.fetchall()
+
+    conn.close()
+
+    # Convert to list of dictionaries
+    relationship_list = []
+    for rel in relationships:
+        relationship_list.append({
+            'related_exercise': rel[0],
+            'relationship_type': rel[1],
+            'relevance_score': rel[2]
+        })
+
+    return jsonify(relationship_list), 200
+
+@app.route('/create_exercise_relationship', methods=['POST'])
+def create_exercise_relationship():
+    data = request.get_json()
+    primary_exercise = data['primary_exercise']
+    related_exercise = data['related_exercise']
+    relationship_type = data['relationship_type']
+    relevance_score = data.get('relevance_score', 1.0)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Create relationship
+    cursor.execute('''
+        INSERT INTO exercise_relationships 
+        (primary_exercise, related_exercise, relationship_type, relevance_score)
+        VALUES (?, ?, ?, ?)
+    ''', (primary_exercise, related_exercise, relationship_type, relevance_score))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Exercise relationship created!'}), 200
+
+@app.route('/delete_exercise_relationship', methods=['DELETE'])
+def delete_exercise_relationship():
+    data = request.get_json()
+    primary_exercise = data['primary_exercise']
+    related_exercise = data['related_exercise']
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Delete relationship
+    cursor.execute('''
+        DELETE FROM exercise_relationships
+        WHERE LOWER(primary_exercise) = LOWER(?) AND LOWER(related_exercise) = LOWER(?)
+    ''', (primary_exercise, related_exercise))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Exercise relationship deleted!'}), 200
+
+@app.route('/get_user_background', methods=['GET'])
+def get_user_background():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch user background
+    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
+    bg_data = cursor.fetchone()
+
+    conn.close()
+
+    if bg_data:
+        # Get column names
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM user_background WHERE user_id = 1 LIMIT 1')
+        columns = [description[0] for description in cursor.description]
+
+        # Convert to dictionary
+        bg_dict = dict(zip(columns, bg_data))
+        return jsonify(bg_dict), 200
+    else:
+        return jsonify({'message': 'No user background found.'}), 404
+
+@app.route('/update_user_background', methods=['POST'])
+def update_user_background():
+    data = request.get_json()
+
+    # Extract data from request
+    age = data.get('age')
+    gender = data.get('gender')
+    height = data.get('height')
+    current_weight = data.get('current_weight')
+    fitness_level = data.get('fitness_level')
+    years_training = data.get('years_training')
+    primary_goal = data.get('primary_goal')
+    secondary_goals = data.get('secondary_goals')
+    injuries_history = data.get('injuries_history')
+    current_limitations = data.get('current_limitations')
+    past_weight_loss = data.get('past_weight_loss')
+    past_weight_gain = data.get('past_weight_gain')
+    medical_conditions = data.get('medical_conditions')
+    training_frequency = data.get('training_frequency')
+    available_equipment = data.get('available_equipment')
+    time_per_session = data.get('time_per_session')
+    preferred_training_style = data.get('preferred_training_style')
+    motivation_factors = data.get('motivation_factors')
+    biggest_challenges = data.get('biggest_challenges')
+    past_program_experience = data.get('past_program_experience')
+    nutrition_approach = data.get('nutrition_approach')
+    sleep_quality = data.get('sleep_quality')
+    stress_level = data.get('stress_level')
+    additional_notes = data.get('additional_notes')
+    chat_response_style = data.get('chat_response_style')
+    chat_progression_detail = data.get('chat_progression_detail')
+    onboarding_completed = data.get('onboarding_completed')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Get current timestamp
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Insert/Update user background
+    cursor.execute('''
+        INSERT INTO user_background (
+            user_id, age, gender, height, current_weight, fitness_level, years_training,
+            primary_goal, secondary_goals, injuries_history, current_limitations,
+            past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
+            available_equipment, time_per_session, preferred_training_style,
+            motivation_factors, biggest_challenges, past_program_experience,
+            nutrition_approach, sleep_quality, stress_level, additional_notes,
+            chat_response_style, chat_progression_detail, onboarding_completed,
+            created_date, updated_date
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        ON CONFLICT(user_id) DO UPDATE SET
+            age=excluded.age, gender=excluded.gender, height=excluded.height,
+            current_weight=excluded.current_weight, fitness_level=excluded.fitness_level,
+            years_training=excluded.years_training, primary_goal=excluded.primary_goal,
+            secondary_goals=excluded.secondary_goals, injuries_history=excluded.injuries_history,
+            current_limitations=excluded.current_limitations, past_weight_loss=excluded.past_weight_loss,
+            past_weight_gain=excluded.past_weight_gain, medical_conditions=excluded.medical_conditions,
+            training_frequency=excluded.training_frequency, available_equipment=excluded.available_equipment,
+            time_per_session=excluded.time_per_session, preferred_training_style=excluded.preferred_training_style,
+            motivation_factors=excluded.motivation_factors, biggest_challenges=excluded.biggest_challenges,
+            past_program_experience=excluded.past_program_experience, nutrition_approach=excluded.nutrition_approach,
+            sleep_quality=excluded.sleep_quality, stress_level=excluded.stress_level,
+            additional_notes=excluded.additional_notes, chat_response_style=excluded.chat_response_style,
+            chat_progression_detail=excluded.chat_progression_detail, onboarding_completed=excluded.onboarding_completed,
+            updated_date=?
+    ''', (
+        1, age, gender, height, current_weight, fitness_level, years_training,
+        primary_goal, secondary_goals, injuries_history, current_limitations,
+        past_weight_loss, past_weight_gain, medical_conditions, training_frequency,
+        available_equipment, time_per_session, preferred_training_style,
+        motivation_factors, biggest_challenges, past_program_experience,
+        nutrition_approach, sleep_quality, stress_level, additional_notes,
+        chat_response_style, chat_progression_detail, onboarding_completed,
+        now, now
+    ))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'User background updated!'}), 200
+
+@app.route('/create_conversation_thread', methods=['POST'])
+def create_conversation_thread():
+    data = request.get_json()
+    thread_type = data.get('thread_type', 'chat')
+    thread_subject = data.get('thread_subject', None)
+    current_context = data.get('current_context', None)
+    last_intent = data.get('last_intent', None)
+    active_workout_session = data.get('active_workout_session', False)
+    workout_session_data = data.get('workout_session_data', None)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Create conversation thread
+    cursor.execute('''
+        INSERT INTO conversation_threads (
+            user_id, thread_type, thread_subject, current_context, last_intent,
+            active_workout_session, workout_session_data, created_timestamp, updated_timestamp
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+    ''', (
+        1, thread_type, thread_subject, current_context, last_intent,
+        active_workout_session, workout_session_data, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    ))
+
+    thread_id = cursor.lastrowid  # Get the ID of the new thread
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Conversation thread created!', 'thread_id': thread_id}), 200
+
+@app.route('/get_conversation_thread/<int:thread_id>', methods=['GET'])
+def get_conversation_thread(thread_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch thread
+    cursor.execute('''
+        SELECT * FROM conversation_threads WHERE id = ?
+    ''', (thread_id,))
+    thread_data = cursor.fetchone()
+
+    conn.close()
+
+    if thread_data:
+        # Get column names
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM conversation_threads WHERE id = ? LIMIT 1', (thread_id,))
+        columns = [description[0] for description in cursor.description]
+
+        # Convert to dictionary
+        thread_dict = dict(zip(columns, thread_data))
+        return jsonify(thread_dict), 200
+    else:
+        return jsonify({'message': 'Conversation thread not found.'}), 404
+
+@app.route('/update_conversation_thread/<int:thread_id>', methods=['PUT'])
+def update_conversation_thread(thread_id):
+    data = request.get_json()
+    thread_type = data.get('thread_type')
+    thread_subject = data.get('thread_subject')
+    current_context = data.get('current_context')
+    last_intent = data.get('last_intent')
+    active_workout_session = data.get('active_workout_session')
+    workout_session_data = data.get('workout_session_data')
+    is_active = data.get('is_active')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Update thread
+    cursor.execute('''
+        UPDATE conversation_threads SET
+            thread_type = ?, thread_subject = ?, current_context = ?, last_intent = ?,
+            active_workout_session = ?, workout_session_data = ?, updated_timestamp = ?,
+            is_active = ?
+        WHERE id = ?
+    ''', (
+        thread_type, thread_subject, current_context, last_intent,
+        active_workout_session, workout_session_data, datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        is_active, thread_id
+    ))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Conversation thread updated!'}), 200
+
+@app.route('/get_conversations_in_thread/<thread_id>', methods=['GET'])
+def get_conversations_in_thread(thread_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Fetch conversations
+    cursor.execute('''
+        SELECT user_message, ai_response, timestamp
+        FROM conversations
+        WHERE conversation_thread_id = ?
+        ORDER BY timestamp ASC
+    ''', (thread_id,))
+    conversations = cursor.fetchall()
+
+    conn.close()
+
+    # Convert to list of dictionaries
+    conversation_list = []
+    for conv in conversations:
+        conversation_list.append({
+            'user_message': conv[0],
+            'ai_response': conv[1],
+            'timestamp': conv[2]
+        })
+
+    return jsonify(conversation_list), 200
+
+# Flask app configuration to run properly on Replit
+if __name__ == "__main__":
+    init_db()
+    app.run(host='0.0.0.0', port=5000, debug=True)
