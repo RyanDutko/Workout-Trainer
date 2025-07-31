@@ -2351,7 +2351,7 @@ def get_conversations_in_thread(thread_id):
     return jsonify(conversation_list), 200
 
 @app.route('/log_workout')
-def log_workout():
+def log_workout_page():
     return render_template('log_workout.html')
 
 @app.route('/weekly_plan')
