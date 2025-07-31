@@ -2924,7 +2924,7 @@ def debug_plan_context():
     except Exception as e:
         return jsonify({'error': str(e)})
 
-@app.route('/restore_philosophy', methods=['POST'])
+@app.route('/restore_philosophy', methods=['GET', 'POST'])
 def restore_philosophy():
     """Restore plan philosophy from backup entry"""
     try:
