@@ -2350,6 +2350,119 @@ def get_conversations_in_thread(thread_id):
 
     return jsonify(conversation_list), 200
 
+@app.route('/log_workout')
+def log_workout():
+    return render_template('log_workout.html')
+
+@app.route('/weekly_plan')
+def weekly_plan():
+    return render_template('weekly_plan.html')
+
+@app.route('/progression')
+def progression():
+    return render_template('progression.html')
+
+@app.route('/history')
+def history():
+    return render_template('history.html')
+
+@app.route('/profile')
+def profile():
+    return render_template('profile.html')
+
+@app.route('/analyze_plan')
+def analyze_plan():
+    return render_template('analyze_plan.html')
+
+@app.route('/save_workout', methods=['POST'])
+def save_workout():
+    data = request.get_json()
+    exercise_name = data['exercise_name']
+    sets = data['sets']
+    reps = data['reps']
+    weight = data['weight']
+    notes = data.get('notes', '')
+    date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (exercise_name, sets, reps, weight, notes, date))
+
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'success', 'message': 'Workout saved successfully!'}), 200
+
+@app.route('/get_weight_history', methods=['GET'])
+def get_weight_history():
+    # Placeholder for weight tracking - you can implement this later
+    return jsonify({'dates': [], 'weights': []}), 200
+
+@app.route('/get_volume_history', methods=['GET'])
+def get_volume_history():
+    # Placeholder for volume tracking - you can implement this later
+    return jsonify({'weeks': [], 'volumes': []}), 200
+
+@app.route('/get_exercise_list', methods=['GET'])
+def get_exercise_list():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT DISTINCT exercise_name FROM weekly_plan ORDER BY exercise_name')
+    exercises = [row[0] for row in cursor.fetchall()]
+    
+    conn.close()
+    return jsonify({'exercises': exercises}), 200
+
+@app.route('/get_exercise_performance/<exercise_name>', methods=['GET'])
+def get_exercise_performance(exercise_name):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT date_logged, weight, sets, reps
+        FROM workouts 
+        WHERE LOWER(exercise_name) = LOWER(?)
+        ORDER BY date_logged
+    ''', (exercise_name,))
+    
+    data = cursor.fetchall()
+    conn.close()
+    
+    if not data:
+        return jsonify({'dates': [], 'max_weights': [], 'has_real_data': False}), 200
+    
+    dates = [row[0] for row in data]
+    weights = []
+    
+    for row in data:
+        try:
+            weight_str = str(row[1]).replace('lbs', '').replace('kg', '').strip()
+            if weight_str.lower() != 'bodyweight':
+                weights.append(float(weight_str))
+            else:
+                weights.append(0)
+        except:
+            weights.append(0)
+    
+    return jsonify({
+        'dates': dates,
+        'max_weights': weights,
+        'best_weight': max(weights) if weights else 0,
+        'best_date': dates[weights.index(max(weights))] if weights else '',
+        'total_sessions': len(dates),
+        'progress': ((weights[-1] - weights[0]) / weights[0] * 100) if len(weights) > 1 and weights[0] > 0 else 0,
+        'has_real_data': True
+    }), 200
+
+@app.route('/log_weight', methods=['POST'])
+def log_weight():
+    # Placeholder for weight logging - you can implement this later
+    return jsonify({'success': True}), 200
+
 # Flask app configuration to run properly on Replit
 if __name__ == "__main__":
     init_db()
