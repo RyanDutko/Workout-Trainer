@@ -1967,10 +1967,51 @@ def weekly_plan():
     columns = [col[1] for col in cursor.fetchall()]
 
     # Use the correct column names based on what exists
+
+
+@app.route('/get_plan/<date>')
+def get_plan(date):
+    """Get workout plan for a specific date"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get day name from date
+        from datetime import datetime
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        day_name = date_obj.strftime('%A').lower()
+        
+        cursor.execute('''
+            SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order, 
+                   COALESCE(notes, ""), COALESCE(progression_notes, "")
+            FROM weekly_plan 
+            WHERE day_of_week = ? 
+            ORDER BY exercise_order
+        ''', (day_name,))
+        
+        exercises = []
+        for row in cursor.fetchall():
+            exercise_name, sets, reps, weight, order, notes, progression_notes = row
+            exercises.append({
+                'exercise_name': exercise_name,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': order,
+                'notes': notes,
+                'progression_notes': progression_notes
+            })
+        
+        conn.close()
+        return jsonify({'exercises': exercises})
+        
+    except Exception as e:
+        return jsonify({'exercises': [], 'error': str(e)})
+
     if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
     else:
-        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0 FROM weekly_plan ORDER BY day_of_week, order_index')
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
 
     plan_data = cursor.fetchall()
     conn.close()

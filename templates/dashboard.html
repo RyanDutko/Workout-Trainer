@@ -75,7 +75,11 @@
                                                 {% if notes %}
                                                     <small class="text-muted">{{ notes }}</small>
                                                 {% endif %}
-                                                {% if progression_note %}
+                                                {% if progression_notes %}
+                                                    <div class="mt-1">
+                                                        <small class="text-info fw-bold">📈 {{ progression_notes }}</small>
+                                                    </div>
+                                                {% endif %} %}
                                                     <div class="text-info small mt-1">
                                                         <i class="fas fa-chart-line me-1"></i>{{ progression_note }}
                                                     </div>
