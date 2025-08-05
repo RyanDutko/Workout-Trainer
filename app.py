@@ -645,7 +645,16 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                             'comprehensive_removal': True,
                             'target_text': target_text,
                             'changes_made': changes_made,
-                            'reasoning': f"Removed all mentions of '{target_text}' from philosophy, exercise metadata, and plan notes"
+                            'reasoning': f"✅ COMPLETED: Removed all mentions of '{target_text}' from {len(changes_made)} locations in your plan",
+                            'success_message': f"Successfully removed '{target_text}' from {len(changes_made)} places in your training plan!"
+                        }
+                    else:
+                        return {
+                            'comprehensive_removal': True,
+                            'target_text': target_text,
+                            'changes_made': [],
+                            'reasoning': f"No mentions of '{target_text}' found to remove",
+                            'success_message': f"No mentions of '{target_text}' were found in your plan"
                         }
 
         # Look for user requests that are asking for changes (but not just asking questions)
