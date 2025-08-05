@@ -235,7 +235,7 @@ def init_db():
         ('newly_added', 'BOOLEAN DEFAULT FALSE'),
         ('date_added', 'TEXT'),
         ('progression_notes', 'TEXT')
-    ]</old_str>
+    ]
 
     # Add context columns to workouts table
     workout_columns_to_add = [
@@ -1580,7 +1580,7 @@ def dashboard():
     today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan with completion status
-    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))</old_str>
+    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     plan_data = cursor.fetchall()
 
     # Check completion status for each exercise
