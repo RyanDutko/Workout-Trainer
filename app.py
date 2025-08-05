@@ -321,7 +321,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     }
 
     # Extract entities for context resolution
-    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
+    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back']
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
     for exercise in exercise_keywords:
@@ -416,7 +416,7 @@ def analyze_query_intent(prompt, conversation_context=None):
                 intents['plan_modification'] = intents.get('plan_modification', 0) + 0.3
             elif last_intent == 'progression':
                 intents['progression'] = intents.get('progression', 0) + 0.3
-    
+
     # Check for specific comprehensive plan modification requests
     if 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt:
         intents['plan_modification'] = max(intents.get('plan_modification', 0), 0.8) # High confidence
