@@ -2755,24 +2755,37 @@ def edit_exercise():
         weight = data.get('weight')
         exercise_name = data.get('exercise')
         notes = data.get('notes', '')
+        progression_notes = data.get('progression_notes', '')
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        progression_notes = data.get('progression_notes', '')
+        # First check if progression_notes column exists
+        cursor.execute("PRAGMA table_info(weekly_plan)")
+        columns = [col[1] for col in cursor.fetchall()]
         
-        cursor.execute('''
-            UPDATE weekly_plan 
-            SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
-            WHERE id = ?
-        ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))
+        if 'progression_notes' in columns:
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
+                WHERE id = ?
+            ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))
+        else:
+            # If column doesn't exist, update without progression_notes
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
+                WHERE id = ?
+            ''', (sets, reps, weight, exercise_name, notes, exercise_id))
 
         conn.commit()
         conn.close()
 
+        print(f"✅ Updated exercise {exercise_name}: progression_notes = '{progression_notes}'")
         return jsonify({'success': True})
 
     except Exception as e:
+        print(f"❌ Error updating exercise: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/delete_exercise', methods=['POST'])
