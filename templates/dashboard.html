@@ -220,17 +220,25 @@
 <div class="row mt-4">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">📈 Daily Progression Analysis</h5>
-                <button id="analyzeProgressionBtn" class="btn btn-primary btn-sm">
-                    Analyze Today's Progress
-                </button>
+            <div class="card-header">
+                <h5 class="mb-3">📈 Daily Progression Analysis</h5>
+                <div class="row align-items-end">
+                    <div class="col-md-4">
+                        <label for="analysisDate" class="form-label">Select Date to Analyze</label>
+                        <input type="date" class="form-control" id="analysisDate" value="{{ today_date }}" onchange="checkProgressionStatus(this.value)">
+                    </div>
+                    <div class="col-md-4">
+                        <button id="analyzeProgressionBtn" class="btn btn-primary">
+                            <i class="fas fa-chart-line me-1"></i>Analyze Progress
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="card-body">
                 <div id="progressionStatus" class="text-muted">
-                    Complete your workouts, then click "Analyze Today's Progress" to get AI-powered progression recommendations.
+                    Select a date and click "Analyze Progress" to get AI-powered progression recommendations.
                 </div>
-                <div id="progressionNotes" class="mt-3" style="display: none;">
+                <div id="progressionNotes" class="mt-3">
                     <!-- Progression notes will be displayed here -->
                 </div>
             </div>
@@ -336,6 +344,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Check progression analysis status on page load
     checkProgressionStatus('{{ today_date }}');
+    
+    // Set up event listener for analyze button
+    document.getElementById('analyzeProgressionBtn').addEventListener('click', function() {
+        const selectedDate = document.getElementById('analysisDate').value;
+        analyzeProgression(selectedDate);
+    });
 });
 
 function initializeCharts() {
@@ -682,9 +696,18 @@ function checkProgressionStatus(date) {
             const notesDiv = document.getElementById('progressionNotes');
             const analyzeBtn = document.getElementById('analyzeProgressionBtn');
 
+            const dateObj = new Date(date);
+            const formattedDate = dateObj.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+
             if (data.analysis_completed > 0) {
-                statusDiv.innerHTML = `✅ Progression analysis completed for ${data.analysis_completed} exercises`;
+                statusDiv.innerHTML = `✅ Progression analysis completed for ${data.analysis_completed} exercises on ${formattedDate}`;
                 analyzeBtn.textContent = 'Re-analyze Progress';
+                analyzeBtn.style.display = 'inline-block';
 
                 // Display progression notes
                 if (data.progression_notes && data.progression_notes.length > 0) {
@@ -700,11 +723,12 @@ function checkProgressionStatus(date) {
                     notesDiv.innerHTML = '';
                 }
             } else if (data.needs_analysis) {
-                statusDiv.innerHTML = `⏳ ${data.total_workouts} workouts ready for progression analysis`;
+                statusDiv.innerHTML = `⏳ ${data.total_workouts} workouts ready for progression analysis on ${formattedDate}`;
                 analyzeBtn.textContent = 'Analyze Progress';
+                analyzeBtn.style.display = 'inline-block';
                 notesDiv.innerHTML = '';
             } else {
-                statusDiv.innerHTML = 'No workouts logged today';
+                statusDiv.innerHTML = `No workouts logged on ${formattedDate}`;
                 analyzeBtn.style.display = 'none';
                 notesDiv.innerHTML = '';
             }
@@ -714,8 +738,8 @@ function checkProgressionStatus(date) {
         });
 }
 
-function analyzeProgression() {
-    const today = new Date().toISOString().split('T')[0];
+function analyzeProgression(selectedDate) {
+    const analyzeDate = selectedDate || document.getElementById('analysisDate').value;
     const analyzeBtn = document.getElementById('analyzeProgressionBtn');
     
     analyzeBtn.disabled = true;
@@ -726,13 +750,13 @@ function analyzeProgression() {
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ date: today })
+        body: JSON.stringify({ date: analyzeDate })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             alert('Progression analysis completed!');
-            checkProgressionStatus(today);
+            checkProgressionStatus(analyzeDate);
         } else {
             alert('Error analyzing progression: ' + (data.error || data.message));
         }
