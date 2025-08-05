@@ -1206,7 +1206,7 @@ def analyze_day_progression(date_str):
         cursor.execute('''
             SELECT id, exercise_name, sets, reps, weight, notes, progression_notes
             FROM workouts 
-            WHERE date_logged = ? AND day_completed = FALSE
+            WHERE date_logged = ?
             ORDER BY id
         ''', (date_str,))
         
@@ -1214,7 +1214,7 @@ def analyze_day_progression(date_str):
         
         if not day_workouts:
             conn.close()
-            return {"success": False, "message": "No incomplete workouts found for this day"}
+            return {"success": False, "message": f"No workouts found for {date_str}. Make sure you have logged workouts for this date."}
 
         # Get user context for better progression analysis
         cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
@@ -1352,7 +1352,7 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
                 # Fallback generic note if Grok didn't provide specific guidance
                 progression_note = "Analysis pending - check performance vs plan"
 
-            # Update the workout record
+            # Update the workout record (always set day_completed = TRUE)
             cursor.execute('''
                 UPDATE workouts 
                 SET progression_notes = ?, day_completed = TRUE 
@@ -3848,7 +3848,7 @@ def get_day_progression_status(date):
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ?', (date,))
         total_workouts = cursor.fetchone()[0]
         
-        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND day_completed = TRUE', (date,))
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND progression_notes IS NOT NULL AND progression_notes != ""', (date,))
         completed_analysis = cursor.fetchone()[0]
         
         # Get progression notes for display
