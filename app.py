@@ -1968,7 +1968,7 @@ def weekly_plan():
 
     # Use the correct column names based on what exists
     if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')</old_str>
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
     else:
         cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0 FROM weekly_plan ORDER BY day_of_week, order_index')
 
@@ -1991,7 +1991,7 @@ def weekly_plan():
             'notes': notes or "",
             'newly_added': bool(newly_added),
             'progression_notes': progression_notes or ""
-        })</old_str>
+        })
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
@@ -2698,7 +2698,7 @@ def edit_exercise():
             UPDATE weekly_plan 
             SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
             WHERE id = ?
-        ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))</old_str>
+        ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))
 
         conn.commit()
         conn.close()
