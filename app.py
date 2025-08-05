@@ -1261,6 +1261,9 @@ def analyze_day_progression(date_str):
             context_info += f"• {exercise}: {sets}x{reps}@{weight}"
             if notes:
                 context_info += f" - Notes: {notes}"
+                # Check if this was a substitution and extract the details
+                if "SUBSTITUTED FROM:" in notes:
+                    context_info += f"\n  ⚠️ SUBSTITUTION ALERT: This was a substituted exercise - different weight scale than original"
             context_info += "\n"
 
         if planned_exercises:
@@ -1288,7 +1291,7 @@ Please analyze today's workout performance and provide specific progression sugg
 - Recent performance trends from workout history
 - Appropriate progression based on user's experience level
 - Any performance notes that indicate difficulty or ease
-- IMPORTANT: For substituted exercises, ask the user if they want to make the substitution permanent
+- CRITICAL: For substituted exercises, understand that weight scales are completely different between exercises
 
 For each exercise completed today, provide a progression note in this format:
 EXERCISE: [exercise name]
@@ -1296,10 +1299,16 @@ PROGRESSION: [specific actionable suggestion, e.g., "Increase to 185lbs next wee
 REASONING: [brief explanation of why this progression makes sense]
 
 SPECIAL HANDLING FOR SUBSTITUTIONS:
-If an exercise was substituted (look for SUBSTITUTED in the notes), use this format instead:
-EXERCISE: [substituted exercise name]
+If an exercise was substituted (look for "SUBSTITUTED FROM:" in the notes), understand these key points:
+1. The weight used is for the NEW exercise, not the original planned exercise
+2. Different exercises use completely different weight scales (machine vs cable vs free weight)
+3. Focus progression advice on the substituted exercise performed, not the original planned exercise
+
+For substitutions, use this format:
+EXERCISE: [substituted exercise name] 
+SUBSTITUTION_ANALYSIS: "You substituted [original exercise] with [new exercise]. Based on your performance at [actual weight used], suggest [specific next progression for the substituted exercise]."
 SUBSTITUTION_QUESTION: "Great choice on [substituted exercise]! Would you like to make this a permanent replacement for [original exercise] in your plan, or keep trying [original exercise] next week?"
-REASONING: [why the substitution worked well or concerns about it]
+REASONING: [why the substitution worked well and progression logic for the actual exercise performed]
 
 Keep suggestions practical and progressive. Base recommendations on actual performance vs. plan."""
 
@@ -3526,7 +3535,8 @@ def save_workout():
         # Build substitution context for notes if this was a substitution
         substitution_context = ''
         if original_exercise and substitution_reason:
-            substitution_context = f" [SUBSTITUTED: {original_exercise} -> {exercise_name} @ {weight} (was planned {original_weight}), reason: {substitution_reason}]"
+            # Store the substitution details in a structured way for Grok to understand
+            substitution_context = f" [SUBSTITUTED FROM: {original_exercise} (planned {original_weight}) -> {exercise_name} (actual {weight}) | REASON: {substitution_reason}]"
             notes = (notes + substitution_context).strip()
 
         cursor.execute('''
