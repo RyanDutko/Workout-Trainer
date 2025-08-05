@@ -533,12 +533,120 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
 
     return None
 
+def remove_loose_skin_references_comprehensive(target_text="loose skin"):
+    """Comprehensively remove all mentions of specified text from all relevant database fields"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        changes_made = []
+        
+        # 1. Update plan_context table - all text fields
+        plan_context_fields = ['plan_philosophy', 'weekly_structure', 'progression_strategy', 'special_considerations']
+        
+        for field in plan_context_fields:
+            cursor.execute(f'SELECT id, {field} FROM plan_context WHERE user_id = 1 AND {field} IS NOT NULL')
+            records = cursor.fetchall()
+            
+            for record_id, current_text in records:
+                if current_text and target_text.lower() in current_text.lower():
+                    # Remove the target text and clean up
+                    updated_text = remove_text_and_cleanup(current_text, target_text)
+                    cursor.execute(f'UPDATE plan_context SET {field} = ?, updated_date = ? WHERE id = ?', 
+                                 (updated_text, datetime.now().strftime('%Y-%m-%d'), record_id))
+                    changes_made.append(f"Updated {field} in plan_context")
+        
+        # 2. Update exercise_metadata table
+        metadata_fields = ['primary_purpose', 'ai_notes']
+        
+        for field in metadata_fields:
+            cursor.execute(f'SELECT id, exercise_name, {field} FROM exercise_metadata WHERE user_id = 1 AND {field} IS NOT NULL')
+            records = cursor.fetchall()
+            
+            for record_id, exercise_name, current_text in records:
+                if current_text and target_text.lower() in current_text.lower():
+                    updated_text = remove_text_and_cleanup(current_text, target_text)
+                    cursor.execute(f'UPDATE exercise_metadata SET {field} = ? WHERE id = ?', 
+                                 (updated_text, record_id))
+                    changes_made.append(f"Updated {field} for {exercise_name}")
+        
+        # 3. Update weekly_plan notes
+        cursor.execute('SELECT id, exercise_name, notes FROM weekly_plan WHERE notes IS NOT NULL')
+        records = cursor.fetchall()
+        
+        for record_id, exercise_name, current_notes in records:
+            if current_notes and target_text.lower() in current_notes.lower():
+                updated_notes = remove_text_and_cleanup(current_notes, target_text)
+                cursor.execute('UPDATE weekly_plan SET notes = ? WHERE id = ?', 
+                             (updated_notes, record_id))
+                changes_made.append(f"Updated notes for {exercise_name}")
+        
+        conn.commit()
+        conn.close()
+        
+        return changes_made
+        
+    except Exception as e:
+        print(f"Error in comprehensive removal: {e}")
+        return []
+
+def remove_text_and_cleanup(original_text, target_text):
+    """Remove target text and clean up the resulting string"""
+    import re
+    
+    # Case-insensitive removal
+    pattern = re.compile(re.escape(target_text), re.IGNORECASE)
+    updated_text = pattern.sub('', original_text)
+    
+    # Clean up common artifacts
+    # Remove "for " if it's left hanging
+    updated_text = re.sub(r'\bfor\s*$', '', updated_text, flags=re.IGNORECASE)
+    updated_text = re.sub(r'\bfor\s*\,', ',', updated_text, flags=re.IGNORECASE)
+    updated_text = re.sub(r'\bfor\s*\.', '.', updated_text, flags=re.IGNORECASE)
+    
+    # Clean up extra spaces and punctuation
+    updated_text = re.sub(r'\s+', ' ', updated_text)  # Multiple spaces to single
+    updated_text = re.sub(r'\s*,\s*,', ',', updated_text)  # Double commas
+    updated_text = re.sub(r'^\s*,\s*', '', updated_text)  # Leading comma
+    updated_text = re.sub(r'\s*,\s*$', '', updated_text)  # Trailing comma
+    updated_text = updated_text.strip()
+    
+    return updated_text
+
 def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
     try:
         combined_text = f"{user_request} {ai_response}".lower()
         user_request_lower = user_request.lower()
         ai_response_lower = ai_response.lower()
+
+        # Check for targeted removal requests
+        removal_patterns = [
+            r'remove.*?(?:mention|reference).*?(?:of|to)\s*([^.]+)',
+            r'remove\s+([^.]+?)\s+from',
+            r'get rid of.*?([^.]+)',
+            r'eliminate.*?([^.]+)'
+        ]
+        
+        for pattern in removal_patterns:
+            match = re.search(pattern, user_request_lower)
+            if match:
+                target_text = match.group(1).strip()
+                if target_text:
+                    print(f"🎯 Detected targeted removal request for: '{target_text}'")
+                    changes_made = remove_loose_skin_references_comprehensive(target_text)
+                    
+                    if changes_made:
+                        print(f"✅ Comprehensive removal complete:")
+                        for change in changes_made:
+                            print(f"  • {change}")
+                        
+                        return {
+                            'comprehensive_removal': True,
+                            'target_text': target_text,
+                            'changes_made': changes_made,
+                            'reasoning': f"Removed all mentions of '{target_text}' from philosophy, exercise metadata, and plan notes"
+                        }
 
         # Look for user requests that are asking for changes (but not just asking questions)
         user_change_requests = [
@@ -1553,32 +1661,37 @@ def chat_stream():
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
                 if philosophy_update:
-                    # Auto-update philosophy in database
-                    try:
-                        cursor.execute('''
-                            INSERT OR REPLACE INTO plan_context
-                            (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations, 
-                             created_by_ai, creation_reasoning, created_date, updated_date)
-                            VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
-                        ''', (
-                            philosophy_update.get('plan_philosophy', ''),
-                            philosophy_update.get('training_style', ''),
-                            philosophy_update.get('weekly_structure', ''),
-                            philosophy_update.get('progression_strategy', ''),
-                            philosophy_update.get('special_considerations', ''),
-                            philosophy_update.get('reasoning', ''),
-                            datetime.now().strftime('%Y-%m-%d'),
-                            datetime.now().strftime('%Y-%m-%d')
-                        ))
-                        print(f"🧠 Auto-updated training philosophy based on conversation")
-                        
-                        # If this was a comprehensive plan change, regenerate exercise metadata
-                        if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
-                            regenerate_exercise_metadata_from_plan()
-                            print(f"🔄 Regenerated exercise metadata for plan changes")
+                    # Check if this was a comprehensive removal
+                    if philosophy_update.get('comprehensive_removal'):
+                        print(f"🎯 Executed comprehensive removal of '{philosophy_update.get('target_text')}'")
+                        plan_modifications = f"Comprehensive removal: {philosophy_update.get('reasoning')}"
+                    else:
+                        # Auto-update philosophy in database for regular updates
+                        try:
+                            cursor.execute('''
+                                INSERT OR REPLACE INTO plan_context
+                                (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations, 
+                                 created_by_ai, creation_reasoning, created_date, updated_date)
+                                VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
+                            ''', (
+                                philosophy_update.get('plan_philosophy', ''),
+                                philosophy_update.get('training_style', ''),
+                                philosophy_update.get('weekly_structure', ''),
+                                philosophy_update.get('progression_strategy', ''),
+                                philosophy_update.get('special_considerations', ''),
+                                philosophy_update.get('reasoning', ''),
+                                datetime.now().strftime('%Y-%m-%d'),
+                                datetime.now().strftime('%Y-%m-%d')
+                            ))
+                            print(f"🧠 Auto-updated training philosophy based on conversation")
                             
-                    except Exception as e:
-                        print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
+                            # If this was a comprehensive plan change, regenerate exercise metadata
+                            if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
+                                regenerate_exercise_metadata_from_plan()
+                                print(f"🔄 Regenerated exercise metadata for plan changes")
+                                
+                        except Exception as e:
+                            print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
                 # Parse potential AI preference updates from conversation
                 preference_updates = parse_preference_updates_from_conversation(response, current_message)
