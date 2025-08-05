@@ -324,6 +324,14 @@ async function displayWeeklyPlanAnalysis(data) {
                     ${generateWeeklyOverview(weeklyPlan)}
                 </div>
             </div>
+            <div class="row mt-4">
+                <div class="col-12">
+                    <h6><i class="fas fa-scroll me-2"></i>Daily Training Philosophy</h6>
+                    <div id="dailyPhilosophySection">
+                        ${generateDailyPhilosophyCards(weeklyPlan)}
+                    </div>
+                </div>
+            </div>
         `;
     } catch (error) {
         console.error('Error loading weekly plan analysis:', error);
@@ -549,6 +557,186 @@ function generateWeeklyOverview(weeklyPlan) {
     
     html += '</div>';
     return html;
+}
+
+function generateDailyPhilosophyCards(weeklyPlan) {
+    let html = '';
+    
+    // Philosophy color legend
+    html += `
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="card bg-light">
+                    <div class="card-body py-2">
+                        <div class="row g-2 text-center">
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-danger me-1"></div>
+                                <small>Midsection Focus</small>
+                            </div>
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-primary me-1"></div>
+                                <small>Compound Strength</small>
+                            </div>
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-success me-1"></div>
+                                <small>Machine Isolation</small>
+                            </div>
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-warning me-1"></div>
+                                <small>Upper Isolation</small>
+                            </div>
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-info me-1"></div>
+                                <small>Bodyweight</small>
+                            </div>
+                            <div class="col-md-2 col-4">
+                                <div class="badge bg-secondary me-1"></div>
+                                <small>General</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    
+    dayOrder.forEach(day => {
+        if (weeklyPlan[day] && weeklyPlan[day].length > 0) {
+            html += `
+                <div class="card mb-3">
+                    <div class="card-header" style="cursor: pointer;" onclick="toggleDayPhilosophy('${day}')">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0 text-capitalize">
+                                <i class="fas fa-calendar-day me-2"></i>${day}
+                                <small class="text-muted ms-2">(${weeklyPlan[day].length} exercises)</small>
+                            </h6>
+                            <i class="fas fa-chevron-down" id="chevron-${day}"></i>
+                        </div>
+                    </div>
+                    <div class="collapse" id="philosophy-${day}">
+                        <div class="card-body">
+                            <div class="row">
+                                ${weeklyPlan[day].map((exercise, index) => {
+                                    const philosophyData = getExercisePhilosophy(exercise.exercise);
+                                    return `
+                                        <div class="col-md-6 mb-3">
+                                            <div class="card h-100 border-${philosophyData.colorClass}">
+                                                <div class="card-body p-3">
+                                                    <div class="d-flex align-items-start">
+                                                        <div class="badge bg-${philosophyData.colorClass} me-2">${index + 1}</div>
+                                                        <div class="flex-grow-1">
+                                                            <h6 class="card-title mb-1">${exercise.exercise}</h6>
+                                                            <small class="text-muted">${exercise.sets}x${exercise.reps}@${exercise.weight}</small>
+                                                            <p class="card-text mt-2 small">
+                                                                <strong>Purpose:</strong> ${philosophyData.purpose}
+                                                            </p>
+                                                            <p class="card-text small mb-0">
+                                                                <strong>Philosophy:</strong> ${philosophyData.philosophy}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    });
+    
+    return html;
+}
+
+function getExercisePhilosophy(exerciseName) {
+    const exercise = exerciseName.toLowerCase();
+    
+    // Midsection focus - red
+    if (exercise.includes('ab') || exercise.includes('crunch') || exercise.includes('woodchop') || 
+        exercise.includes('back extension') || exercise.includes('strap ab')) {
+        return {
+            purpose: "Midsection hypertrophy and core strength development",
+            philosophy: "Core work treated as main lift per plan philosophy - aggressive progression for maximum development",
+            colorClass: "danger"
+        };
+    }
+    
+    // Compound strength - blue
+    if (exercise.includes('press') || exercise.includes('chest supported row') || 
+        exercise.includes('glute drive') || exercise.includes('leg press') || 
+        exercise.includes('assisted pull') || exercise.includes('assisted dip')) {
+        return {
+            purpose: "Compound strength and mass building",
+            philosophy: "Main compound movements for maximum strength and size gains with progressive overload",
+            colorClass: "primary"
+        };
+    }
+    
+    // Machine isolation - green
+    if (exercise.includes('leg curl') || exercise.includes('leg extension') || 
+        exercise.includes('glute slide') || exercise.includes('glute abduction') || 
+        exercise.includes('adductor')) {
+        return {
+            purpose: "Lower body isolation and hypertrophy",
+            philosophy: "Machine-based isolation for joint safety while maximizing targeted muscle growth",
+            colorClass: "success"
+        };
+    }
+    
+    // Upper isolation - yellow/warning
+    if (exercise.includes('curl') || exercise.includes('raise') || exercise.includes('fly') || 
+        exercise.includes('lateral') || exercise.includes('rear delt') || exercise.includes('front raise')) {
+        return {
+            purpose: "Upper body isolation hypertrophy",
+            philosophy: "Isolation exercises for targeted growth with controlled progression to avoid joint stress",
+            colorClass: "warning"
+        };
+    }
+    
+    // Bodyweight - info/cyan
+    if (exercise.includes('pushup') || exercise.includes('push up') || 
+        exercise.includes('hanging leg') || exercise.includes('split squat') || 
+        exercise.includes('goblet')) {
+        return {
+            purpose: "Bodyweight strength and control",
+            philosophy: "Bodyweight progression: reps → tempo → weight for functional strength development",
+            colorClass: "info"
+        };
+    }
+    
+    // Default - secondary/gray
+    return {
+        purpose: "Hypertrophy and strength development",
+        philosophy: "General hypertrophy and strength work following progressive overload principles",
+        colorClass: "secondary"
+    };
+}
+
+function toggleDayPhilosophy(day) {
+    const collapseElement = document.getElementById(`philosophy-${day}`);
+    const chevron = document.getElementById(`chevron-${day}`);
+    
+    if (collapseElement) {
+        const bsCollapse = new bootstrap.Collapse(collapseElement, {
+            toggle: true
+        });
+        
+        // Toggle chevron direction
+        collapseElement.addEventListener('shown.bs.collapse', function () {
+            chevron.classList.remove('fa-chevron-down');
+            chevron.classList.add('fa-chevron-up');
+        });
+        
+        collapseElement.addEventListener('hidden.bs.collapse', function () {
+            chevron.classList.remove('fa-chevron-up');
+            chevron.classList.add('fa-chevron-down');
+        });
+    }
 }
 
 function extractPrioritiesFromPhilosophy(data) {
