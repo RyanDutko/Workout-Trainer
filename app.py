@@ -233,7 +233,8 @@ def init_db():
         ('progression_rate', 'TEXT DEFAULT "normal"'),
         ('created_by', 'TEXT DEFAULT "user"'),
         ('newly_added', 'BOOLEAN DEFAULT FALSE'),
-        ('date_added', 'TEXT')
+        ('date_added', 'TEXT'),
+        ('progression_notes', 'TEXT')
     ]
 
     # Add context columns to workouts table
@@ -693,6 +694,37 @@ def remove_text_and_cleanup(original_text, target_text):
     updated_text = updated_text.strip()
     
     return updated_text
+
+def update_progression_notes_from_performance(exercise_name, day_of_week, performance_notes):
+    """Update progression notes based on workout performance"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Analyze performance and generate progression note
+        if any(phrase in performance_notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
+            progression_note = "Focus on completing all reps this week"
+        elif any(phrase in performance_notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
+            progression_note = "Ready for weight increase next week"
+        elif any(phrase in performance_notes.lower() for phrase in ['perfect', 'good', 'solid']):
+            progression_note = "Maintain current intensity"
+        else:
+            progression_note = ""
+        
+        if progression_note:
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET progression_notes = ? 
+                WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
+            ''', (progression_note, exercise_name, day_of_week))
+            
+            conn.commit()
+            print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
+        
+        conn.close()
+        
+    except Exception as e:
+        print(f"Error updating progression notes: {e}")
 
 def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
@@ -1548,13 +1580,13 @@ def dashboard():
     today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan with completion status
-    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0) FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
+    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
     plan_data = cursor.fetchall()
 
     # Check completion status for each exercise
     today_plan = []
     for row in plan_data:
-        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added = row
+        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added, progression_notes = row
 
         # Check if this exercise was logged today
         cursor.execute('''
@@ -1603,7 +1635,7 @@ def dashboard():
                 completion_status['status_class'] = 'text-success'
 
         # Add completion status and newly_added flag to the row data
-        today_plan.append((*row[:-1], completion_status, bool(newly_added)))
+        today_plan.append((*row[:-2], completion_status, bool(newly_added), progression_notes))
 
     # Calculate stats
     from collections import namedtuple
@@ -3184,6 +3216,11 @@ def save_workout():
             SET newly_added = FALSE 
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
+        
+        # Update progression notes if there are performance notes
+        if notes:
+            today_name = datetime.now().strftime('%A').lower()
+            update_progression_notes_from_performance(exercise_name, today_name, notes)
 
         # Check if we actually updated any rows (meaning it was newly added)
         if cursor.rowcount > 0:

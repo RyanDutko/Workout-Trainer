@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Dashboard - Personal Trainer{% endblock %}
@@ -29,7 +28,7 @@
                 {% if today_plan %}
                     <div class="row">
                         {% for row in today_plan %}
-                            {% set id, day, exercise, sets, reps, weight, order, notes, completion, newly_added = row %}
+                            {% set id, day, exercise, sets, reps, weight, order, notes, completion, newly_added, progression_note = row %}
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card border-left-primary h-100">
                                     <div class="card-body">
@@ -46,7 +45,7 @@
                                                     <span class="badge bg-light text-dark me-2">{{ reps }} reps</span>
                                                     <span class="badge bg-light text-dark">{{ weight }}</span>
                                                 </p>
-                                                
+
                                                 <!-- Completion Status -->
                                                 <div class="mb-2">
                                                     <small class="{{ completion.status_class }}">
@@ -58,7 +57,7 @@
                                                         {{ completion.status_text }}
                                                     </small>
                                                 </div>
-                                                
+
                                                 <!-- Show logged details if completed -->
                                                 {% if completion.completed %}
                                                     <div class="mb-2">
@@ -72,12 +71,17 @@
                                                         </div>
                                                     {% endif %}
                                                 {% endif %}
-                                                
+
                                                 {% if notes %}
                                                     <small class="text-muted">{{ notes }}</small>
                                                 {% endif %}
+                                                {% if progression_note %}
+                                                    <div class="text-info small mt-1">
+                                                        <i class="fas fa-chart-line me-1"></i>{{ progression_note }}
+                                                    </div>
+                                                {% endif %}
                                             </div>
-                                            
+
                                             <!-- Action Button -->
                                             {% if completion.completed %}
                                                 <button class="btn btn-outline-success btn-sm" disabled>
@@ -298,13 +302,13 @@ let weightChart, volumeChart, exerciseChart;
 document.addEventListener('DOMContentLoaded', function() {
     initializeCharts();
     loadExerciseOptions();
-    
+
     // Weight logging form
     document.getElementById('weightLogForm').addEventListener('submit', function(e) {
         e.preventDefault();
         logWeight();
     });
-    
+
     // Exercise analysis
     document.getElementById('analyzeBtn').addEventListener('click', analyzeExercise);
 });
@@ -333,7 +337,7 @@ function initializeCharts() {
             }
         }
     });
-    
+
     // Volume Chart
     const volumeCtx = document.getElementById('volumeChart').getContext('2d');
     volumeChart = new Chart(volumeCtx, {
@@ -357,7 +361,7 @@ function initializeCharts() {
             }
         }
     });
-    
+
     // Exercise Chart
     const exerciseCtx = document.getElementById('exerciseChart').getContext('2d');
     exerciseChart = new Chart(exerciseCtx, {
@@ -375,7 +379,7 @@ function initializeCharts() {
             }
         }
     });
-    
+
     loadWeightData();
     loadVolumeData();
 }
@@ -420,12 +424,12 @@ function loadExerciseOptions() {
 function logWeight() {
     const weight = document.getElementById('weightInput').value;
     const date = document.getElementById('weightDate').value;
-    
+
     if (!weight) {
         alert('Please enter a weight');
         return;
     }
-    
+
     fetch('/log_weight', {
         method: 'POST',
         headers: {
@@ -455,7 +459,7 @@ function analyzeExercise() {
         alert('Please select an exercise');
         return;
     }
-    
+
     fetch(`/get_exercise_performance/${exercise}`)
         .then(response => response.json())
         .then(data => {
@@ -464,14 +468,14 @@ function analyzeExercise() {
                 const extendedDates = [...data.dates];
                 const lastDate = new Date(data.dates[data.dates.length - 1]);
                 const lastWeight = data.max_weights[data.max_weights.length - 1];
-                
+
                 // Add 4 future sessions for progression visualization (every 2 sessions = 5lb increase)
                 for (let i = 1; i <= 4; i++) {
                     const futureDate = new Date(lastDate);
                     futureDate.setDate(futureDate.getDate() + (i * 7)); // Weekly intervals for display
                     extendedDates.push(futureDate.toISOString().split('T')[0]);
                 }
-                
+
                 // Create progression data that connects smoothly
                 const projectionData = [...data.max_weights];
                 for (let i = 1; i <= 4; i++) {
@@ -480,7 +484,7 @@ function analyzeExercise() {
                     const projectedWeight = lastWeight + (sessionsProgressed * 5);
                     projectionData.push(projectedWeight);
                 }
-                
+
                 // Update chart with only weight data (remove confusing volume)
                 exerciseChart.data.labels = extendedDates;
                 exerciseChart.data.datasets = [{
@@ -503,7 +507,7 @@ function analyzeExercise() {
                     pointBorderColor: 'rgba(255, 99, 132, 0.5)',
                     pointRadius: 4
                 }];
-                
+
                 // Remove second y-axis since we're only showing weight
                 exerciseChart.options.scales = {
                     x: {
@@ -522,16 +526,16 @@ function analyzeExercise() {
                         beginAtZero: false
                     }
                 };
-                
+
                 exerciseChart.update();
-                
+
                 // Update stats
                 const statsDiv = document.getElementById('exerciseStats');
                 const dataTypeNote = data.has_real_data ? '' : '<small class="text-muted">(Sample progression data - log workouts to see real data)</small>';
-                
+
                 // Calculate suggested next weight (5lb increment)
                 const nextWeight = data.best_weight + 5;
-                
+
                 statsDiv.innerHTML = `
                     ${dataTypeNote}
                     <div class="row mt-2">
@@ -562,7 +566,7 @@ function analyzeExercise() {
                 exerciseChart.data.labels = [];
                 exerciseChart.data.datasets = [];
                 exerciseChart.update();
-                
+
                 document.getElementById('exerciseStats').innerHTML = `
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
@@ -589,7 +593,7 @@ function quickLog(exercise, sets, reps, weight) {
     document.getElementById('quickReps').value = reps;
     document.getElementById('quickWeight').value = weight;
     document.getElementById('quickNotes').value = '';
-    
+
     // Show the modal
     const modal = new bootstrap.Modal(document.getElementById('quickLogModal'));
     modal.show();
@@ -601,12 +605,12 @@ function submitQuickLog() {
     const reps = document.getElementById('quickReps').value;
     const weight = document.getElementById('quickWeight').value;
     const notes = document.getElementById('quickNotes').value;
-    
+
     if (!sets || !reps || !weight) {
         alert('Please fill in sets, reps, and weight');
         return;
     }
-    
+
     const workoutData = {
         exercise_name: exerciseName,
         sets: parseInt(sets),
@@ -615,7 +619,7 @@ function submitQuickLog() {
         notes: notes,
         date: new Date().toISOString().split('T')[0]
     };
-    
+
     fetch('/save_workout', {
         method: 'POST',
         headers: {
@@ -629,10 +633,10 @@ function submitQuickLog() {
             // Close modal
             const modal = bootstrap.Modal.getInstance(document.getElementById('quickLogModal'));
             modal.hide();
-            
+
             // Show success message
             alert('Workout logged successfully!');
-            
+
             // Refresh the page to show updated completion status
             window.location.reload();
         } else {

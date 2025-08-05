@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Plan Analysis - Personal Trainer{% endblock %}
@@ -201,7 +200,7 @@ async function loadPhilosophyAndPriorities() {
     try {
         const response = await fetch('/get_stored_context');
         const data = await response.json();
-        
+
         currentPhilosophy = data;
         displayCorePhilosophy(data);
         displayPlanPriorities(data);
@@ -214,7 +213,7 @@ async function loadPhilosophyAndPriorities() {
 
 function displayCorePhilosophy(data) {
     const container = document.getElementById('corePhilosophy');
-    
+
     if (!data.plan_context || !data.plan_context.plan_philosophy) {
         container.innerHTML = `
             <div class="alert alert-info">
@@ -228,7 +227,7 @@ function displayCorePhilosophy(data) {
         `;
         return;
     }
-    
+
     const philosophy = data.plan_context.plan_philosophy;
     container.innerHTML = `
         <div class="row">
@@ -251,10 +250,10 @@ function displayCorePhilosophy(data) {
 
 function displayPlanPriorities(data) {
     const container = document.getElementById('planPriorities');
-    
+
     // Extract priorities from philosophy or use default structure
     const priorities = extractPrioritiesFromPhilosophy(data);
-    
+
     if (priorities.length === 0) {
         container.innerHTML = `
             <div class="alert alert-warning">
@@ -268,7 +267,7 @@ function displayPlanPriorities(data) {
         `;
         return;
     }
-    
+
     let html = '<div class="row">';
     priorities.forEach((priority, index) => {
         html += `
@@ -287,22 +286,22 @@ function displayPlanPriorities(data) {
         `;
     });
     html += '</div>';
-    
+
     container.innerHTML = html;
     currentPriorities = priorities;
 }
 
 async function displayWeeklyPlanAnalysis(data) {
     const container = document.getElementById('weeklyPlanAnalysis');
-    
+
     try {
         // Get actual weekly plan data
         const response = await fetch('/api/weekly_plan');
         const weeklyPlan = await response.json();
-        
+
         // Analyze the plan
         const analysis = analyzeWeeklyPlan(weeklyPlan);
-        
+
         container.innerHTML = `
             <div class="row">
                 <div class="col-md-6">
@@ -321,7 +320,9 @@ async function displayWeeklyPlanAnalysis(data) {
             <div class="row mt-3">
                 <div class="col-12">
                     <h6><i class="fas fa-calendar-week me-2"></i>Weekly Overview</h6>
-                    ${generateWeeklyOverview(weeklyPlan)}
+                    <div id="weeklyOverviewSection">
+                        ${generateWeeklyOverview(weeklyPlan)}
+                    </div>
                 </div>
             </div>
             <div class="row mt-4">
@@ -364,14 +365,14 @@ function analyzeWeeklyPlan(weeklyPlan) {
         weeklyVolume: 0,
         daysActive: Object.keys(weeklyPlan).length
     };
-    
+
     // Analyze each day's exercises
     Object.keys(weeklyPlan).forEach(day => {
         weeklyPlan[day].forEach(exercise => {
             analysis.totalExercises++;
-            
+
             const exerciseName = exercise.exercise.toLowerCase();
-            
+
             // Categorize exercise types
             if (exerciseName.includes('squat') || exerciseName.includes('deadlift') || 
                 exerciseName.includes('press') || exerciseName.includes('row')) {
@@ -383,7 +384,7 @@ function analyzeWeeklyPlan(weeklyPlan) {
                       exerciseName.includes('crunch') || exerciseName.includes('woodchop')) {
                 analysis.exerciseTypes.core++;
             }
-            
+
             // Categorize body parts
             if (exerciseName.includes('leg') || exerciseName.includes('squat') || 
                 exerciseName.includes('glute') || exerciseName.includes('adductor')) {
@@ -403,7 +404,7 @@ function analyzeWeeklyPlan(weeklyPlan) {
                       exerciseName.includes('crunch')) {
                 analysis.bodyParts.core++;
             }
-            
+
             // Calculate estimated volume
             try {
                 const sets = parseInt(exercise.sets) || 3;
@@ -415,15 +416,15 @@ function analyzeWeeklyPlan(weeklyPlan) {
             }
         });
     });
-    
+
     return analysis;
 }
 
 function generatePlanDistribution(analysis) {
     const bodyPartTotal = Object.values(analysis.bodyParts).reduce((a, b) => a + b, 0);
-    
+
     let html = '<div class="mb-3">';
-    
+
     // Body part distribution
     Object.entries(analysis.bodyParts).forEach(([bodyPart, count]) => {
         if (count > 0) {
@@ -441,9 +442,9 @@ function generatePlanDistribution(analysis) {
             `;
         }
     });
-    
+
     html += '</div>';
-    
+
     // Quick stats
     html += `
         <div class="row g-2">
@@ -465,13 +466,13 @@ function generatePlanDistribution(analysis) {
             </div>
         </div>
     `;
-    
+
     return html;
 }
 
 function generatePlanInsights(analysis) {
     const insights = [];
-    
+
     // Check for potential imbalances
     if (analysis.bodyParts.legs > analysis.bodyParts.chest + analysis.bodyParts.back) {
         insights.push({
@@ -479,28 +480,28 @@ function generatePlanInsights(analysis) {
             text: 'Strong lower body focus - great for leg development!'
         });
     }
-    
+
     if (analysis.bodyParts.core >= 3) {
         insights.push({
             type: 'success',
             text: 'Excellent core emphasis - aligns with midsection goals'
         });
     }
-    
+
     if (analysis.exerciseTypes.compound < analysis.exerciseTypes.isolation) {
         insights.push({
             type: 'warning',
             text: 'Consider adding more compound movements for efficiency'
         });
     }
-    
+
     if (analysis.daysActive >= 5) {
         insights.push({
             type: 'info',
             text: 'High training frequency - ensure adequate recovery'
         });
     }
-    
+
     // Default positive insight if no specific issues
     if (insights.length === 0) {
         insights.push({
@@ -508,14 +509,14 @@ function generatePlanInsights(analysis) {
             text: 'Well-balanced plan with good exercise variety'
         });
     }
-    
+
     let html = '';
     insights.forEach(insight => {
         const iconClass = insight.type === 'success' ? 'fa-check-circle' : 
                          insight.type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle';
         const textClass = insight.type === 'success' ? 'text-success' : 
                          insight.type === 'warning' ? 'text-warning' : 'text-info';
-        
+
         html += `
             <div class="d-flex align-items-start mb-2">
                 <i class="fas ${iconClass} ${textClass} me-2 mt-1"></i>
@@ -523,15 +524,15 @@ function generatePlanInsights(analysis) {
             </div>
         `;
     });
-    
+
     return html;
 }
 
 function generateWeeklyOverview(weeklyPlan) {
     let html = '<div class="row g-2">';
-    
+
     const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    
+
     dayOrder.forEach(day => {
         if (weeklyPlan[day] && weeklyPlan[day].length > 0) {
             html += `
@@ -554,14 +555,14 @@ function generateWeeklyOverview(weeklyPlan) {
             `;
         }
     });
-    
+
     html += '</div>';
     return html;
 }
 
 function generateDailyPhilosophyCards(weeklyPlan) {
     let html = '';
-    
+
     // Philosophy color legend
     html += `
         <div class="row mb-3">
@@ -611,9 +612,9 @@ function generateDailyPhilosophyCards(weeklyPlan) {
             </div>
         </div>
     `;
-    
+
     const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    
+
     dayOrder.forEach(day => {
         if (weeklyPlan[day] && weeklyPlan[day].length > 0) {
             html += `
@@ -632,6 +633,8 @@ function generateDailyPhilosophyCards(weeklyPlan) {
                             <div class="row">
                                 ${weeklyPlan[day].map((exercise, index) => {
                                     const philosophyData = getExercisePhilosophy(exercise.exercise);
+                                    // Get progression notes from exercise object if available, otherwise default to empty
+                                    const progressionNotes = exercise.progression_notes || "No specific progression notes.";
                                     return `
                                         <div class="col-md-6 mb-3">
                                             <div class="card h-100 border-${philosophyData.colorClass}">
@@ -644,9 +647,10 @@ function generateDailyPhilosophyCards(weeklyPlan) {
                                                             <p class="card-text mt-2 small">
                                                                 <strong>Purpose:</strong> ${philosophyData.purpose}
                                                             </p>
-                                                            <p class="card-text small mb-0">
-                                                                <strong>Philosophy:</strong> ${philosophyData.philosophy}
-                                                            </p>
+                                                            <div class="philosophy-text small text-muted mt-2" style="display: none;">
+                                                                <strong>Purpose:</strong> <span class="purpose-content">${philosophyData.purpose}</span><br>
+                                                                <strong>Progression:</strong> <span class="progression-content">${progressionNotes}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -661,13 +665,13 @@ function generateDailyPhilosophyCards(weeklyPlan) {
             `;
         }
     });
-    
+
     return html;
 }
 
 function getExercisePhilosophy(exerciseName) {
     const exercise = exerciseName.toLowerCase();
-    
+
     // Midsection focus - red
     if (exercise.includes('ab') || exercise.includes('crunch') || exercise.includes('woodchop') || 
         exercise.includes('back extension') || exercise.includes('strap ab')) {
@@ -677,7 +681,7 @@ function getExercisePhilosophy(exerciseName) {
             colorClass: "danger"
         };
     }
-    
+
     // Compound strength - blue
     if (exercise.includes('press') || exercise.includes('chest supported row') || 
         exercise.includes('glute drive') || exercise.includes('leg press') || 
@@ -688,7 +692,7 @@ function getExercisePhilosophy(exerciseName) {
             colorClass: "primary"
         };
     }
-    
+
     // Machine isolation - green
     if (exercise.includes('leg curl') || exercise.includes('leg extension') || 
         exercise.includes('glute slide') || exercise.includes('glute abduction') || 
@@ -699,7 +703,7 @@ function getExercisePhilosophy(exerciseName) {
             colorClass: "success"
         };
     }
-    
+
     // Upper isolation - yellow/warning
     if (exercise.includes('curl') || exercise.includes('raise') || exercise.includes('fly') || 
         exercise.includes('lateral') || exercise.includes('rear delt') || exercise.includes('front raise')) {
@@ -709,7 +713,7 @@ function getExercisePhilosophy(exerciseName) {
             colorClass: "warning"
         };
     }
-    
+
     // Bodyweight - info/cyan
     if (exercise.includes('pushup') || exercise.includes('push up') || 
         exercise.includes('hanging leg') || exercise.includes('split squat') || 
@@ -720,7 +724,7 @@ function getExercisePhilosophy(exerciseName) {
             colorClass: "info"
         };
     }
-    
+
     // Default - secondary/gray
     return {
         purpose: "Hypertrophy and strength development",
@@ -732,18 +736,18 @@ function getExercisePhilosophy(exerciseName) {
 function toggleDayPhilosophy(day) {
     const collapseElement = document.getElementById(`philosophy-${day}`);
     const chevron = document.getElementById(`chevron-${day}`);
-    
+
     if (collapseElement) {
         const bsCollapse = new bootstrap.Collapse(collapseElement, {
             toggle: true
         });
-        
+
         // Toggle chevron direction
         collapseElement.addEventListener('shown.bs.collapse', function () {
             chevron.classList.remove('fa-chevron-down');
             chevron.classList.add('fa-chevron-up');
         });
-        
+
         collapseElement.addEventListener('hidden.bs.collapse', function () {
             chevron.classList.remove('fa-chevron-up');
             chevron.classList.add('fa-chevron-down');
@@ -753,10 +757,10 @@ function toggleDayPhilosophy(day) {
 
 function extractPrioritiesFromPhilosophy(data) {
     if (!data.plan_context || !data.plan_context.plan_philosophy) return [];
-    
+
     const philosophy = data.plan_context.plan_philosophy.toLowerCase();
     const priorities = [];
-    
+
     // Extract priorities based on keywords and context
     if (philosophy.includes('midsection') || philosophy.includes('core')) {
         priorities.push({
@@ -764,48 +768,48 @@ function extractPrioritiesFromPhilosophy(data) {
             description: 'Core strength and muscle development'
         });
     }
-    
+
     if (philosophy.includes('compound') || philosophy.includes('strength')) {
         priorities.push({
             title: 'Compound Strength',
             description: 'Heavy compound movements for overall mass'
         });
     }
-    
+
     if (philosophy.includes('isolation') || philosophy.includes('machine')) {
         priorities.push({
             title: 'Joint-Safe Isolation',
             description: 'Machine-based isolation for targeted growth'
         });
     }
-    
+
     if (philosophy.includes('progression') || philosophy.includes('aggressive')) {
         priorities.push({
             title: 'Aggressive Progression',
             description: 'Consistent strength and size gains'
         });
     }
-    
+
     return priorities;
 }
 
 function extractPrinciples(philosophy) {
     const principles = [];
     const text = philosophy.toLowerCase();
-    
+
     if (text.includes('progressive')) principles.push('Progressive Overload');
     if (text.includes('compound')) principles.push('Compound Movement Focus');
     if (text.includes('safety') || text.includes('machine')) principles.push('Joint Safety Priority'); 
     if (text.includes('consistency')) principles.push('Consistent Training');
     if (text.includes('recovery')) principles.push('Recovery Emphasis');
-    
+
     return principles.length > 0 ? principles : ['Structured Training Approach'];
 }
 
 async function processPriorityChange() {
     const input = document.getElementById('priorityInput').value.trim();
     if (!input) return;
-    
+
     const suggestionsContainer = document.getElementById('modificationSuggestions');
     suggestionsContainer.style.display = 'block';
     suggestionsContainer.innerHTML = `
@@ -816,7 +820,7 @@ async function processPriorityChange() {
             <p class="mt-2">Analyzing your request and generating smart plan modifications...</p>
         </div>
     `;
-    
+
     try {
         // Send comprehensive plan analysis request to Grok
         const response = await fetch('/chat_stream', {
@@ -826,20 +830,20 @@ async function processPriorityChange() {
             },
             body: `message=COMPREHENSIVE_PLAN_MODIFICATION_REQUEST: ${input}`
         });
-        
+
         if (!response.ok) throw new Error('Network response was not ok');
-        
+
         const reader = response.body.getReader();
         let fullResponse = '';
         let suggestions = [];
-        
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            
+
             const chunk = new TextDecoder().decode(value);
             const lines = chunk.split('\n');
-            
+
             for (const line of lines) {
                 if (line.startsWith('data: ')) {
                     try {
@@ -858,7 +862,7 @@ async function processPriorityChange() {
                 }
             }
         }
-        
+
     } catch (error) {
         console.error('Error processing priority change:', error);
         suggestionsContainer.innerHTML = `
@@ -873,16 +877,16 @@ async function processPriorityChange() {
 function parseModificationSuggestions(response) {
     const suggestions = [];
     const lines = response.split('\n');
-    
+
     let currentSuggestion = null;
-    
+
     for (const line of lines) {
         const trimmed = line.trim();
-        
+
         // Look for modification patterns
         if (trimmed.includes('ADD:') || trimmed.includes('MODIFY:') || trimmed.includes('REPLACE:')) {
             if (currentSuggestion) suggestions.push(currentSuggestion);
-            
+
             currentSuggestion = {
                 type: trimmed.includes('ADD:') ? 'add' : trimmed.includes('MODIFY:') ? 'modify' : 'replace',
                 exercise: '',
@@ -891,29 +895,29 @@ function parseModificationSuggestions(response) {
                 day: ''
             };
         }
-        
+
         // Extract exercise details
         if (trimmed.includes('Exercise:')) {
             if (currentSuggestion) currentSuggestion.exercise = trimmed.replace('Exercise:', '').trim();
         }
-        
+
         if (trimmed.includes('Day:')) {
             if (currentSuggestion) currentSuggestion.day = trimmed.replace('Day:', '').trim();
         }
-        
+
         if (trimmed.includes('Reasoning:')) {
             if (currentSuggestion) currentSuggestion.reasoning = trimmed.replace('Reasoning:', '').trim();
         }
     }
-    
+
     if (currentSuggestion) suggestions.push(currentSuggestion);
-    
+
     return suggestions;
 }
 
 function displayModificationSuggestions(suggestions, originalRequest) {
     const container = document.getElementById('modificationSuggestions');
-    
+
     if (suggestions.length === 0) {
         // Show general response if no specific modifications detected
         container.innerHTML = `
@@ -929,18 +933,18 @@ function displayModificationSuggestions(suggestions, originalRequest) {
         `;
         return;
     }
-    
+
     let html = `
         <div class="alert alert-success">
             <h6><i class="fas fa-magic me-2"></i>Smart Modifications Suggested</h6>
             <p>Based on "${originalRequest}", here's what I recommend:</p>
         </div>
     `;
-    
+
     suggestions.forEach((suggestion, index) => {
         const typeIcon = suggestion.type === 'add' ? 'fa-plus' : suggestion.type === 'modify' ? 'fa-edit' : 'fa-exchange-alt';
         const typeColor = suggestion.type === 'add' ? 'success' : suggestion.type === 'modify' ? 'warning' : 'info';
-        
+
         html += `
             <div class="card mb-3 border-${typeColor}">
                 <div class="card-header bg-${typeColor} text-white">
@@ -965,7 +969,7 @@ function displayModificationSuggestions(suggestions, originalRequest) {
             </div>
         `;
     });
-    
+
     container.innerHTML = html;
 }
 
@@ -986,9 +990,9 @@ async function applyModification(index, suggestion) {
                 reasoning: suggestion.reasoning
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             // Show success and refresh
             alert('✅ ' + result.message);
@@ -1012,7 +1016,7 @@ function openPriorityEditor() {
         const input = document.getElementById(`priority${index + 1}`);
         if (input) input.value = priority.title;
     });
-    
+
     new bootstrap.Modal(document.getElementById('priorityEditorModal')).show();
 }
 
@@ -1033,15 +1037,15 @@ async function savePriorities() {
         document.getElementById('priority3').value,
         document.getElementById('priority4').value
     ].filter(p => p.trim());
-    
+
     if (priorities.length === 0) {
         alert('Please enter at least one priority');
         return;
     }
-    
+
     // Send to chat for processing
     const priorityText = priorities.map((p, i) => `Priority #${i+1}: ${p}`).join(', ');
-    
+
     try {
         const response = await fetch('/chat_stream', {
             method: 'POST',
@@ -1050,7 +1054,7 @@ async function savePriorities() {
             },
             body: `message=Update my training priorities: ${priorityText}. Please analyze how this affects my current plan and suggest modifications.`
         });
-        
+
         if (response.ok) {
             bootstrap.Modal.getInstance(document.getElementById('priorityEditorModal')).hide();
             alert('✅ Priorities updated! Check the chat for analysis and suggestions.');
