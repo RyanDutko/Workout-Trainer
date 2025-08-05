@@ -74,6 +74,9 @@
                                 <td>{{ weight }}</td>
                                 <td>{{ notes or '-' }}</td>
                                 <td>
+                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editWorkout({{ workout_id }}, '{{ exercise }}', {{ sets }}, '{{ reps }}', '{{ weight }}', '{{ notes or '' }}', '{{ date }}')" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
                                     <button class="btn btn-sm btn-outline-danger" onclick="deleteWorkout({{ workout_id }}, '{{ exercise }}', '{{ date }}')" title="Delete">
                                         <i class="fas fa-trash"></i>
                                     </button>
@@ -90,6 +93,49 @@
                 <p class="text-muted">Start by <a href="{{ url_for('log_workout') }}">logging your first workout</a>!</p>
             </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Edit Workout Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Workout</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editWorkoutForm">
+                    <input type="hidden" id="editWorkoutId">
+                    <div class="mb-3">
+                        <label for="editExercise" class="form-label">Exercise</label>
+                        <input type="text" class="form-control" id="editExercise" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="editSets" class="form-label">Sets</label>
+                            <input type="number" class="form-control" id="editSets" min="1" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="editReps" class="form-label">Reps</label>
+                            <input type="text" class="form-control" id="editReps" placeholder="e.g. 12 or 10/10/8" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="editWeight" class="form-label">Weight</label>
+                            <input type="text" class="form-control" id="editWeight" placeholder="e.g. 185lbs" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="editNotes" rows="2" placeholder="Optional notes"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveEditedWorkout">Save Changes</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -120,6 +166,21 @@
 {% block scripts %}
 <script>
 let workoutToDelete = null;
+let workoutToEdit = null;
+
+function editWorkout(workoutId, exercise, sets, reps, weight, notes, date) {
+    workoutToEdit = workoutId;
+    
+    document.getElementById('editWorkoutId').value = workoutId;
+    document.getElementById('editExercise').value = exercise;
+    document.getElementById('editSets').value = sets;
+    document.getElementById('editReps').value = reps;
+    document.getElementById('editWeight').value = weight;
+    document.getElementById('editNotes').value = notes || '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('editModal'));
+    modal.show();
+}
 
 function deleteWorkout(workoutId, exercise, date) {
     workoutToDelete = workoutId;
@@ -128,6 +189,60 @@ function deleteWorkout(workoutId, exercise, date) {
     const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
     modal.show();
 }
+
+document.getElementById('saveEditedWorkout').addEventListener('click', function() {
+    if (workoutToEdit) {
+        const updatedData = {
+            workout_id: workoutToEdit,
+            exercise_name: document.getElementById('editExercise').value,
+            sets: parseInt(document.getElementById('editSets').value),
+            reps: document.getElementById('editReps').value,
+            weight: document.getElementById('editWeight').value,
+            notes: document.getElementById('editNotes').value
+        };
+        
+        fetch('/edit_workout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updatedData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the row in the table
+                const row = document.querySelector(`tr[data-workout-id="${workoutToEdit}"]`);
+                if (row) {
+                    const cells = row.querySelectorAll('td');
+                    cells[1].innerHTML = `<strong>${updatedData.exercise_name.charAt(0).toUpperCase() + updatedData.exercise_name.slice(1)}</strong>`;
+                    cells[2].textContent = updatedData.sets;
+                    cells[3].textContent = updatedData.reps;
+                    cells[4].textContent = updatedData.weight;
+                    cells[5].textContent = updatedData.notes || '-';
+                    
+                    // Update data attributes for filtering
+                    row.setAttribute('data-exercise', updatedData.exercise_name);
+                    row.setAttribute('data-weight', updatedData.weight);
+                }
+                
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+                
+                // Show success message
+                showAlert('Workout updated successfully', 'success');
+            } else {
+                showAlert('Error updating workout: ' + data.error, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Error updating workout', 'danger');
+        });
+        
+        workoutToEdit = null;
+    }
+});
 
 document.getElementById('confirmDelete').addEventListener('click', function() {
     if (workoutToDelete) {

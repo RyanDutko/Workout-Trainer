@@ -3392,6 +3392,47 @@ def get_exercise_performance(exercise):
             'has_real_data': False
         })
 
+@app.route('/edit_workout', methods=['POST'])
+def edit_workout():
+    """Edit an existing workout entry"""
+    try:
+        data = request.json
+        workout_id = data.get('workout_id')
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 1)
+        reps = data.get('reps', '')
+        weight = data.get('weight', '')
+        notes = data.get('notes', '')
+
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+
+        if not exercise_name:
+            return jsonify({'success': False, 'error': 'Exercise name is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update the workout entry (preserving original date_logged and id)
+        cursor.execute('''
+            UPDATE workouts 
+            SET exercise_name = ?, sets = ?, reps = ?, weight = ?, notes = ?
+            WHERE id = ?
+        ''', (exercise_name, sets, reps, weight, notes, workout_id))
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            print(f"✏️ Updated workout ID {workout_id}: {exercise_name} {sets}x{reps}@{weight}")
+            return jsonify({'success': True, 'message': 'Workout updated successfully'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+
+    except Exception as e:
+        print(f"Error editing workout: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     """Delete a workout entry"""
