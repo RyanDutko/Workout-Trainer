@@ -735,15 +735,22 @@ function checkProgressionStatus(date) {
         })
         .catch(error => {
             console.error('Error checking progression status:', error);
+            const statusDiv = document.getElementById('progressionStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="text-danger">Error loading progression status</span>';
+            }
         });
 }
 
 function analyzeProgression(selectedDate) {
     const analyzeDate = selectedDate || document.getElementById('analysisDate').value;
     const analyzeBtn = document.getElementById('analyzeProgressionBtn');
+    const statusDiv = document.getElementById('progressionStatus');
     
+    // Show loading state immediately
     analyzeBtn.disabled = true;
     analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Analyzing...';
+    statusDiv.innerHTML = '🤖 AI is analyzing your workout performance and generating progression recommendations...';
 
     fetch('/analyze_day_progression', {
         method: 'POST',
@@ -755,84 +762,25 @@ function analyzeProgression(selectedDate) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('Progression analysis completed!');
-            checkProgressionStatus(analyzeDate);
+            statusDiv.innerHTML = `✅ ${data.message}`;
+            // Refresh progression status to show notes after a brief delay
+            setTimeout(() => {
+                checkProgressionStatus(analyzeDate);
+            }, 1000);
         } else {
-            alert('Error analyzing progression: ' + (data.error || data.message));
+            statusDiv.innerHTML = `❌ Error: ${data.error || data.message}`;
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error analyzing progression');
+        statusDiv.innerHTML = '❌ Error analyzing progression. Please try again.';
     })
     .finally(() => {
         analyzeBtn.disabled = false;
         analyzeBtn.innerHTML = '<i class="fas fa-chart-line me-1"></i>Analyze Progress';
     });
-}h > 0) {
-                    let notesHtml = '<h6>Today\'s Progression Notes:</h6><ul class="list-unstyled">';
-                    data.progression_notes.forEach(note => {
-                        notesHtml += `<li><strong>${note.exercise}:</strong> ${note.progression}</li>`;
-                    });
-                    notesHtml += '</ul>';
-                    notesDiv.innerHTML = notesHtml;
-                    notesDiv.style.display = 'block';
-                }
-            } else if (data.needs_analysis) {
-                statusDiv.innerHTML = `⏳ ${data.total_workouts} workouts logged today - ready for progression analysis`;
-                analyzeBtn.disabled = false;
-            } else {
-                statusDiv.innerHTML = 'Complete your workouts, then click "Analyze Today\'s Progress" to get AI-powered progression recommendations.';
-                analyzeBtn.disabled = true;
-            }
-        })
-        .catch(error => {
-            console.error('Error checking progression status:', error);
-        });
 }
-
-document.getElementById('analyzeProgressionBtn').addEventListener('click', function() {
-    const btn = this;
-    const statusDiv = document.getElementById('progressionStatus');
-
-    btn.disabled = true;
-    btn.textContent = 'Analyzing...';
-    statusDiv.innerHTML = '🤖 AI is analyzing your workout performance and generating progression recommendations...';
-
-    fetch('/analyze_day_progression', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            date: '{{ today_date }}'
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            statusDiv.innerHTML = `✅ ${data.message}`;
-
-            // Refresh progression status to show notes
-            setTimeout(() => {
-                checkProgressionStatus('{{ today_date }}');
-            }, 1000);
-        } else {
-            statusDiv.innerHTML = `❌ Error: ${data.error || data.message}`;
-        }
-
-        btn.disabled = false;
-        btn.textContent = 'Analyze Today\'s Progress';
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        statusDiv.innerHTML = '❌ Error analyzing progression. Please try again.';
-        btn.disabled = false;
-        btn.textContent = 'Analyze Today\'s Progress';
-    });
-});
-
-// Auto-refresh stats every 30 seconds
+                    // Auto-refresh stats every 30 seconds  
 setInterval(function() {
     location.reload();
 }, 30000);
