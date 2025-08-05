@@ -495,11 +495,92 @@ def extract_potential_actions(prompt, intent):
 def parse_plan_modification_from_ai_response(ai_response, user_request):
     """Parse Grok's response to extract specific plan modifications"""
     try:
-        # Look for patterns indicating Grok wants to make changes
+        # Look for comprehensive trainer-style responses first
+        modifications = []
+        
+        # Check for structured trainer responses
+        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
+            lines = ai_response.split('\n')
+            current_mod = None
+            
+            for line in lines:
+                line = line.strip()
+                
+                # Look for modification commands
+                if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:'):
+                    if current_mod:
+                        modifications.append(current_mod)
+                    
+                    mod_type = 'modify' if line.startswith('MODIFY:') else ('add' if line.startswith('ADD:') else 'replace')
+                    
+                    # Extract day and exercise from the line
+                    day_match = re.search(r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)', line.lower())
+                    exercise_match = re.search(r'(?:replace|add|modify)[\s\w]*?([a-zA-Z\s]+?)(?:\s*-|\s*with|\s*$)', line, re.IGNORECASE)
+                    
+                    current_mod = {
+                        'type': mod_type,
+                        'day': day_match.group(1) if day_match else None,
+                        'exercise_name': exercise_match.group(1).strip() if exercise_match else 'Unknown Exercise',
+                        'sets': 3,  # Default
+                        'reps': '8-12',  # Default
+                        'weight': 'bodyweight',  # Default
+                        'reasoning': ''
+                    }
+                
+                # Extract details for current modification
+                elif current_mod:
+                    if 'Sets/reps:' in line or 'sets/reps:' in line:
+                        sets_reps = line.split(':', 1)[1].strip()
+                        sets_match = re.search(r'(\d+)', sets_reps)
+                        reps_match = re.search(r'(\d+(?:-\d+)?)', sets_reps)
+                        if sets_match:
+                            current_mod['sets'] = int(sets_match.group(1))
+                        if reps_match:
+                            current_mod['reps'] = reps_match.group(1)
+                    
+                    elif 'Reasoning:' in line:
+                        current_mod['reasoning'] = line.split(':', 1)[1].strip()
+                    
+                    elif 'Weight:' in line or '@' in line:
+                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg)', line)
+                        if weight_match:
+                            current_mod['weight'] = f"{weight_match.group(1)}lbs"
+            
+            # Add the last modification
+            if current_mod:
+                modifications.append(current_mod)
+        
+        # If we found structured modifications, return them
+        if modifications:
+            return modifications[0] if len(modifications) == 1 else modifications
+        
+        # Fallback to original parsing logic for unstructured responses
         response_lower = ai_response.lower()
 
-        if not any(phrase in response_lower for phrase in ['can make', 'i can', 'absolutely', 'change', 'modify', 'update']):
+        if not any(phrase in response_lower for phrase in ['can make', 'i can', 'absolutely', 'change', 'modify', 'update', 'recommend', 'suggest']):
             return None
+
+        # Look for trainer-style language indicating modifications
+        trainer_patterns = [
+            r'your current (.+?) volume is already high, so instead of adding more, let\'s replace (.+?) with (.+)',
+            r'i\'d recommend replacing (.+?) with (.+?) because',
+            r'instead of adding more (.+?), let\'s swap (.+?) for (.+)',
+            r'your (.+?) day already has (.+?), so let\'s replace (.+?) with (.+)'
+        ]
+        
+        for pattern in trainer_patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                return {
+                    'type': 'replace',
+                    'exercise_name': match.group(3) if len(match.groups()) >= 3 else 'Unknown Exercise',
+                    'old_exercise': match.group(2) if len(match.groups()) >= 2 else None,
+                    'day': None,  # Will need to be inferred
+                    'sets': 3,
+                    'reps': '8-12',
+                    'weight': 'bodyweight',
+                    'reasoning': f"Trainer recommendation: {match.group(0)}"
+                }
 
         # Extract exercise, sets, reps, weight from either user request or AI response
         exercise_pattern = r'(?:tricep|bicep|chest|shoulder|leg|back|ab|core)[\s\w]*(?:press|curl|extension|raise|pushdown|pulldown|fly|row|squat|deadlift)'
@@ -1329,6 +1410,9 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
     try:
         client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
+        # Check for comprehensive plan modification requests
+        is_comprehensive_modification = 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt
+        
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
@@ -1337,7 +1421,57 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         full_prompt = context_info + "\n\n" + prompt
 
         # Adjust system prompt based on query type
-        if query_intent == 'full_plan_review':
+        if is_comprehensive_modification:
+            system_prompt = """You are Grok, an experienced personal trainer with deep understanding of program design. You're analyzing a user's request to modify their training priorities.
+
+TRAINER MINDSET - CRITICAL:
+You are acting as an experienced personal trainer, not just an AI assistant. This means:
+
+- ALWAYS consider the user's current weekly training volume before suggesting changes
+- Understand that more isn't always better - recovery and balance matter
+- When asked to add exercises, first evaluate if the body part/day already has sufficient volume
+- Suggest MODIFICATIONS (swaps, replacements) rather than just additions when appropriate
+- Consider the impact on other training days and muscle groups
+- Explain your reasoning from a programming perspective
+
+WEEKLY VOLUME AWARENESS:
+Before suggesting any plan changes, mentally review:
+- Current exercises for that muscle group across the week
+- Total weekly volume for that body part
+- Recovery demands of existing exercises
+- How the change fits into the overall training structure
+
+RESPONSE FORMAT for PLAN MODIFICATIONS:
+When suggesting plan changes, use this format:
+
+ANALYSIS:
+- Current state assessment
+- What the user is asking for
+- Volume/recovery considerations
+
+RECOMMENDATIONS:
+For each suggested change:
+- MODIFY: [Day] - Replace [current exercise] with [new exercise]
+  - Sets/reps: [specific prescription]
+  - Reasoning: [why this change makes sense from a programming perspective]
+  - Volume impact: [how this affects weekly volume]
+
+OR
+
+- ADD: [Day] - [new exercise] 
+  - Sets/reps: [specific prescription]
+  - Reasoning: [why adding is appropriate here]
+  - Consideration: [note about current day's load]
+
+TRAINER LANGUAGE:
+- Use phrases like "Your current leg volume is already high, so instead of adding more..."
+- "This would be a smart swap because..."
+- "I'd recommend replacing rather than adding because..."
+- Think programming, not just exercise selection
+
+Be specific with exercise names, sets, reps, and weights. Always explain the programming logic behind your suggestions."""
+
+        elif query_intent == 'full_plan_review':
             system_prompt = """You are Grok, providing a smart workout plan analysis. Be comprehensive but CONCISE.
 
 LENGTH CONSTRAINTS:

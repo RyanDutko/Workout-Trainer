@@ -1,122 +1,186 @@
 
 {% extends "base.html" %}
 
-{% block title %}Plan Philosophy - Personal Trainer{% endblock %}
+{% block title %}Plan Analysis - Personal Trainer{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-brain me-2"></i>Plan Philosophy</h1>
-    <div>
-        <button id="refreshPhilosophyBtn" class="btn btn-outline-primary me-2">
-            <i class="fas fa-sync me-2"></i>Refresh
+    <h1 class="h2"><i class="fas fa-brain me-2"></i>Training Philosophy & Plan Analysis</h1>
+    <div class="btn-toolbar">
+        <button class="btn btn-primary me-2" onclick="triggerFullPlanReview()">
+            <i class="fas fa-search me-2"></i>Full Plan Review
         </button>
-        <button id="debugBtn" class="btn btn-outline-secondary">
-            <i class="fas fa-bug me-2"></i>Debug
+        <button class="btn btn-outline-secondary" onclick="refreshPhilosophy()">
+            <i class="fas fa-sync-alt me-2"></i>Refresh
         </button>
     </div>
 </div>
 
-<!-- AI Integration Alert -->
-<div class="alert alert-info mb-4">
-    <i class="fas fa-robot me-2"></i>
-    <strong>AI Integration:</strong> Your training philosophy is automatically updated when you discuss changes with Grok in chat. Just tell Grok about modifications to your approach and this page will reflect those updates!
-</div>
-
-<!-- Overall Philosophy Section -->
+<!-- Core Philosophy Section (Static) -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
+        <div class="card border-primary">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Overall Training Philosophy</h5>
+                <h5 class="mb-0"><i class="fas fa-compass me-2"></i>Core Training Philosophy</h5>
+                <small>Your fundamental training approach - remains consistent</small>
             </div>
-            <div class="card-body" id="overallPhilosophy">
-                <!-- Will be populated via JavaScript -->
+            <div class="card-body">
+                <div id="corePhilosophy">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading your core training philosophy...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Plan Priorities Section -->
+<!-- Plan Priorities Section (Dynamic) -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="fas fa-star me-2"></i>Plan Priorities</h5>
-            </div>
-            <div class="card-body" id="planPriorities">
-                <!-- Will be populated via JavaScript -->
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Daily Breakdown Section -->
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="fas fa-calendar-week me-2"></i>Daily Training Breakdown</h5>
-                <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="collapse" 
-                        data-bs-target="#exerciseLegend" aria-expanded="false">
-                    <i class="fas fa-info-circle me-1"></i>Color Guide
+        <div class="card border-success">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0"><i class="fas fa-bullseye me-2"></i>Current Plan Priorities</h5>
+                    <small>Specific, ordered goals that drive your current plan</small>
+                </div>
+                <button class="btn btn-light btn-sm" onclick="openPriorityEditor()">
+                    <i class="fas fa-edit me-1"></i>Update Priorities
                 </button>
             </div>
             <div class="card-body">
-                <!-- Exercise Category Legend -->
-                <div class="collapse mb-3" id="exerciseLegend">
-                    <div class="alert alert-light border">
-                        <h6><i class="fas fa-palette me-2"></i>Exercise Category Colors</h6>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center mb-2">
-                                    <div class="border-start border-danger border-3 pe-2 me-2" style="height: 20px;"></div>
-                                    <strong class="text-danger">Core/Abs</strong> - Midsection focus for loose skin
-                                </div>
-                                <div class="d-flex align-items-center mb-2">
-                                    <div class="border-start border-primary border-3 pe-2 me-2" style="height: 20px;"></div>
-                                    <strong class="text-primary">Compound</strong> - Main strength movements
-                                </div>
-                                <div class="d-flex align-items-center mb-2">
-                                    <div class="border-start border-success border-3 pe-2 me-2" style="height: 20px;"></div>
-                                    <strong class="text-success">Machine Isolation</strong> - Joint-safe lower body
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="d-flex align-items-center mb-2">
-                                    <div class="border-start border-info border-3 pe-2 me-2" style="height: 20px;"></div>
-                                    <strong class="text-info">Upper Isolation</strong> - Arms, shoulders, chest detail
-                                </div>
-                                <div class="d-flex align-items-center mb-2">
-                                    <div class="border-start border-secondary border-3 pe-2 me-2" style="height: 20px;"></div>
-                                    <strong class="text-secondary">General</strong> - Other hypertrophy work
-                                </div>
-                            </div>
+                <div id="planPriorities">
+                    <div class="text-center">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
                         </div>
+                        <p class="mt-2">Loading your current priorities...</p>
                     </div>
-                </div>
-                
-                <div class="accordion" id="dailyPhilosophyAccordion">
-                    <!-- Will be populated via JavaScript -->
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Debug Modal -->
-<div class="modal fade" id="debugModal" tabindex="-1">
+<!-- Intelligent Plan Modifications Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-magic me-2"></i>Smart Plan Modifications</h5>
+                <small>AI-powered suggestions based on your priorities and current plan</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="priorityInput" 
+                                   placeholder="e.g., I want better leg aesthetics as priority #2">
+                            <button class="btn btn-warning" onclick="processPriorityChange()">
+                                <i class="fas fa-wand-magic me-2"></i>Analyze & Suggest Changes
+                            </button>
+                        </div>
+                        <small class="text-muted">Tell me how you want to adjust your priorities, and I'll intelligently modify your plan.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-grid">
+                            <button class="btn btn-outline-warning" onclick="showQuickPriorityOptions()">
+                                <i class="fas fa-list me-2"></i>Quick Options
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="modificationSuggestions" class="mt-3" style="display: none;">
+                    <!-- AI suggestions will appear here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Weekly Plan Context -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-calendar-week me-2"></i>Weekly Plan Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div id="weeklyPlanAnalysis">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Analyzing your weekly plan...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Priority Editor Modal -->
+<div class="modal fade" id="priorityEditorModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Philosophy Debug Info</h5>
+                <h5 class="modal-title">Update Plan Priorities</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <pre id="debugOutput" style="max-height: 400px; overflow-y: auto;"></pre>
+                <div class="mb-3">
+                    <label class="form-label">Priority #1 (Most Important)</label>
+                    <input type="text" class="form-control" id="priority1" placeholder="e.g., Midsection development">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Priority #2</label>
+                    <input type="text" class="form-control" id="priority2" placeholder="e.g., Leg aesthetics">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Priority #3</label>
+                    <input type="text" class="form-control" id="priority3" placeholder="e.g., Upper body strength">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Priority #4 (Optional)</label>
+                    <input type="text" class="form-control" id="priority4" placeholder="e.g., Conditioning">
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-warning" onclick="restorePhilosophy()">Restore Backup</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="savePriorities()">
+                    <i class="fas fa-save me-2"></i>Save & Update Plan
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Priority Options Modal -->
+<div class="modal fade" id="quickPriorityModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Quick Priority Changes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="quickPriorityChange('Add leg aesthetics as priority 2')">
+                        <i class="fas fa-plus me-2"></i>Add Leg Aesthetics Focus
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="quickPriorityChange('Make upper body strength priority 1')">
+                        <i class="fas fa-dumbbell me-2"></i>Prioritize Upper Body Strength
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="quickPriorityChange('Add cardio conditioning as priority 3')">
+                        <i class="fas fa-heartbeat me-2"></i>Add Conditioning Focus
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="quickPriorityChange('Focus more on posterior chain development')">
+                        <i class="fas fa-arrow-right me-2"></i>Emphasize Posterior Chain
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -126,402 +190,452 @@
 {% block scripts %}
 <script>
 let currentPhilosophy = null;
-let currentPlan = null;
+let currentPriorities = [];
 
-// Load philosophy on page load
+// Load philosophy and priorities on page load
 document.addEventListener('DOMContentLoaded', function() {
-    loadPhilosophy();
-    startPhilosophyWatcher();
+    loadPhilosophyAndPriorities();
 });
 
-// Button handlers
-document.getElementById('refreshPhilosophyBtn').addEventListener('click', loadPhilosophy);
-document.getElementById('debugBtn').addEventListener('click', showDebugInfo);
-
-async function loadPhilosophy() {
+async function loadPhilosophyAndPriorities() {
     try {
-        showLoadingState();
-
-        // Load both context and weekly plan
-        const [contextResponse, planResponse] = await Promise.all([
-            fetch('/get_stored_context'),
-            fetch('/api/weekly_plan')
-        ]);
-
-        const contextData = await contextResponse.json();
-        const planData = await planResponse.json();
-
-        // Set global variables for the watcher
-        currentPhilosophy = contextData;
-        currentPlan = planData;
-
-        displayOverallPhilosophy(contextData);
-        displayPlanPriorities(contextData);
-        displayDailyBreakdown(contextData, planData);
-
-        // Show success message if this was triggered by an update
-        if (window.philosophyJustUpdated) {
-            showUpdateNotification();
-            window.philosophyJustUpdated = false;
-        }
-
+        const response = await fetch('/get_stored_context');
+        const data = await response.json();
+        
+        currentPhilosophy = data;
+        displayCorePhilosophy(data);
+        displayPlanPriorities(data);
+        displayWeeklyPlanAnalysis(data);
     } catch (error) {
         console.error('Error loading philosophy:', error);
         showErrorState();
     }
 }
 
-function showLoadingState() {
-    const loadingHtml = `
-        <div class="text-center">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2">Loading your training philosophy...</p>
-        </div>
-    `;
-    
-    document.getElementById('overallPhilosophy').innerHTML = loadingHtml;
-    document.getElementById('planPriorities').innerHTML = loadingHtml;
-    document.getElementById('dailyPhilosophyAccordion').innerHTML = loadingHtml;
-}
-
-function showErrorState() {
-    const errorHtml = `
-        <div class="alert alert-danger">
-            <i class="fas fa-exclamation-circle me-2"></i>
-            Error loading philosophy. Please try again.
-        </div>
-    `;
-    
-    document.getElementById('overallPhilosophy').innerHTML = errorHtml;
-    document.getElementById('planPriorities').innerHTML = errorHtml;
-}
-
-function displayOverallPhilosophy(data) {
-    const container = document.getElementById('overallPhilosophy');
-
-    if (!data.plan_context) {
-        container.innerHTML = `
-            <div class="alert alert-warning">
-                <i class="fas fa-info-circle me-2"></i>
-                <strong>No philosophy found.</strong> Start chatting with Grok about your training approach to automatically populate your philosophy!
-            </div>
-        `;
-        return;
-    }
-
-    const ctx = data.plan_context;
-    let html = '<div class="row">';
-
-    if (ctx.plan_philosophy) {
-        html += `
-            <div class="col-md-6 mb-3">
-                <h6><i class="fas fa-brain me-2 text-primary"></i>Core Philosophy</h6>
-                <p class="border-start border-primary ps-3">${ctx.plan_philosophy}</p>
-            </div>
-        `;
-    }
-
-    if (ctx.weekly_structure) {
-        html += `
-            <div class="col-md-6 mb-3">
-                <h6><i class="fas fa-calendar me-2 text-success"></i>Weekly Structure</h6>
-                <p class="border-start border-success ps-3">${ctx.weekly_structure}</p>
-            </div>
-        `;
-    }
-
-    if (ctx.progression_strategy) {
-        html += `
-            <div class="col-md-6 mb-3">
-                <h6><i class="fas fa-chart-line me-2 text-info"></i>Progression Strategy</h6>
-                <p class="border-start border-info ps-3">${ctx.progression_strategy}</p>
-            </div>
-        `;
-    }
-
-    if (ctx.special_considerations) {
-        html += `
-            <div class="col-md-6 mb-3">
-                <h6><i class="fas fa-shield-alt me-2 text-warning"></i>Special Considerations</h6>
-                <p class="border-start border-warning ps-3">${ctx.special_considerations}</p>
-            </div>
-        `;
-    }
-
-    html += '</div>';
-
-    if (ctx.creation_reasoning) {
-        html += `
-            <div class="mt-3">
-                <h6><i class="fas fa-lightbulb me-2 text-secondary"></i>Reasoning</h6>
-                <p class="text-muted border-start border-secondary ps-3">${ctx.creation_reasoning}</p>
-            </div>
-        `;
-    }
-
-    container.innerHTML = html;
-}
-
-function displayPlanPriorities(data) {
-    const container = document.getElementById('planPriorities');
+function displayCorePhilosophy(data) {
+    const container = document.getElementById('corePhilosophy');
     
     if (!data.plan_context || !data.plan_context.plan_philosophy) {
         container.innerHTML = `
             <div class="alert alert-info">
                 <i class="fas fa-info-circle me-2"></i>
-                Plan priorities will be extracted from your philosophy automatically. Chat with Grok about your training priorities!
+                <strong>No core philosophy set yet.</strong> 
+                <p class="mb-2">Chat with Grok about your training approach to establish your core philosophy!</p>
+                <button class="btn btn-primary btn-sm" onclick="window.location.href='/chat'">
+                    <i class="fas fa-comments me-2"></i>Start Chat
+                </button>
             </div>
         `;
         return;
     }
+    
+    const philosophy = data.plan_context.plan_philosophy;
+    container.innerHTML = `
+        <div class="row">
+            <div class="col-md-8">
+                <p class="lead">${philosophy}</p>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">Philosophy Principles</h6>
+                        <ul class="list-unstyled small">
+                            ${extractPrinciples(philosophy).map(principle => `<li><i class="fas fa-check text-success me-2"></i>${principle}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
 
-    // Extract priorities from philosophy text
-    const philosophy = data.plan_context.plan_philosophy.toLowerCase();
-    const priorities = [];
-
-    // Look for priority keywords
-    if (philosophy.includes('midsection') || philosophy.includes('core') || philosophy.includes('ab')) {
-        priorities.push({
-            icon: 'fas fa-bullseye',
-            title: 'Midsection Focus',
-            description: 'Aggressive core work for muscle development'
-        });
-    }
-
-    if (philosophy.includes('compound') || philosophy.includes('strength')) {
-        priorities.push({
-            icon: 'fas fa-dumbbell',
-            title: 'Compound Strength',
-            description: 'Heavy compound movements for overall mass'
-        });
-    }
-
-    if (philosophy.includes('machine') || philosophy.includes('safety') || philosophy.includes('isolation')) {
-        priorities.push({
-            icon: 'fas fa-shield-alt',
-            title: 'Joint Safety',
-            description: 'Machine-based isolation for injury prevention'
-        });
-    }
-
-    if (philosophy.includes('aggressive') || philosophy.includes('progression')) {
-        priorities.push({
-            icon: 'fas fa-chart-line',
-            title: 'Aggressive Progression',
-            description: 'Fast progression on key exercises'
-        });
-    }
-
+function displayPlanPriorities(data) {
+    const container = document.getElementById('planPriorities');
+    
+    // Extract priorities from philosophy or use default structure
+    const priorities = extractPrioritiesFromPhilosophy(data);
+    
     if (priorities.length === 0) {
         container.innerHTML = `
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                No specific priorities detected yet. Chat with Grok about your training priorities to see them here!
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>No specific priorities detected.</strong>
+                <p class="mb-2">Update your priorities to get targeted plan suggestions.</p>
+                <button class="btn btn-warning btn-sm" onclick="openPriorityEditor()">
+                    <i class="fas fa-edit me-2"></i>Set Priorities
+                </button>
             </div>
         `;
         return;
     }
-
+    
     let html = '<div class="row">';
-    priorities.forEach(priority => {
+    priorities.forEach((priority, index) => {
         html += `
             <div class="col-md-6 col-lg-3 mb-3">
-                <div class="card h-100 border-success">
+                <div class="card h-100 ${index === 0 ? 'border-success' : 'border-secondary'}">
                     <div class="card-body text-center">
-                        <i class="${priority.icon} fa-2x text-success mb-2"></i>
+                        <div class="badge ${index === 0 ? 'bg-success' : 'bg-secondary'} mb-2">Priority #${index + 1}</div>
                         <h6 class="card-title">${priority.title}</h6>
                         <p class="card-text text-muted small">${priority.description}</p>
+                        <button class="btn btn-sm btn-outline-primary" onclick="adjustPriority(${index}, '${priority.title}')">
+                            <i class="fas fa-adjust me-1"></i>Adjust
+                        </button>
                     </div>
                 </div>
             </div>
         `;
     });
     html += '</div>';
-
+    
     container.innerHTML = html;
+    currentPriorities = priorities;
 }
 
-function displayDailyBreakdown(contextData, planData) {
-    const container = document.getElementById('dailyPhilosophyAccordion');
+function displayWeeklyPlanAnalysis(data) {
+    const container = document.getElementById('weeklyPlanAnalysis');
     
-    if (!planData || Object.keys(planData).length === 0) {
+    // This will show how current plan aligns with priorities
+    container.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6><i class="fas fa-chart-pie me-2"></i>Plan Distribution</h6>
+                <div id="planDistributionChart">
+                    <p class="text-muted">Analyzing how your weekly plan aligns with priorities...</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h6><i class="fas fa-exclamation-triangle me-2"></i>Potential Gaps</h6>
+                <div id="planGaps">
+                    <p class="text-muted">Identifying areas for improvement...</p>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function extractPrioritiesFromPhilosophy(data) {
+    if (!data.plan_context || !data.plan_context.plan_philosophy) return [];
+    
+    const philosophy = data.plan_context.plan_philosophy.toLowerCase();
+    const priorities = [];
+    
+    // Extract priorities based on keywords and context
+    if (philosophy.includes('midsection') || philosophy.includes('core')) {
+        priorities.push({
+            title: 'Midsection Development',
+            description: 'Core strength and muscle development'
+        });
+    }
+    
+    if (philosophy.includes('compound') || philosophy.includes('strength')) {
+        priorities.push({
+            title: 'Compound Strength',
+            description: 'Heavy compound movements for overall mass'
+        });
+    }
+    
+    if (philosophy.includes('isolation') || philosophy.includes('machine')) {
+        priorities.push({
+            title: 'Joint-Safe Isolation',
+            description: 'Machine-based isolation for targeted growth'
+        });
+    }
+    
+    if (philosophy.includes('progression') || philosophy.includes('aggressive')) {
+        priorities.push({
+            title: 'Aggressive Progression',
+            description: 'Consistent strength and size gains'
+        });
+    }
+    
+    return priorities;
+}
+
+function extractPrinciples(philosophy) {
+    const principles = [];
+    const text = philosophy.toLowerCase();
+    
+    if (text.includes('progressive')) principles.push('Progressive Overload');
+    if (text.includes('compound')) principles.push('Compound Movement Focus');
+    if (text.includes('safety') || text.includes('machine')) principles.push('Joint Safety Priority'); 
+    if (text.includes('consistency')) principles.push('Consistent Training');
+    if (text.includes('recovery')) principles.push('Recovery Emphasis');
+    
+    return principles.length > 0 ? principles : ['Structured Training Approach'];
+}
+
+async function processPriorityChange() {
+    const input = document.getElementById('priorityInput').value.trim();
+    if (!input) return;
+    
+    const suggestionsContainer = document.getElementById('modificationSuggestions');
+    suggestionsContainer.style.display = 'block';
+    suggestionsContainer.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-warning" role="status">
+                <span class="visually-hidden">Analyzing...</span>
+            </div>
+            <p class="mt-2">Analyzing your request and generating smart plan modifications...</p>
+        </div>
+    `;
+    
+    try {
+        // Send comprehensive plan analysis request to Grok
+        const response = await fetch('/chat_stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `message=COMPREHENSIVE_PLAN_MODIFICATION_REQUEST: ${input}`
+        });
+        
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const reader = response.body.getReader();
+        let fullResponse = '';
+        let suggestions = [];
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.content) {
+                            fullResponse += data.content;
+                        }
+                        if (data.done) {
+                            // Parse the complete response for modifications
+                            suggestions = parseModificationSuggestions(fullResponse);
+                            displayModificationSuggestions(suggestions, input);
+                        }
+                    } catch (e) {
+                        // Continue processing
+                    }
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error processing priority change:', error);
+        suggestionsContainer.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                Error processing your request. Please try again.
+            </div>
+        `;
+    }
+}
+
+function parseModificationSuggestions(response) {
+    const suggestions = [];
+    const lines = response.split('\n');
+    
+    let currentSuggestion = null;
+    
+    for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // Look for modification patterns
+        if (trimmed.includes('ADD:') || trimmed.includes('MODIFY:') || trimmed.includes('REPLACE:')) {
+            if (currentSuggestion) suggestions.push(currentSuggestion);
+            
+            currentSuggestion = {
+                type: trimmed.includes('ADD:') ? 'add' : trimmed.includes('MODIFY:') ? 'modify' : 'replace',
+                exercise: '',
+                details: '',
+                reasoning: '',
+                day: ''
+            };
+        }
+        
+        // Extract exercise details
+        if (trimmed.includes('Exercise:')) {
+            if (currentSuggestion) currentSuggestion.exercise = trimmed.replace('Exercise:', '').trim();
+        }
+        
+        if (trimmed.includes('Day:')) {
+            if (currentSuggestion) currentSuggestion.day = trimmed.replace('Day:', '').trim();
+        }
+        
+        if (trimmed.includes('Reasoning:')) {
+            if (currentSuggestion) currentSuggestion.reasoning = trimmed.replace('Reasoning:', '').trim();
+        }
+    }
+    
+    if (currentSuggestion) suggestions.push(currentSuggestion);
+    
+    return suggestions;
+}
+
+function displayModificationSuggestions(suggestions, originalRequest) {
+    const container = document.getElementById('modificationSuggestions');
+    
+    if (suggestions.length === 0) {
+        // Show general response if no specific modifications detected
         container.innerHTML = `
-            <div class="alert alert-warning">
-                <i class="fas fa-info-circle me-2"></i>
-                No weekly plan found. Set up your weekly plan first!
+            <div class="alert alert-info">
+                <h6><i class="fas fa-lightbulb me-2"></i>AI Analysis Complete</h6>
+                <p>Based on your request "${originalRequest}", here are my recommendations:</p>
+                <div class="mt-3">
+                    <button class="btn btn-primary" onclick="triggerDetailedAnalysis('${originalRequest}')">
+                        <i class="fas fa-search-plus me-2"></i>Get Detailed Plan Analysis
+                    </button>
+                </div>
             </div>
         `;
         return;
     }
-
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    let html = '';
-
-    days.forEach((day, index) => {
-        if (planData[day] && planData[day].length > 0) {
-            const exercises = planData[day];
-            const dayTitle = day.charAt(0).toUpperCase() + day.slice(1);
-            
-            html += `
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="heading${day}">
-                        <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
-                                data-bs-toggle="collapse" data-bs-target="#collapse${day}">
-                            <strong>${dayTitle}</strong>
-                            <span class="badge bg-primary ms-2">${exercises.length} exercises</span>
+    
+    let html = `
+        <div class="alert alert-success">
+            <h6><i class="fas fa-magic me-2"></i>Smart Modifications Suggested</h6>
+            <p>Based on "${originalRequest}", here's what I recommend:</p>
+        </div>
+    `;
+    
+    suggestions.forEach((suggestion, index) => {
+        const typeIcon = suggestion.type === 'add' ? 'fa-plus' : suggestion.type === 'modify' ? 'fa-edit' : 'fa-exchange-alt';
+        const typeColor = suggestion.type === 'add' ? 'success' : suggestion.type === 'modify' ? 'warning' : 'info';
+        
+        html += `
+            <div class="card mb-3 border-${typeColor}">
+                <div class="card-header bg-${typeColor} text-white">
+                    <h6 class="mb-0">
+                        <i class="fas ${typeIcon} me-2"></i>
+                        ${suggestion.type.charAt(0).toUpperCase() + suggestion.type.slice(1)}: ${suggestion.exercise}
+                    </h6>
+                </div>
+                <div class="card-body">
+                    ${suggestion.day ? `<p><strong>Day:</strong> ${suggestion.day}</p>` : ''}
+                    ${suggestion.details ? `<p><strong>Details:</strong> ${suggestion.details}</p>` : ''}
+                    ${suggestion.reasoning ? `<p><strong>Why:</strong> ${suggestion.reasoning}</p>` : ''}
+                    <div class="mt-3">
+                        <button class="btn btn-${typeColor} me-2" onclick="applyModification(${index}, ${JSON.stringify(suggestion).replace(/"/g, '&quot;')})">
+                            <i class="fas fa-check me-2"></i>Apply This Change
                         </button>
-                    </h2>
-                    <div id="collapse${day}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
-                         data-bs-parent="#dailyPhilosophyAccordion">
-                        <div class="accordion-body">
-                            <div class="row">
-            `;
-
-            exercises.forEach(exercise => {
-                const exerciseType = getExerciseType(exercise.exercise);
-                html += `
-                    <div class="col-md-6 mb-3">
-                        <div class="card border-start border-${exerciseType.color} border-3">
-                            <div class="card-body">
-                                <h6 class="card-title">
-                                    <i class="${exerciseType.icon} me-2"></i>
-                                    ${exercise.exercise}
-                                </h6>
-                                <p class="mb-1"><strong>Volume:</strong> ${exercise.sets}x${exercise.reps} @ ${exercise.weight}</p>
-                                <p class="mb-1"><strong>Purpose:</strong> ${exerciseType.purpose}</p>
-                                <p class="mb-0"><strong>Progression:</strong> ${exerciseType.progression}</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            html += `
-                            </div>
-                        </div>
+                        <button class="btn btn-outline-secondary" onclick="getMoreDetails(${index})">
+                            <i class="fas fa-info me-2"></i>More Details
+                        </button>
                     </div>
                 </div>
-            `;
-        }
+            </div>
+        `;
     });
-
+    
     container.innerHTML = html;
 }
 
-function getExerciseType(exerciseName) {
-    const exercise = exerciseName.toLowerCase();
-    
-    if (exercise.includes('ab') || exercise.includes('crunch') || exercise.includes('core') || exercise.includes('woodchop')) {
-        return {
-            icon: 'fas fa-bullseye',
-            color: 'danger',
-            purpose: 'Midsection hypertrophy for loose skin tightening',
-            progression: 'Aggressive - treat as main lift'
-        };
-    } else if (exercise.includes('press') || exercise.includes('squat') || exercise.includes('deadlift') || exercise.includes('row')) {
-        return {
-            icon: 'fas fa-dumbbell',
-            color: 'primary',
-            purpose: 'Compound strength and mass building',
-            progression: 'Aggressive - main movement focus'
-        };
-    } else if (exercise.includes('curl') || exercise.includes('extension') || exercise.includes('raise') || exercise.includes('fly')) {
-        return {
-            icon: 'fas fa-target',
-            color: 'info',
-            purpose: 'Isolation hypertrophy work',
-            progression: 'Moderate - steady increases'
-        };
-    } else if (exercise.includes('leg') && (exercise.includes('curl') || exercise.includes('extension'))) {
-        return {
-            icon: 'fas fa-shield-alt',
-            color: 'success',
-            purpose: 'Machine-based isolation for joint safety',
-            progression: 'Aggressive - safe progression'
-        };
-    } else {
-        return {
-            icon: 'fas fa-weight-hanging',
-            color: 'secondary',
-            purpose: 'General hypertrophy and strength',
-            progression: 'Normal progression rate'
-        };
-    }
-}
-
-// Auto-refresh philosophy when updates are detected
-function startPhilosophyWatcher() {
-    setInterval(async () => {
-        try {
-            const response = await fetch('/get_stored_context');
-            if (!response.ok) return;
-            
-            const newData = await response.json();
-            
-            if (currentPhilosophy && currentPhilosophy.plan_context && 
-                newData && newData.plan_context) {
-                
-                if (currentPhilosophy.plan_context.updated_date !== newData.plan_context.updated_date) {
-                    console.log('🧠 Philosophy update detected, refreshing...');
-                    window.philosophyJustUpdated = true;
-                    loadPhilosophy();
-                }
-            }
-        } catch (error) {
-            // Silently handle errors
-        }
-    }, 30000);
-}
-
-function showUpdateNotification() {
-    const notification = document.createElement('div');
-    notification.className = 'alert alert-success alert-dismissible fade show position-fixed';
-    notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; max-width: 400px;';
-    notification.innerHTML = `
-        <i class="fas fa-check-circle me-2"></i>
-        <strong>Philosophy Updated!</strong> Your training philosophy has been updated successfully.
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        if (notification.parentNode) {
-            notification.remove();
-        }
-    }, 5000);
-}
-
-async function showDebugInfo() {
+async function applyModification(index, suggestion) {
     try {
-        const response = await fetch('/debug_plan_context');
-        const debugData = await response.json();
+        const response = await fetch('/modify_plan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                type: suggestion.type,
+                exercise_name: suggestion.exercise,
+                day: suggestion.day,
+                sets: 3, // Default values - should be extracted from suggestion
+                reps: '8-12',
+                weight: 'bodyweight',
+                reasoning: suggestion.reasoning
+            })
+        });
         
-        document.getElementById('debugOutput').textContent = JSON.stringify(debugData, null, 2);
-        new bootstrap.Modal(document.getElementById('debugModal')).show();
-    } catch (error) {
-        document.getElementById('debugOutput').textContent = 'Error loading debug info: ' + error.message;
-        new bootstrap.Modal(document.getElementById('debugModal')).show();
-    }
-}
-
-async function restorePhilosophy() {
-    try {
-        const response = await fetch('/restore_philosophy', { method: 'POST' });
         const result = await response.json();
         
         if (result.success) {
-            alert('Philosophy restored successfully!');
-            loadPhilosophy();
-            bootstrap.Modal.getInstance(document.getElementById('debugModal')).hide();
+            // Show success and refresh
+            alert('✅ ' + result.message);
+            location.reload();
         } else {
-            alert('Error restoring philosophy: ' + result.error);
+            alert('❌ Error: ' + result.error);
         }
     } catch (error) {
-        alert('Error restoring philosophy: ' + error.message);
+        console.error('Error applying modification:', error);
+        alert('❌ Error applying modification');
     }
+}
+
+async function triggerFullPlanReview() {
+    window.location.href = '/chat?message=' + encodeURIComponent('FULL_PLAN_REVIEW_REQUEST: Please analyze my complete training plan and philosophy for potential improvements');
+}
+
+function openPriorityEditor() {
+    // Pre-fill current priorities
+    currentPriorities.forEach((priority, index) => {
+        const input = document.getElementById(`priority${index + 1}`);
+        if (input) input.value = priority.title;
+    });
+    
+    new bootstrap.Modal(document.getElementById('priorityEditorModal')).show();
+}
+
+function showQuickPriorityOptions() {
+    new bootstrap.Modal(document.getElementById('quickPriorityModal')).show();
+}
+
+function quickPriorityChange(priorityText) {
+    document.getElementById('priorityInput').value = priorityText;
+    bootstrap.Modal.getInstance(document.getElementById('quickPriorityModal')).hide();
+    processPriorityChange();
+}
+
+async function savePriorities() {
+    const priorities = [
+        document.getElementById('priority1').value,
+        document.getElementById('priority2').value,
+        document.getElementById('priority3').value,
+        document.getElementById('priority4').value
+    ].filter(p => p.trim());
+    
+    if (priorities.length === 0) {
+        alert('Please enter at least one priority');
+        return;
+    }
+    
+    // Send to chat for processing
+    const priorityText = priorities.map((p, i) => `Priority #${i+1}: ${p}`).join(', ');
+    
+    try {
+        const response = await fetch('/chat_stream', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `message=Update my training priorities: ${priorityText}. Please analyze how this affects my current plan and suggest modifications.`
+        });
+        
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('priorityEditorModal')).hide();
+            alert('✅ Priorities updated! Check the chat for analysis and suggestions.');
+            loadPhilosophyAndPriorities(); // Refresh
+        }
+    } catch (error) {
+        console.error('Error saving priorities:', error);
+        alert('❌ Error saving priorities');
+    }
+}
+
+function refreshPhilosophy() {
+    loadPhilosophyAndPriorities();
+}
+
+function showErrorState() {
+    document.getElementById('corePhilosophy').innerHTML = `
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-circle me-2"></i>
+            Error loading philosophy. Please try again.
+        </div>
+    `;
 }
 </script>
 {% endblock %}
