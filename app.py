@@ -54,7 +54,8 @@ def init_db():
         is_complex BOOLEAN DEFAULT FALSE,
         complex_structure TEXT,
         newly_added BOOLEAN DEFAULT FALSE,
-        date_added TEXT
+        date_added TEXT,
+        progression_notes TEXT
     )
     ''')
 
@@ -320,7 +321,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     }
 
     # Extract entities for context resolution
-    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
+    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
     for exercise in exercise_keywords:
@@ -474,7 +475,6 @@ def extract_potential_actions(prompt, intent):
                 break
 
         # Try to extract exercise and modification details
-        exercise_match = None
         modification_type = 'update'  # default
 
         if any(word in prompt_lower for word in ['add', 'include']):
@@ -707,12 +707,12 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
             FROM weekly_plan 
             WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
         ''', (exercise_name, day_of_week))
-        
+
         plan_result = cursor.fetchone()
         if not plan_result:
             conn.close()
             return
-            
+
         target_sets, target_reps, target_weight = plan_result
 
         # Get recent performance for this exercise (last 3 workouts)
@@ -723,22 +723,22 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
             ORDER BY date_logged DESC 
             LIMIT 3
         ''', (exercise_name,))
-        
+
         recent_workouts = cursor.fetchall()
-        
+
         progression_note = ""
-        
+
         if recent_workouts:
             latest_workout = recent_workouts[0]
             latest_sets, latest_reps, latest_weight, latest_notes = latest_workout[:4]
-            
+
             # Analyze performance patterns
             performance_lower = (performance_notes or latest_notes or "").lower()
-            
+
             # Check if they struggled
             if any(phrase in performance_lower for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard', 'struggled', 'difficult']):
                 progression_note = "Focus on completing all reps this week"
-            
+
             # Check if it was easy
             elif any(phrase in performance_lower for phrase in ['easy', 'felt light', 'could do more', 'too easy', 'light']):
                 # Extract weight number for progression
@@ -748,23 +748,23 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
                     progression_note = f"Ready for {next_weight}lbs next week"
                 except:
                     progression_note = "Ready for weight increase next week"
-            
+
             # Check if they completed everything well
             elif any(phrase in performance_lower for phrase in ['perfect', 'good', 'solid', 'nailed it', 'strong']):
                 progression_note = "Excellent work - maintain current intensity"
-            
+
             # Check if they got more reps than planned
             elif latest_sets >= int(target_sets):
                 try:
                     # Parse reps to see if they exceeded target
                     latest_reps_num = int(str(latest_reps).split('-')[0]) if '-' in str(latest_reps) else int(latest_reps)
                     target_reps_num = int(str(target_reps).split('-')[-1]) if '-' in str(target_reps) else int(target_reps)
-                    
+
                     if latest_reps_num > target_reps_num:
                         progression_note = "Exceeded reps - consider weight increase"
                 except:
                     pass
-            
+
             # Default progression note if no specific feedback
             if not progression_note:
                 progression_note = "Continue current progression plan"
@@ -1994,9 +1994,6 @@ def chat_stream():
                 if potential_actions:
                     print(f"🤖 Detected {len(potential_actions)} potential auto-actions")
 
-            except Exception as e:
-                print(f"⚠️ Failed to store conversation: {str(e)}")
-
         except Exception as e:
             print(f"Chat stream error: {str(e)}")  # Debug log
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -2094,34 +2091,6 @@ def get_plan(date):
 
     except Exception as e:
         return jsonify({'exercises': [], 'error': str(e)})
-
-    if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
-    else:
-        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
-
-    plan_data = cursor.fetchall()
-    conn.close()
-
-    # Organize plan by day
-    plan_by_day = {}
-    for row in plan_data:
-        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
-        if day not in plan_by_day:
-            plan_by_day[day] = []
-        plan_by_day[day].append({
-            'id': id,
-            'exercise': exercise,
-            'sets': sets,
-            'reps': reps,
-            'weight': weight,
-            'order': order,
-            'notes': notes or "",
-            'newly_added': bool(newly_added),
-            'progression_notes': progression_notes or ""
-        })
-
-    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/profile')
 def profile():
@@ -2948,7 +2917,7 @@ def api_weekly_plan():
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(progression_notes, "")
             FROM weekly_plan 
             ORDER BY 
                 CASE day_of_week 
@@ -2967,7 +2936,7 @@ def api_weekly_plan():
 
         # Organize by day
         plan_by_day = {}
-        for day, exercise, sets, reps, weight, order in plan_data:
+        for day, exercise, sets, reps, weight, order, progression_notes in plan_data:
             if day not in plan_by_day:
                 plan_by_day[day] = []
             plan_by_day[day].append({
@@ -2975,7 +2944,8 @@ def api_weekly_plan():
                 'sets': sets,
                 'reps': reps,
                 'weight': weight,
-                'order': order
+                'order': order,
+                'progression_notes': progression_notes
             })
 
         return jsonify(plan_by_day)
