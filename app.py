@@ -701,16 +701,78 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
 
-        # Analyze performance and generate progression note
-        if any(phrase in performance_notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
-            progression_note = "Focus on completing all reps this week"
-        elif any(phrase in performance_notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
-            progression_note = "Ready for weight increase next week"
-        elif any(phrase in performance_notes.lower() for phrase in ['perfect', 'good', 'solid']):
-            progression_note = "Maintain current intensity"
-        else:
-            progression_note = ""
+        # Get current plan details for this exercise
+        cursor.execute('''
+            SELECT target_sets, target_reps, target_weight 
+            FROM weekly_plan 
+            WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
+        ''', (exercise_name, day_of_week))
+        
+        plan_result = cursor.fetchone()
+        if not plan_result:
+            conn.close()
+            return
+            
+        target_sets, target_reps, target_weight = plan_result
 
+        # Get recent performance for this exercise (last 3 workouts)
+        cursor.execute('''
+            SELECT sets, reps, weight, notes, date_logged 
+            FROM workouts 
+            WHERE LOWER(exercise_name) = LOWER(?) 
+            ORDER BY date_logged DESC 
+            LIMIT 3
+        ''', (exercise_name,))
+        
+        recent_workouts = cursor.fetchall()
+        
+        progression_note = ""
+        
+        if recent_workouts:
+            latest_workout = recent_workouts[0]
+            latest_sets, latest_reps, latest_weight, latest_notes = latest_workout[:4]
+            
+            # Analyze performance patterns
+            performance_lower = (performance_notes or latest_notes or "").lower()
+            
+            # Check if they struggled
+            if any(phrase in performance_lower for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard', 'struggled', 'difficult']):
+                progression_note = "Focus on completing all reps this week"
+            
+            # Check if it was easy
+            elif any(phrase in performance_lower for phrase in ['easy', 'felt light', 'could do more', 'too easy', 'light']):
+                # Extract weight number for progression
+                try:
+                    current_weight = float(re.search(r'(\d+\.?\d*)', target_weight).group(1))
+                    next_weight = current_weight + 5
+                    progression_note = f"Ready for {next_weight}lbs next week"
+                except:
+                    progression_note = "Ready for weight increase next week"
+            
+            # Check if they completed everything well
+            elif any(phrase in performance_lower for phrase in ['perfect', 'good', 'solid', 'nailed it', 'strong']):
+                progression_note = "Excellent work - maintain current intensity"
+            
+            # Check if they got more reps than planned
+            elif latest_sets >= int(target_sets):
+                try:
+                    # Parse reps to see if they exceeded target
+                    latest_reps_num = int(str(latest_reps).split('-')[0]) if '-' in str(latest_reps) else int(latest_reps)
+                    target_reps_num = int(str(target_reps).split('-')[-1]) if '-' in str(target_reps) else int(target_reps)
+                    
+                    if latest_reps_num > target_reps_num:
+                        progression_note = "Exceeded reps - consider weight increase"
+                except:
+                    pass
+            
+            # Default progression note if no specific feedback
+            if not progression_note:
+                progression_note = "Continue current progression plan"
+        else:
+            # No workout history - give encouragement for first attempt
+            progression_note = "First attempt - focus on proper form"
+
+        # Update the progression note
         if progression_note:
             cursor.execute('''
                 UPDATE weekly_plan 
@@ -3299,10 +3361,9 @@ def save_workout():
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
 
-        # Update progression notes if there are performance notes
-        if notes:
-            today_name = datetime.now().strftime('%A').lower()
-            update_progression_notes_from_performance(exercise_name, today_name, notes)
+        # Update progression notes based on performance (always run this)
+        today_name = datetime.now().strftime('%A').lower()
+        update_progression_notes_from_performance(exercise_name, today_name, notes)
 
         # Check if we actually updated any rows (meaning it was newly added)
         if cursor.rowcount > 0:
