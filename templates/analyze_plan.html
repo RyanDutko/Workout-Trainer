@@ -297,7 +297,17 @@ async function displayWeeklyPlanAnalysis(data) {
     try {
         // Get actual weekly plan data
         const response = await fetch('/api/weekly_plan');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
         const weeklyPlan = await response.json();
+
+        // Check if weeklyPlan has an error property
+        if (weeklyPlan.error) {
+            throw new Error(weeklyPlan.error);
+        }
 
         // Analyze the plan
         const analysis = analyzeWeeklyPlan(weeklyPlan);
@@ -336,16 +346,19 @@ async function displayWeeklyPlanAnalysis(data) {
         `;
 
         container.innerHTML = html;
-        document.getElementById('loadingSpinner').style.display = 'none';
 
-        // Load progression notes for each exercise
-        loadProgressionNotes();
+        // Load progression notes for each exercise (with delay to ensure DOM is ready)
+        setTimeout(() => {
+            loadProgressionNotes();
+        }, 100);
+
     } catch (error) {
         console.error('Error loading weekly plan analysis:', error);
         container.innerHTML = `
             <div class="alert alert-warning">
                 <i class="fas fa-exclamation-triangle me-2"></i>
-                Could not load weekly plan analysis. Please try refreshing.
+                Could not load weekly plan analysis: ${error.message}
+                <br><small class="mt-2 d-block">Please try refreshing the page.</small>
             </div>
         `;
     }
@@ -693,31 +706,25 @@ function loadProgressionNotes() {
         const exerciseName = exerciseId.replace(/-/g, ' '); // Reconstruct the exercise name
 
         // Find the corresponding exercise data from the weekly plan
-        // This requires a bit of logic to map the container ID back to the specific exercise object.
-        // For simplicity, we'll assume a direct mapping or re-fetch if necessary.
-        // A more robust solution would involve passing exercise data directly.
-        
-        // Placeholder: In a real scenario, you'd need to find the exercise object.
-        // For this example, we'll simulate finding it.
-        // This is a simplification and might need adjustment based on how `generateDailyPhilosophyCards` is structured.
-        // Let's assume we can find the exercise data by looking at the parent card's structure.
-
-        const exerciseCard = container.closest('.card-body').querySelector('.card-title');
+        const exerciseCard = container.closest('.card-body');
         if (exerciseCard) {
-            const fullExerciseName = exerciseCard.textContent;
-            const exerciseDataElement = container.closest('.card-body').querySelector('.text-muted');
-            if(exerciseDataElement) {
+            const titleElement = exerciseCard.querySelector('.card-title');
+            const exerciseDataElement = exerciseCard.querySelector('.text-muted');
+            
+            if (titleElement && exerciseDataElement) {
+                const fullExerciseName = titleElement.textContent.trim();
                 const exerciseDataText = exerciseDataElement.textContent;
-                const parts = exerciseDataText.match(/(\d+x\d+)@([\d.]+)/);
+                
+                // Parse exercise data (format: "3x8-12@135lbs")
+                const parts = exerciseDataText.match(/(\d+)x([\d-]+)@([\w\d.]+)/);
                 let sets = '3';
                 let reps = '8-12';
                 let weight = 'bodyweight';
 
-                if (parts && parts.length === 3) {
-                    const setsReps = parts[1].split('x');
-                    sets = setsReps[0];
-                    reps = setsReps[1];
-                    weight = parts[2];
+                if (parts && parts.length >= 4) {
+                    sets = parts[1];
+                    reps = parts[2];
+                    weight = parts[3];
                 }
 
                 const exerciseData = {
@@ -728,8 +735,17 @@ function loadProgressionNotes() {
                 };
 
                 generateProgressionNotes(fullExerciseName, exerciseData).then(notes => {
-                    container.innerHTML = notes.map(note => `<div class="small mb-1">${note}</div>`).join('');
+                    if (notes && notes.length > 0) {
+                        container.innerHTML = notes.map(note => `<div class="small mb-1">${note}</div>`).join('');
+                    } else {
+                        container.innerHTML = '<div class="small text-muted">No progression data available</div>';
+                    }
+                }).catch(error => {
+                    console.error('Error loading progression notes:', error);
+                    container.innerHTML = '<div class="small text-muted">Unable to load progression notes</div>';
                 });
+            } else {
+                container.innerHTML = '<div class="small text-muted">Exercise data not found</div>';
             }
         }
     });
@@ -737,29 +753,48 @@ function loadProgressionNotes() {
 
 
 function generateProgressionNotes(exerciseName, exerciseData) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+        // Validate input data
+        if (!exerciseName || !exerciseData) {
+            resolve([`<span class="text-muted"><i class="fas fa-info-circle me-1"></i>No exercise data available</span>`]);
+            return;
+        }
+
         // Get recent performance data for this exercise
-        fetch(`/get_exercise_performance/${exerciseName}`)
-            .then(response => response.json())
+        fetch(`/get_exercise_performance/${encodeURIComponent(exerciseName)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 let progressionNotes = [];
 
                 // Get current plan data for this exercise
-                const currentWeight = parseFloat(exerciseData.weight.replace(/[^\d.]/g, '')) || 0;
-                const currentSets = exerciseData.sets;
-                const currentReps = exerciseData.reps;
+                const currentWeight = parseFloat(exerciseData.weight.toString().replace(/[^\d.]/g, '')) || 0;
+                const currentSets = exerciseData.sets || '3';
+                const currentReps = exerciseData.reps || '8-12';
 
                 // Check if there's recent performance data
-                if (data.dates && data.dates.length > 0) {
+                if (data && data.dates && data.dates.length > 0) {
                     const recentWeight = data.max_weights[data.max_weights.length - 1] || 0;
                     const progress = data.progress || 0;
                     const totalSessions = data.total_sessions || 0;
 
                     // Weight progression analysis
-                    if (recentWeight > currentWeight) {
-                        progressionNotes.push(`<span class="text-success"><i class="fas fa-arrow-up me-1"></i>Bumped up from ${currentWeight}lbs - great progress!</span>`);
-                    } else if (recentWeight < currentWeight && recentWeight > 0) {
-                        progressionNotes.push(`<span class="text-warning"><i class="fas fa-target me-1"></i>Aim for ${currentWeight}lbs to match your plan</span>`);
+                    if (currentWeight > 0) {
+                        if (recentWeight > currentWeight) {
+                            progressionNotes.push(`<span class="text-success"><i class="fas fa-arrow-up me-1"></i>Bumped up from ${currentWeight}lbs - great progress!</span>`);
+                        } else if (recentWeight < currentWeight && recentWeight > 0) {
+                            progressionNotes.push(`<span class="text-warning"><i class="fas fa-target me-1"></i>Aim for ${currentWeight}lbs to match your plan</span>`);
+                        }
+
+                        // Next progression suggestion
+                        if (recentWeight >= currentWeight && progress >= 0) {
+                            const nextWeight = currentWeight + 5;
+                            progressionNotes.push(`<span class="text-primary"><i class="fas fa-arrow-up me-1"></i>Consider ${nextWeight}lbs next week</span>`);
+                        }
                     }
 
                     // Progress trend analysis
@@ -774,12 +809,6 @@ function generateProgressionNotes(exerciseName, exerciseData) {
                         progressionNotes.push(`<span class="text-success"><i class="fas fa-check-circle me-1"></i>${totalSessions} sessions logged - great consistency!</span>`);
                     } else if (totalSessions > 0) {
                         progressionNotes.push(`<span class="text-warning"><i class="fas fa-calendar-check me-1"></i>Log more sessions to track progress better</span>`);
-                    }
-
-                    // Next progression suggestion
-                    if (recentWeight >= currentWeight && progress >= 0) {
-                        const nextWeight = currentWeight + 5;
-                        progressionNotes.push(`<span class="text-primary"><i class="fas fa-arrow-up me-1"></i>Consider ${nextWeight}lbs next week</span>`);
                     }
 
                 } else {
