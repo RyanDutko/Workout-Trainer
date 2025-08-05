@@ -338,10 +338,7 @@ def analyze_query_intent(prompt, conversation_context=None):
         if ref in prompt_lower:
             detected_entities['references'].append(ref)
 
-    # Full plan review (comprehensive analysis)
-    if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
-        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
-
+    # Intent scoring
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
     live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
@@ -419,6 +416,10 @@ def analyze_query_intent(prompt, conversation_context=None):
                 intents['plan_modification'] = intents.get('plan_modification', 0) + 0.3
             elif last_intent == 'progression':
                 intents['progression'] = intents.get('progression', 0) + 0.3
+    
+    # Check for specific comprehensive plan modification requests
+    if 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt:
+        intents['plan_modification'] = max(intents.get('plan_modification', 0), 0.8) # High confidence
 
     # Multi-intent detection - return top intents if close in confidence
     sorted_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)
@@ -453,15 +454,19 @@ def extract_potential_actions(prompt, intent):
 
     if intent == 'workout_logging':
         # Look for workout data patterns
-        workout_patterns = re.findall(r'(\d+)x(\d+)(?:@|\s*at\s*)(\d+(?:\.\d+)?)\s*(?:lbs?|kg)?\s+([a-zA-Z\s]+)', prompt)
+        # Regex to capture (sets)x(reps)@(weight) ExerciseName
+        workout_patterns = re.findall(r'(\d+)\s?x\s?(\d+)(?:\s?@\s?([\d.]+)\s?(?:lbs?|kg)?)?\s+([a-zA-Z\s]+)', prompt)
         for sets, reps, weight, exercise in workout_patterns:
+            # Clean up exercise name and default weight if not provided
+            exercise = exercise.strip()
+            weight = weight if weight else 'bodyweight' # Default to bodyweight if no weight specified
             actions.append({
                 'type': 'log_workout',
                 'data': {
-                    'exercise': exercise.strip(),
+                    'exercise': exercise,
                     'sets': int(sets),
                     'reps': reps,
-                    'weight': f"{weight}lbs"
+                    'weight': f"{weight}lbs" if weight != 'bodyweight' else 'bodyweight'
                 }
             })
 
