@@ -34,6 +34,9 @@
                                         {% if exercise.notes %}
                                             <br><small class="text-info">{{ exercise.notes }}</small>
                                         {% endif %}
+                                        {% if exercise.progression_notes %}
+                                            <br><small class="text-warning"><i class="fas fa-chart-line me-1"></i>{{ exercise.progression_notes }}</small>
+                                        {% endif %}</old_str>
                                         {% if 'burnout' in exercise.exercise.lower() or 'rounds' in exercise.exercise.lower() %}
                                             <br><small class="badge bg-warning text-dark">Complex Exercise</small>
                                         {% endif %}</small>
@@ -55,7 +58,8 @@
                                                     data-sets="{{ exercise.sets }}"
                                                     data-reps="{{ exercise.reps }}"
                                                     data-weight="{{ exercise.weight }}"
-                                                    data-notes="{{ exercise.notes }}">
+                                                    data-notes="{{ exercise.notes }}"
+                                                    data-progression-notes="{{ exercise.progression_notes or '' }}"></old_str>
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-danger" onclick="deleteExercise('{{ day }}', '{{ exercise.exercise }}')">
@@ -172,6 +176,12 @@
                         <textarea class="form-control" id="editNotes" name="notes" rows="2" 
                                   placeholder="Any additional notes..."></textarea>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label for="editProgressionNotes" class="form-label">Progression Notes (optional)</label>
+                        <textarea class="form-control" id="editProgressionNotes" name="progression_notes" rows="2" 
+                                  placeholder="e.g., Increase weight by 5lbs next week"></textarea>
+                    </div></old_str>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -225,6 +235,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const reps = this.getAttribute('data-reps');
                 const weight = this.getAttribute('data-weight');
                 const notes = this.getAttribute('data-notes') || '';
+                const progressionNotes = this.getAttribute('data-progression-notes') || '';
                 
                 // Check if all required form elements exist
                 const editId = document.getElementById('editId');
@@ -234,6 +245,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const editReps = document.getElementById('editReps');
                 const editWeight = document.getElementById('editWeight');
                 const editNotes = document.getElementById('editNotes');
+                const editProgressionNotes = document.getElementById('editProgressionNotes');
                 
                 if (editId && editDay && editExerciseName && editSets && editReps && editWeight && editNotes) {
                     editId.value = id;
@@ -243,6 +255,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     editReps.value = reps;
                     editWeight.value = weight;
                     editNotes.value = notes;
+                    if (editProgressionNotes) editProgressionNotes.value = progressionNotes;</old_str>
                     
                     new bootstrap.Modal(document.getElementById('editExerciseModal')).show();
                 } else {
@@ -310,8 +323,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 sets: parseInt(formData.get('sets')),
                 reps: formData.get('reps'),
                 weight: weightValue.trim(),
-                notes: formData.get('notes') || ''
-            };
+                notes: formData.get('notes') || '',
+                progression_notes: formData.get('progression_notes') || ''
+            };</old_str>
             
             fetch('/edit_exercise', {
                 method: 'POST',

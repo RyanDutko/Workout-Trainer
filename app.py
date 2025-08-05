@@ -235,7 +235,7 @@ def init_db():
         ('newly_added', 'BOOLEAN DEFAULT FALSE'),
         ('date_added', 'TEXT'),
         ('progression_notes', 'TEXT')
-    ]
+    ]</old_str>
 
     # Add context columns to workouts table
     workout_columns_to_add = [
@@ -1580,7 +1580,7 @@ def dashboard():
     today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan with completion status
-    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
+    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))</old_str>
     plan_data = cursor.fetchall()
 
     # Check completion status for each exercise
@@ -1968,7 +1968,7 @@ def weekly_plan():
 
     # Use the correct column names based on what exists
     if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0) FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')</old_str>
     else:
         cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0 FROM weekly_plan ORDER BY day_of_week, order_index')
 
@@ -1978,7 +1978,7 @@ def weekly_plan():
     # Organize plan by day
     plan_by_day = {}
     for row in plan_data:
-        id, day, exercise, sets, reps, weight, order, notes, newly_added = row
+        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
         if day not in plan_by_day:
             plan_by_day[day] = []
         plan_by_day[day].append({
@@ -1989,8 +1989,9 @@ def weekly_plan():
             'weight': weight,
             'order': order,
             'notes': notes or "",
-            'newly_added': bool(newly_added)
-        })
+            'newly_added': bool(newly_added),
+            'progression_notes': progression_notes or ""
+        })</old_str>
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
@@ -2691,11 +2692,13 @@ def edit_exercise():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        progression_notes = data.get('progression_notes', '')
+        
         cursor.execute('''
             UPDATE weekly_plan 
-            SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
+            SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
             WHERE id = ?
-        ''', (sets, reps, weight, exercise_name, notes, exercise_id))
+        ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))</old_str>
 
         conn.commit()
         conn.close()
