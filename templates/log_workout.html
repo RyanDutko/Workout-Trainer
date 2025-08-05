@@ -169,9 +169,13 @@
                         <div class="row">
                             <div class="col-12 mb-2">
                                 <label for="postSubstitutedExercise" class="form-label">What did you do instead?</label>
-                                <input type="text" class="form-control" id="postSubstitutedExercise" placeholder="e.g., leg press, goblet squats">
+                                <input type="text" class="form-control" id="postSubstitutedExercise" placeholder="e.g., cable glute kickbacks">
                             </div>
-                            <div class="col-12">
+                            <div class="col-md-6 mb-2">
+                                <label for="postSubstitutedWeight" class="form-label">Weight Used</label>
+                                <input type="text" class="form-control" id="postSubstitutedWeight" placeholder="e.g., 35lbs">
+                            </div>
+                            <div class="col-md-6 mb-2">
                                 <label for="postSubstitutionReason" class="form-label">Why substitute?</label>
                                 <select class="form-select" id="postSubstitutionReason">
                                     <option value="">Select reason...</option>
@@ -306,9 +310,13 @@
                     <div class="row">
                         <div class="col-12 mb-2">
                             <label for="substitutedExercise" class="form-label">What did you do instead?</label>
-                            <input type="text" class="form-control" id="substitutedExercise" placeholder="e.g., leg press, goblet squats">
+                            <input type="text" class="form-control" id="substitutedExercise" placeholder="e.g., cable glute kickbacks">
                         </div>
-                        <div class="col-12">
+                        <div class="col-md-6 mb-2">
+                            <label for="substitutedWeight" class="form-label">Weight Used</label>
+                            <input type="text" class="form-control" id="substitutedWeight" placeholder="e.g., 35lbs">
+                        </div>
+                        <div class="col-md-6 mb-2">
                             <label for="substitutionReason" class="form-label">Why substitute?</label>
                             <select class="form-select" id="substitutionReason">
                                 <option value="">Select reason...</option>
@@ -768,18 +776,22 @@ function logCurrentExercise() {
         workoutData.weight = '0lbs';
     } else if (workoutStatus === 'substituted') {
         const substitutedExerciseElement = document.getElementById('substitutedExercise');
+        const substitutedWeightElement = document.getElementById('substitutedWeight');
         const substitutionReasonElement = document.getElementById('substitutionReason');
         
         const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+        const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
         const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
 
-        if (!substitutedExercise || !substitutionReason) {
-            alert('Please fill in what exercise you substituted and why');
+        if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
+            alert('Please fill in what exercise you substituted, the weight used, and why');
             return;
         }
 
         workoutData.exercise_name = substitutedExercise;
+        workoutData.weight = substitutedWeight;  // Use the actual weight used
         workoutData.original_exercise = exercise.exercise_name;
+        workoutData.original_weight = exercise.weight;  // Store original planned weight
         workoutData.substitution_reason = substitutionReason;
     }
 
@@ -1106,18 +1118,22 @@ function logCurrentPostExercise() {
         workoutData.weight = '0lbs';
     } else if (workoutStatus === 'substituted') {
         const substitutedExerciseElement = document.getElementById('postSubstitutedExercise');
+        const substitutedWeightElement = document.getElementById('postSubstitutedWeight');
         const substitutionReasonElement = document.getElementById('postSubstitutionReason');
         
         const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+        const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
         const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
 
-        if (!substitutedExercise || !substitutionReason) {
-            alert('Please fill in what exercise you substituted and why');
+        if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
+            alert('Please fill in what exercise you substituted, the weight used, and why');
             return;
         }
 
         workoutData.exercise_name = substitutedExercise;
+        workoutData.weight = substitutedWeight;  // Use the actual weight used
         workoutData.original_exercise = exercise.exercise_name;
+        workoutData.original_weight = exercise.weight;  // Store original planned weight
         workoutData.substitution_reason = substitutionReason;
     }
 

@@ -1288,11 +1288,18 @@ Please analyze today's workout performance and provide specific progression sugg
 - Recent performance trends from workout history
 - Appropriate progression based on user's experience level
 - Any performance notes that indicate difficulty or ease
+- IMPORTANT: For substituted exercises, ask the user if they want to make the substitution permanent
 
 For each exercise completed today, provide a progression note in this format:
 EXERCISE: [exercise name]
 PROGRESSION: [specific actionable suggestion, e.g., "Increase to 185lbs next week", "Add 1 rep per set", "Maintain weight, focus on form", "Deload to 160lbs - showing fatigue"]
 REASONING: [brief explanation of why this progression makes sense]
+
+SPECIAL HANDLING FOR SUBSTITUTIONS:
+If an exercise was substituted (look for SUBSTITUTED in the notes), use this format instead:
+EXERCISE: [substituted exercise name]
+SUBSTITUTION_QUESTION: "Great choice on [substituted exercise]! Would you like to make this a permanent replacement for [original exercise] in your plan, or keep trying [original exercise] next week?"
+REASONING: [why the substitution worked well or concerns about it]
 
 Keep suggestions practical and progressive. Base recommendations on actual performance vs. plan."""
 
@@ -3463,6 +3470,11 @@ def save_workout():
         weight = data.get('weight', '')
         notes = data.get('notes', '')
         date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # Handle substitution data
+        original_exercise = data.get('original_exercise', '')
+        original_weight = data.get('original_weight', '')
+        substitution_reason = data.get('substitution_reason', '')
 
         if not exercise_name:
             return jsonify({'status': 'error', 'message': 'Exercise name is required'})
@@ -3470,10 +3482,16 @@ def save_workout():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Build substitution context for notes if this was a substitution
+        substitution_context = ''
+        if original_exercise and substitution_reason:
+            substitution_context = f" [SUBSTITUTED: {original_exercise} -> {exercise_name} @ {weight} (was planned {original_weight}), reason: {substitution_reason}]"
+            notes = (notes + substitution_context).strip()
+
         cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
-            VALUES (?, ?, ?, ?, ?, ?, FALSE)
-        ''', (exercise_name, sets, reps, weight, notes, date))
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, substitution_reason)
+            VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
+        ''', (exercise_name, sets, reps, weight, notes, date, substitution_reason))
 
         # Remove newly_added flag for this exercise since it's been completed
         cursor.execute('''
@@ -3834,6 +3852,43 @@ def analyze_day_progression_api():
         result = analyze_day_progression(date_str)
         return jsonify(result)
         
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/make_substitution_permanent', methods=['POST'])
+def make_substitution_permanent():
+    """Make a workout substitution permanent in the weekly plan"""
+    try:
+        data = request.json
+        original_exercise = data.get('original_exercise')
+        new_exercise = data.get('new_exercise')
+        new_weight = data.get('new_weight')
+        day_of_week = data.get('day_of_week')
+        
+        if not all([original_exercise, new_exercise, new_weight, day_of_week]):
+            return jsonify({'success': False, 'error': 'Missing required data'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Update the weekly plan
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET exercise_name = ?, target_weight = ?, notes = COALESCE(notes, '') || ' [Substituted from: ' || ? || ']'
+            WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+        ''', (new_exercise, new_weight, original_exercise, day_of_week.lower(), original_exercise))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'success': True, 
+                'message': f'Permanently replaced {original_exercise} with {new_exercise} on {day_of_week}'
+            })
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
