@@ -505,7 +505,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         modifications = []
 
         # Check for structured trainer responses
-        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
+        if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:') for line in ai_response.split('\n') if line.strip():
             lines = ai_response.split('\n')
             current_mod = None
 
@@ -548,7 +548,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                         current_mod['reasoning'] = line.split(':', 1)[1].strip()
 
                     elif 'Weight:' in line or '@' in line:
-                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg)', line)
+                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg|pounds?)', line)
                         if weight_match:
                             current_mod['weight'] = f"{weight_match.group(1)}lbs"
 
@@ -916,13 +916,13 @@ Make sure to provide complete, updated versions of all sections, not just acknow
 
                     for line in lines:
                         line = line.strip()
-                        if 'TRAINING_PHILOSOPHY:' in line:
+                        if line.startswith('TRAINING_PHILOSOPHY:'):
                             extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'WEEKLY_STRUCTURE:' in line:
+                        elif line.startswith('WEEKLY_STRUCTURE:'):
                             extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'PROGRESSION_STRATEGY:' in line:
+                        elif line.startswith('PROGRESSION_STRATEGY:'):
                             extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'SPECIAL_CONSIDERATIONS:' in line:
+                        elif line.startswith('SPECIAL_CONSIDERATIONS:'):
                             extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
 
                     # Add reasoning
@@ -1895,7 +1895,7 @@ def chat_stream():
                 if plan_mod_data and detected_intent == 'plan_modification':
                     # Store as potential auto-action for user confirmation
                     potential_actions.append({
-                        'type': 'modify_plan_suggestion',
+                        'type': 'plan_modification_proposal',
                         'data': plan_mod_data
                     })
 
