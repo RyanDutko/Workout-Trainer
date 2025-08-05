@@ -1967,7 +1967,33 @@ def weekly_plan():
     columns = [col[1] for col in cursor.fetchall()]
 
     # Use the correct column names based on what exists
+    if 'target_sets' in columns:
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
+    else:
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
 
+    plan_data = cursor.fetchall()
+    conn.close()
+
+    # Organize plan by day
+    plan_by_day = {}
+    for row in plan_data:
+        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+        plan_by_day[day].append({
+            'id': id,
+            'exercise': exercise,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'order': order,
+            'notes': notes or "",
+            'newly_added': bool(newly_added),
+            'progression_notes': progression_notes or ""
+        })
+
+    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/get_plan/<date>')
 def get_plan(date):
