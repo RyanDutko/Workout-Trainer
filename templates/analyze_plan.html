@@ -54,10 +54,47 @@
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header bg-secondary text-white">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="fas fa-calendar-week me-2"></i>Daily Training Breakdown</h5>
+                <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="collapse" 
+                        data-bs-target="#exerciseLegend" aria-expanded="false">
+                    <i class="fas fa-info-circle me-1"></i>Color Guide
+                </button>
             </div>
             <div class="card-body">
+                <!-- Exercise Category Legend -->
+                <div class="collapse mb-3" id="exerciseLegend">
+                    <div class="alert alert-light border">
+                        <h6><i class="fas fa-palette me-2"></i>Exercise Category Colors</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="border-start border-danger border-3 pe-2 me-2" style="height: 20px;"></div>
+                                    <strong class="text-danger">Core/Abs</strong> - Midsection focus for loose skin
+                                </div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="border-start border-primary border-3 pe-2 me-2" style="height: 20px;"></div>
+                                    <strong class="text-primary">Compound</strong> - Main strength movements
+                                </div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="border-start border-success border-3 pe-2 me-2" style="height: 20px;"></div>
+                                    <strong class="text-success">Machine Isolation</strong> - Joint-safe lower body
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="border-start border-info border-3 pe-2 me-2" style="height: 20px;"></div>
+                                    <strong class="text-info">Upper Isolation</strong> - Arms, shoulders, chest detail
+                                </div>
+                                <div class="d-flex align-items-center mb-2">
+                                    <div class="border-start border-secondary border-3 pe-2 me-2" style="height: 20px;"></div>
+                                    <strong class="text-secondary">General</strong> - Other hypertrophy work
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="accordion" id="dailyPhilosophyAccordion">
                     <!-- Will be populated via JavaScript -->
                 </div>
