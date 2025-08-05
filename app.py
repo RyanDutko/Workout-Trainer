@@ -500,7 +500,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         modifications = []
 
         # Check for structured trainer responses
-        if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:') for line in ai_response.split('\n'):
+        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
             lines = ai_response.split('\n')
             current_mod = None
 
