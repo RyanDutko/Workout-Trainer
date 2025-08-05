@@ -34,7 +34,7 @@
                                         {% if exercise.notes %}
                                             <br><small class="text-info">{{ exercise.notes }}</small>
                                         {% endif %}
-                                        {% if exercise.progression_notes and exercise.progression_notes != "no specific progression notes" %}
+                                        {% if exercise.progression_notes %}
                                             <br><small class="text-warning"><i class="fas fa-chart-line me-1"></i>{{ exercise.progression_notes }}</small>
                                         {% endif %}
                                         {% if 'burnout' in exercise.exercise.lower() or 'rounds' in exercise.exercise.lower() %}

@@ -54,8 +54,7 @@ def init_db():
         is_complex BOOLEAN DEFAULT FALSE,
         complex_structure TEXT,
         newly_added BOOLEAN DEFAULT FALSE,
-        date_added TEXT,
-        progression_notes TEXT
+        date_added TEXT
     )
     ''')
 
@@ -321,7 +320,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     }
 
     # Extract entities for context resolution
-    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back']
+    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
     for exercise in exercise_keywords:
@@ -338,7 +337,10 @@ def analyze_query_intent(prompt, conversation_context=None):
         if ref in prompt_lower:
             detected_entities['references'].append(ref)
 
-    # Intent scoring
+    # Full plan review (comprehensive analysis)
+    if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
+        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
+
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
     live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
@@ -417,10 +419,6 @@ def analyze_query_intent(prompt, conversation_context=None):
             elif last_intent == 'progression':
                 intents['progression'] = intents.get('progression', 0) + 0.3
 
-    # Check for specific comprehensive plan modification requests
-    if 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt:
-        intents['plan_modification'] = max(intents.get('plan_modification', 0), 0.8) # High confidence
-
     # Multi-intent detection - return top intents if close in confidence
     sorted_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)
 
@@ -454,19 +452,15 @@ def extract_potential_actions(prompt, intent):
 
     if intent == 'workout_logging':
         # Look for workout data patterns
-        # Regex to capture (sets)x(reps)@(weight) ExerciseName
-        workout_patterns = re.findall(r'(\d+)\s?x\s?(\d+)(?:\s?@\s?([\d.]+)\s?(?:lbs?|kg)?)?\s+([a-zA-Z\s]+)', prompt)
+        workout_patterns = re.findall(r'(\d+)x(\d+)(?:@|\s*at\s*)(\d+(?:\.\d+)?)\s*(?:lbs?|kg)?\s+([a-zA-Z\s]+)', prompt)
         for sets, reps, weight, exercise in workout_patterns:
-            # Clean up exercise name and default weight if not provided
-            exercise = exercise.strip()
-            weight = weight if weight else 'bodyweight' # Default to bodyweight if no weight specified
             actions.append({
                 'type': 'log_workout',
                 'data': {
-                    'exercise': exercise,
+                    'exercise': exercise.strip(),
                     'sets': int(sets),
                     'reps': reps,
-                    'weight': f"{weight}lbs" if weight != 'bodyweight' else 'bodyweight'
+                    'weight': f"{weight}lbs"
                 }
             })
 
@@ -480,6 +474,7 @@ def extract_potential_actions(prompt, intent):
                 break
 
         # Try to extract exercise and modification details
+        exercise_match = None
         modification_type = 'update'  # default
 
         if any(word in prompt_lower for word in ['add', 'include']):
@@ -505,10 +500,8 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         modifications = []
 
         # Check for structured trainer responses
-        lines = ai_response.split('\n')
-        has_structured_response = any(line.strip().startswith(('MODIFY:', 'ADD:', 'REPLACE:')) for line in lines)
-        
-        if has_structured_response:
+        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
+            lines = ai_response.split('\n')
             current_mod = None
 
             for line in lines:
@@ -550,7 +543,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                         current_mod['reasoning'] = line.split(':', 1)[1].strip()
 
                     elif 'Weight:' in line or '@' in line:
-                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg|pounds?)', line)
+                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg)', line)
                         if weight_match:
                             current_mod['weight'] = f"{weight_match.group(1)}lbs"
 
@@ -708,78 +701,16 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
 
-        # Get current plan details for this exercise
-        cursor.execute('''
-            SELECT target_sets, target_reps, target_weight 
-            FROM weekly_plan 
-            WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
-        ''', (exercise_name, day_of_week))
-
-        plan_result = cursor.fetchone()
-        if not plan_result:
-            conn.close()
-            return
-
-        target_sets, target_reps, target_weight = plan_result
-
-        # Get recent performance for this exercise (last 3 workouts)
-        cursor.execute('''
-            SELECT sets, reps, weight, notes, date_logged 
-            FROM workouts 
-            WHERE LOWER(exercise_name) = LOWER(?) 
-            ORDER BY date_logged DESC 
-            LIMIT 3
-        ''', (exercise_name,))
-
-        recent_workouts = cursor.fetchall()
-
-        progression_note = ""
-
-        if recent_workouts:
-            latest_workout = recent_workouts[0]
-            latest_sets, latest_reps, latest_weight, latest_notes = latest_workout[:4]
-
-            # Analyze performance patterns
-            performance_lower = (performance_notes or latest_notes or "").lower()
-
-            # Check if they struggled
-            if any(phrase in performance_lower for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard', 'struggled', 'difficult']):
-                progression_note = "Focus on completing all reps this week"
-
-            # Check if it was easy
-            elif any(phrase in performance_lower for phrase in ['easy', 'felt light', 'could do more', 'too easy', 'light']):
-                # Extract weight number for progression
-                try:
-                    current_weight = float(re.search(r'(\d+\.?\d*)', target_weight).group(1))
-                    next_weight = current_weight + 5
-                    progression_note = f"Ready for {next_weight}lbs next week"
-                except:
-                    progression_note = "Ready for weight increase next week"
-
-            # Check if they completed everything well
-            elif any(phrase in performance_lower for phrase in ['perfect', 'good', 'solid', 'nailed it', 'strong']):
-                progression_note = "Excellent work - maintain current intensity"
-
-            # Check if they got more reps than planned
-            elif latest_sets >= int(target_sets):
-                try:
-                    # Parse reps to see if they exceeded target
-                    latest_reps_num = int(str(latest_reps).split('-')[0]) if '-' in str(latest_reps) else int(latest_reps)
-                    target_reps_num = int(str(target_reps).split('-')[-1]) if '-' in str(target_reps) else int(target_reps)
-
-                    if latest_reps_num > target_reps_num:
-                        progression_note = "Exceeded reps - consider weight increase"
-                except:
-                    pass
-
-            # Default progression note if no specific feedback
-            if not progression_note:
-                progression_note = "Continue current progression plan"
+        # Analyze performance and generate progression note
+        if any(phrase in performance_notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
+            progression_note = "Focus on completing all reps this week"
+        elif any(phrase in performance_notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
+            progression_note = "Ready for weight increase next week"
+        elif any(phrase in performance_notes.lower() for phrase in ['perfect', 'good', 'solid']):
+            progression_note = "Maintain current intensity"
         else:
-            # No workout history - give encouragement for first attempt
-            progression_note = "First attempt - focus on proper form"
+            progression_note = ""
 
-        # Update the progression note
         if progression_note:
             cursor.execute('''
                 UPDATE weekly_plan 
@@ -918,13 +849,13 @@ Make sure to provide complete, updated versions of all sections, not just acknow
 
                     for line in lines:
                         line = line.strip()
-                        if line.startswith('TRAINING_PHILOSOPHY:'):
+                        if 'TRAINING_PHILOSOPHY:' in line:
                             extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif line.startswith('WEEKLY_STRUCTURE:'):
+                        elif 'WEEKLY_STRUCTURE:' in line:
                             extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif line.startswith('PROGRESSION_STRATEGY:'):
+                        elif 'PROGRESSION_STRATEGY:' in line:
                             extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif line.startswith('SPECIAL_CONSIDERATIONS:'):
+                        elif 'SPECIAL_CONSIDERATIONS:' in line:
                             extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
 
                     # Add reasoning
@@ -1861,7 +1792,7 @@ def chat_stream():
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
-                detected_entities = intent_analysis.get('entities', [])
+                detected_entities = intent_analysis.get('entities', {})
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
@@ -1897,7 +1828,7 @@ def chat_stream():
                 if plan_mod_data and detected_intent == 'plan_modification':
                     # Store as potential auto-action for user confirmation
                     potential_actions.append({
-                        'type': 'plan_modification_proposal',
+                        'type': 'modify_plan_suggestion',
                         'data': plan_mod_data
                     })
 
@@ -2001,6 +1932,9 @@ def chat_stream():
                 if potential_actions:
                     print(f"🤖 Detected {len(potential_actions)} potential auto-actions")
 
+            except Exception as e:
+                print(f"⚠️ Failed to store conversation: {str(e)}")
+
         except Exception as e:
             print(f"Chat stream error: {str(e)}")  # Debug log
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -2098,6 +2032,34 @@ def get_plan(date):
 
     except Exception as e:
         return jsonify({'exercises': [], 'error': str(e)})
+
+    if 'target_sets' in columns:
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
+    else:
+        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
+
+    plan_data = cursor.fetchall()
+    conn.close()
+
+    # Organize plan by day
+    plan_by_day = {}
+    for row in plan_data:
+        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+        plan_by_day[day].append({
+            'id': id,
+            'exercise': exercise,
+            'sets': sets,
+            'reps': reps,
+            'weight': weight,
+            'order': order,
+            'notes': notes or "",
+            'newly_added': bool(newly_added),
+            'progression_notes': progression_notes or ""
+        })
+
+    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
 @app.route('/profile')
 def profile():
@@ -2924,7 +2886,7 @@ def api_weekly_plan():
         cursor = conn.cursor()
 
         cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(progression_notes, "")
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
             FROM weekly_plan 
             ORDER BY 
                 CASE day_of_week 
@@ -2943,7 +2905,7 @@ def api_weekly_plan():
 
         # Organize by day
         plan_by_day = {}
-        for day, exercise, sets, reps, weight, order, progression_notes in plan_data:
+        for day, exercise, sets, reps, weight, order in plan_data:
             if day not in plan_by_day:
                 plan_by_day[day] = []
             plan_by_day[day].append({
@@ -2951,8 +2913,7 @@ def api_weekly_plan():
                 'sets': sets,
                 'reps': reps,
                 'weight': weight,
-                'order': order,
-                'progression_notes': progression_notes
+                'order': order
             })
 
         return jsonify(plan_by_day)
@@ -3283,7 +3244,7 @@ def delete_workout():
                     if created_by == 'grok_ai':
                         cursor.execute('''
                             UPDATE weekly_plan 
-                            SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                            SET newly_added = TRUE
                             WHERE LOWER(exercise_name) = LOWER(?)
                         ''', (exercise_name,))
 
@@ -3338,9 +3299,10 @@ def save_workout():
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
 
-        # Update progression notes based on performance (always run this)
-        today_name = datetime.now().strftime('%A').lower()
-        update_progression_notes_from_performance(exercise_name, today_name, notes)
+        # Update progression notes if there are performance notes
+        if notes:
+            today_name = datetime.now().strftime('%A').lower()
+            update_progression_notes_from_performance(exercise_name, today_name, notes)
 
         # Check if we actually updated any rows (meaning it was newly added)
         if cursor.rowcount > 0:
