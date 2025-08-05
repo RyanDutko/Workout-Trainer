@@ -500,7 +500,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         modifications = []
 
         # Check for structured trainer responses
-        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
+        if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:') for line in ai_response.split('\n'):
             lines = ai_response.split('\n')
             current_mod = None
 
@@ -1854,7 +1854,7 @@ def chat_stream():
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
-                detected_entities = intent_analysis.get('entities', {})
+                detected_entities = intent_analysis.get('entities', [])
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
@@ -3276,7 +3276,7 @@ def delete_workout():
                     if created_by == 'grok_ai':
                         cursor.execute('''
                             UPDATE weekly_plan 
-                            SET newly_added = TRUE
+                            SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
                             WHERE LOWER(exercise_name) = LOWER(?)
                         ''', (exercise_name,))
 
