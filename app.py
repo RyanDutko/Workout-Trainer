@@ -498,26 +498,26 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
     try:
         # Look for comprehensive trainer-style responses first
         modifications = []
-        
+
         # Check for structured trainer responses
         if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
             lines = ai_response.split('\n')
             current_mod = None
-            
+
             for line in lines:
                 line = line.strip()
-                
+
                 # Look for modification commands
                 if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:'):
                     if current_mod:
                         modifications.append(current_mod)
-                    
+
                     mod_type = 'modify' if line.startswith('MODIFY:') else ('add' if line.startswith('ADD:') else 'replace')
-                    
+
                     # Extract day and exercise from the line
                     day_match = re.search(r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)', line.lower())
                     exercise_match = re.search(r'(?:replace|add|modify)[\s\w]*?([a-zA-Z\s]+?)(?:\s*-|\s*with|\s*$)', line, re.IGNORECASE)
-                    
+
                     current_mod = {
                         'type': mod_type,
                         'day': day_match.group(1) if day_match else None,
@@ -527,7 +527,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                         'weight': 'bodyweight',  # Default
                         'reasoning': ''
                     }
-                
+
                 # Extract details for current modification
                 elif current_mod:
                     if 'Sets/reps:' in line or 'sets/reps:' in line:
@@ -538,23 +538,23 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                             current_mod['sets'] = int(sets_match.group(1))
                         if reps_match:
                             current_mod['reps'] = reps_match.group(1)
-                    
+
                     elif 'Reasoning:' in line:
                         current_mod['reasoning'] = line.split(':', 1)[1].strip()
-                    
+
                     elif 'Weight:' in line or '@' in line:
                         weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg)', line)
                         if weight_match:
                             current_mod['weight'] = f"{weight_match.group(1)}lbs"
-            
+
             # Add the last modification
             if current_mod:
                 modifications.append(current_mod)
-        
+
         # If we found structured modifications, return them
         if modifications:
             return modifications[0] if len(modifications) == 1 else modifications
-        
+
         # Fallback to original parsing logic for unstructured responses
         response_lower = ai_response.lower()
 
@@ -568,7 +568,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
             r'instead of adding more (.+?), let\'s swap (.+?) for (.+)',
             r'your (.+?) day already has (.+?), so let\'s replace (.+?) with (.+)'
         ]
-        
+
         for pattern in trainer_patterns:
             match = re.search(pattern, response_lower)
             if match:
@@ -620,16 +620,16 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         changes_made = []
-        
+
         # 1. Update plan_context table - all text fields
         plan_context_fields = ['plan_philosophy', 'weekly_structure', 'progression_strategy', 'special_considerations']
-        
+
         for field in plan_context_fields:
             cursor.execute(f'SELECT id, {field} FROM plan_context WHERE user_id = 1 AND {field} IS NOT NULL')
             records = cursor.fetchall()
-            
+
             for record_id, current_text in records:
                 if current_text and target_text.lower() in current_text.lower():
                     # Remove the target text and clean up
@@ -637,37 +637,37 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
                     cursor.execute(f'UPDATE plan_context SET {field} = ?, updated_date = ? WHERE id = ?', 
                                  (updated_text, datetime.now().strftime('%Y-%m-%d'), record_id))
                     changes_made.append(f"Updated {field} in plan_context")
-        
+
         # 2. Update exercise_metadata table
         metadata_fields = ['primary_purpose', 'ai_notes']
-        
+
         for field in metadata_fields:
             cursor.execute(f'SELECT id, exercise_name, {field} FROM exercise_metadata WHERE user_id = 1 AND {field} IS NOT NULL')
             records = cursor.fetchall()
-            
+
             for record_id, exercise_name, current_text in records:
                 if current_text and target_text.lower() in current_text.lower():
                     updated_text = remove_text_and_cleanup(current_text, target_text)
                     cursor.execute(f'UPDATE exercise_metadata SET {field} = ? WHERE id = ?', 
                                  (updated_text, record_id))
                     changes_made.append(f"Updated {field} for {exercise_name}")
-        
+
         # 3. Update weekly_plan notes
         cursor.execute('SELECT id, exercise_name, notes FROM weekly_plan WHERE notes IS NOT NULL')
         records = cursor.fetchall()
-        
+
         for record_id, exercise_name, current_notes in records:
             if current_notes and target_text.lower() in current_notes.lower():
                 updated_notes = remove_text_and_cleanup(current_notes, target_text)
                 cursor.execute('UPDATE weekly_plan SET notes = ? WHERE id = ?', 
                              (updated_notes, record_id))
                 changes_made.append(f"Updated notes for {exercise_name}")
-        
+
         conn.commit()
         conn.close()
-        
+
         return changes_made
-        
+
     except Exception as e:
         print(f"Error in comprehensive removal: {e}")
         return []
@@ -675,24 +675,24 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
 def remove_text_and_cleanup(original_text, target_text):
     """Remove target text and clean up the resulting string"""
     import re
-    
+
     # Case-insensitive removal
     pattern = re.compile(re.escape(target_text), re.IGNORECASE)
     updated_text = pattern.sub('', original_text)
-    
+
     # Clean up common artifacts
     # Remove "for " if it's left hanging
     updated_text = re.sub(r'\bfor\s*$', '', updated_text, flags=re.IGNORECASE)
     updated_text = re.sub(r'\bfor\s*\,', ',', updated_text, flags=re.IGNORECASE)
     updated_text = re.sub(r'\bfor\s*\.', '.', updated_text, flags=re.IGNORECASE)
-    
+
     # Clean up extra spaces and punctuation
     updated_text = re.sub(r'\s+', ' ', updated_text)  # Multiple spaces to single
     updated_text = re.sub(r'\s*,\s*,', ',', updated_text)  # Double commas
     updated_text = re.sub(r'^\s*,\s*', '', updated_text)  # Leading comma
     updated_text = re.sub(r'\s*,\s*$', '', updated_text)  # Trailing comma
     updated_text = updated_text.strip()
-    
+
     return updated_text
 
 def update_progression_notes_from_performance(exercise_name, day_of_week, performance_notes):
@@ -700,7 +700,7 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Analyze performance and generate progression note
         if any(phrase in performance_notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
             progression_note = "Focus on completing all reps this week"
@@ -710,19 +710,19 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
             progression_note = "Maintain current intensity"
         else:
             progression_note = ""
-        
+
         if progression_note:
             cursor.execute('''
                 UPDATE weekly_plan 
                 SET progression_notes = ? 
                 WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
             ''', (progression_note, exercise_name, day_of_week))
-            
+
             conn.commit()
             print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
-        
+
         conn.close()
-        
+
     except Exception as e:
         print(f"Error updating progression notes: {e}")
 
@@ -740,7 +740,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             r'get rid of.*?([^.]+)',
             r'eliminate.*?([^.]+)'
         ]
-        
+
         for pattern in removal_patterns:
             match = re.search(pattern, user_request_lower)
             if match:
@@ -748,12 +748,12 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                 if target_text:
                     print(f"🎯 Detected targeted removal request for: '{target_text}'")
                     changes_made = remove_loose_skin_references_comprehensive(target_text)
-                    
+
                     if changes_made:
                         print(f"✅ Comprehensive removal complete:")
                         for change in changes_made:
                             print(f"  • {change}")
-                        
+
                         return {
                             'comprehensive_removal': True,
                             'target_text': target_text,
@@ -792,7 +792,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             # Get current philosophy from database
             conn = sqlite3.connect('workout_logs.db')
             cursor = conn.cursor()
-            
+
             cursor.execute('''
                 SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
                 FROM plan_context 
@@ -800,13 +800,13 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                 ORDER BY created_date DESC 
                 LIMIT 1
             ''')
-            
+
             current_context = cursor.fetchone()
             conn.close()
-            
+
             if current_context:
                 current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
-                
+
                 # Create a comprehensive rewrite prompt for Grok
                 rewrite_prompt = f"""Here is my current training philosophy:
 
@@ -831,7 +831,7 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                 try:
                     from openai import OpenAI
                     client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-                    
+
                     response = client.chat.completions.create(
                         model="grok-4-0709",
                         messages=[
@@ -840,13 +840,13 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                         ],
                         temperature=0.7
                     )
-                    
+
                     grok_rewrite = response.choices[0].message.content
-                    
+
                     # Parse Grok's structured response
                     lines = grok_rewrite.split('\n')
                     extracted_data = {}
-                    
+
                     for line in lines:
                         line = line.strip()
                         if 'TRAINING_PHILOSOPHY:' in line:
@@ -857,17 +857,17 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                             extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
                         elif 'SPECIAL_CONSIDERATIONS:' in line:
                             extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    
+
                     # Add reasoning
                     extracted_data['reasoning'] = f"Updated philosophy based on user request: {user_request[:100]}..."
-                    
+
                     print(f"🧠 Successfully rewrote philosophy with current context")
                     return extracted_data
-                    
+
                 except Exception as e:
                     print(f"⚠️ Failed to get Grok rewrite: {str(e)}")
                     return None
-            
+
             else:
                 print(f"⚠️ No existing philosophy found to rewrite")
                 return None
@@ -965,20 +965,20 @@ def regenerate_exercise_metadata_from_plan():
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Clear existing exercise metadata
         cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
-        
+
         # Get all exercises from current weekly plan
         cursor.execute('''
             SELECT DISTINCT exercise_name FROM weekly_plan 
             ORDER BY exercise_name
         ''')
         exercises = cursor.fetchall()
-        
+
         for (exercise_name,) in exercises:
             exercise_lower = exercise_name.lower()
-            
+
             # Determine purpose and progression based on exercise type
             if any(word in exercise_lower for word in ['ab', 'crunch', 'core', 'woodchop', 'back extension']):
                 purpose = "Midsection hypertrophy for loose skin tightening"
@@ -1004,7 +1004,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Hypertrophy and strength development"
                 progression_logic = "normal"
                 notes = "General hypertrophy and strength work"
-            
+
             cursor.execute('''
                 INSERT INTO exercise_metadata
                 (user_id, exercise_name, exercise_type, primary_purpose,
@@ -1017,11 +1017,11 @@ def regenerate_exercise_metadata_from_plan():
                 notes,
                 datetime.now().strftime('%Y-%m-%d')
             ))
-        
+
         conn.commit()
         conn.close()
         print(f"✅ Regenerated metadata for {len(exercises)} exercises")
-        
+
     except Exception as e:
         print(f"⚠️ Error regenerating exercise metadata: {str(e)}")
 
@@ -1275,7 +1275,6 @@ def build_smart_context(prompt, query_intent, user_background=None):
             FROM workouts 
             WHERE date_logged >= date('now', '-21 days')
             ORDER BY date_logged DESC
-            LIMIT 30
         """)
         recent_logs = cursor.fetchall()
         if recent_logs:
@@ -1415,7 +1414,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     context_info += f" [SUBSTITUTED: {w[6]}]"
                 context_info += "\n"
 
-        # Include weekly plan for comparison
+        # Include weekly plan for reference
         cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week')
         planned_exercises = cursor.fetchall()
         if planned_exercises:
@@ -1444,7 +1443,7 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
 
         # Check for comprehensive plan modification requests
         is_comprehensive_modification = 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt
-        
+
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
@@ -1460,7 +1459,7 @@ TRAINER MINDSET - CRITICAL:
 You are acting as an experienced personal trainer, not just an AI assistant. This means:
 
 - ALWAYS consider the user's current weekly training volume before suggesting changes
-- Understand that more isn't always better - recovery and balance matter
+- Understand that more isn\'t always better - recovery and balance matter
 - When asked to add exercises, first evaluate if the body part/day already has sufficient volume
 - Suggest MODIFICATIONS (swaps, replacements) rather than just additions when appropriate
 - Consider the impact on other training days and muscle groups
@@ -1493,12 +1492,12 @@ OR
 - ADD: [Day] - [new exercise] 
   - Sets/reps: [specific prescription]
   - Reasoning: [why adding is appropriate here]
-  - Consideration: [note about current day's load]
+  - Consideration: [note about current day\'s load]
 
 TRAINER LANGUAGE:
 - Use phrases like "Your current leg volume is already high, so instead of adding more..."
 - "This would be a smart swap because..."
-- "I'd recommend replacing rather than adding because..."
+- "I\'d recommend replacing rather than adding because..."
 - Think programming, not just exercise selection
 
 Be specific with exercise names, sets, reps, and weights. Always explain the programming logic behind your suggestions."""
@@ -1509,7 +1508,7 @@ Be specific with exercise names, sets, reps, and weights. Always explain the pro
 LENGTH CONSTRAINTS:
 - Keep total response under 600 words
 - Focus on 3-5 key insights maximum
-- Don't analyze every single exercise - pick the most important ones
+- Don\'t analyze every single exercise - pick the most important ones
 - Use bullet points for clarity
 
 ANALYSIS APPROACH:
@@ -1518,7 +1517,7 @@ ANALYSIS APPROACH:
 3. Identify 2-3 main improvement areas with specific suggestions
 4. End with "What would you like me to elaborate on?" to encourage follow-up
 
-STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
+STYLE: Direct, insightful, conversational. Think ChatGPT\'s balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
             system_prompt = """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
 
@@ -1526,35 +1525,35 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
 
 PLAN MODIFICATION CAPABILITIES:
 - When user asks to modify their plan (change exercises, sets, reps, weight), respond with enthusiasm: "Absolutely! I can add that to your plan."
-- Briefly explain what you'll add and why it's a good choice
-- Be specific about the exercise details: "I'll add Roman Chair Back Extensions with a 45lb plate to your Wednesday routine - 3 sets of 8-12 reps."
-- End with: "I'll add this to your plan now." (Don't ask for permission again if they've already confirmed)
+- Briefly explain what you\'ll add and why it\'s a good choice
+- Be specific about the exercise details: "I\'ll add Roman Chair Back Extensions with a 45lb plate to your Wednesday routine - 3 sets of 8-12 reps."
+- End with: "I\'ll add this to your plan now." (Don\'t ask for permission again if they\'ve already confirmed)
 - When they say "yes" or "yes please" to a plan change, that means they want you to proceed
 - The system will automatically show them a confirmation button to actually execute the change
 
 RESPONSE LENGTH GUIDELINES:
-- Greetings ("hello", "hi", "hey"): Respond naturally like a normal conversation - "Hey! What's up?" or "Hello!" Don't mention workouts unless they ask about fitness
+- Greetings ("hello", "hi", "hey"): Respond naturally like a normal conversation - "Hey! What\'s up?" or "Hello!" Don\'t mention workouts unless they ask about fitness
 - General questions ("what can you do"): Moderate length with bullet points
 - Historical data ("what did I do Friday"): Brief summary format
 - Plan modifications: Be enthusiastic and specific about what you can change
 - Progression tips: Use this specific format:
   • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
   • Exercise Name: specific actionable change
-  Then end with: "Ask for my reasoning on any of these progressions if you'd like more detail."
+  Then end with: "Ask for my reasoning on any of these progressions if you\'d like more detail."
 
 GREETING BEHAVIOR:
-- For simple greetings (hello, hi, hey, what's up), respond like a normal person would
-- Don't immediately jump into fitness talk unless they mention workouts
-- Be casual and friendly - you're having a conversation, not giving a sales pitch
-- Examples: "Hey!" "What's going on?" "Hi there!" "Hello! How's it going?"
+- For simple greetings (hello, hi, hey, what\'s up), respond like a normal person would
+- Don\'t immediately jump into fitness talk unless they mention workouts
+- Be casual and friendly - you\'re having a conversation, not giving a sales pitch
+- Examples: "Hey!" "What\'s going on?" "Hi there!" "Hello! How\'s it going?"
 
 CONTEXT USAGE:
 - Only reference workout data when the question actually requires it
 - For greetings and casual conversation, respond naturally without mentioning workout data
 - For specific fitness questions, use the provided context appropriately
-- Don't feel obligated to reference every piece of context data you have access to
+- Don\'t feel obligated to reference every piece of context data you have access to
 
-STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here's what I think" - just dive into the answer."""
+STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here\'s what I think" - just dive into the answer."""
 
         response = client.chat.completions.create(
             model="grok-4-0709",
@@ -1859,12 +1858,12 @@ def chat_stream():
                                 datetime.now().strftime('%Y-%m-%d')
                             ))
                             print(f"🧠 Auto-updated training philosophy based on conversation")
-                            
+
                             # If this was a comprehensive plan change, regenerate exercise metadata
                             if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
                                 regenerate_exercise_metadata_from_plan()
                                 print(f"🔄 Regenerated exercise metadata for plan changes")
-                                
+
                         except Exception as e:
                             print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
@@ -2001,12 +2000,12 @@ def get_plan(date):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get day name from date
         from datetime import datetime
         date_obj = datetime.strptime(date, '%Y-%m-%d')
         day_name = date_obj.strftime('%A').lower()
-        
+
         cursor.execute('''
             SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order, 
                    COALESCE(notes, ""), COALESCE(progression_notes, "")
@@ -2014,7 +2013,7 @@ def get_plan(date):
             WHERE day_of_week = ? 
             ORDER BY exercise_order
         ''', (day_name,))
-        
+
         exercises = []
         for row in cursor.fetchall():
             exercise_name, sets, reps, weight, order, notes, progression_notes = row
@@ -2027,10 +2026,10 @@ def get_plan(date):
                 'notes': notes,
                 'progression_notes': progression_notes
             })
-        
+
         conn.close()
         return jsonify({'exercises': exercises})
-        
+
     except Exception as e:
         return jsonify({'exercises': [], 'error': str(e)})
 
@@ -2644,8 +2643,8 @@ def propose_plan_change():
         cursor.execute('''
             INSERT INTO auto_actions 
             (conversation_id, action_type, action_data, executed)
-            VALUES (?, 'plan_modification_proposal', ?, FALSE)
-        ''', (conversation_id, json.dumps(proposal_data)))
+            VALUES (?, ?, ?, FALSE)
+        ''', (conversation_id, 'plan_modification_proposal', json.dumps(proposal_data)))
 
         proposal_id = cursor.lastrowid
         conn.commit()
@@ -2763,7 +2762,7 @@ def edit_exercise():
         # First check if progression_notes column exists
         cursor.execute("PRAGMA table_info(weekly_plan)")
         columns = [col[1] for col in cursor.fetchall()]
-        
+
         if 'progression_notes' in columns:
             cursor.execute('''
                 UPDATE weekly_plan 
@@ -3299,7 +3298,7 @@ def save_workout():
             SET newly_added = FALSE 
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
-        
+
         # Update progression notes if there are performance notes
         if notes:
             today_name = datetime.now().strftime('%A').lower()
@@ -3483,12 +3482,12 @@ def restore_philosophy():
             FROM plan_context 
             WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
         ''')
-        
+
         backup_data = cursor.fetchone()
-        
+
         if backup_data:
             philosophy, progression, weekly, considerations = backup_data
-            
+
             # Update the current entry with the backup data
             cursor.execute('''
                 UPDATE plan_context 
@@ -3499,10 +3498,10 @@ def restore_philosophy():
                     updated_date = ?
                 WHERE id = (SELECT MAX(id) FROM plan_context WHERE user_id = 1)
             ''', (philosophy, progression, weekly, considerations, datetime.now().strftime('%Y-%m-%d')))
-            
+
             conn.commit()
             conn.close()
-            
+
             return jsonify({
                 'success': True, 
                 'message': 'Philosophy restored successfully!',
@@ -3521,40 +3520,40 @@ def clean_loose_skin_final():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         changes_made = []
-        
+
         # Clean exercise metadata specifically
         cursor.execute('SELECT id, exercise_name, primary_purpose, ai_notes FROM exercise_metadata')
         metadata_records = cursor.fetchall()
-        
+
         for record_id, exercise_name, purpose, notes in metadata_records:
             updated_purpose = purpose
             updated_notes = notes
             changed = False
-            
+
             if purpose and 'loose skin' in purpose.lower():
                 updated_purpose = purpose.replace('loose skin tightening', 'muscle development').replace('for loose skin', 'for core strength')
                 changed = True
-                
+
             if notes and 'loose skin' in notes.lower():
                 updated_notes = notes.replace('loose skin', 'core development').replace('tightening', 'strengthening')
                 changed = True
-                
+
             if changed:
                 cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?', 
                              (updated_purpose, updated_notes, record_id))
                 changes_made.append(f"Updated metadata for {exercise_name}")
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True, 
             'changes_made': changes_made,
             'message': f'Cleaned up {len(changes_made)} remaining references'
         })
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
