@@ -3261,6 +3261,49 @@ def restore_philosophy():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/clean_loose_skin_final', methods=['POST'])
+def clean_loose_skin_final():
+    """Final cleanup of any remaining loose skin references"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        changes_made = []
+        
+        # Clean exercise metadata specifically
+        cursor.execute('SELECT id, exercise_name, primary_purpose, ai_notes FROM exercise_metadata')
+        metadata_records = cursor.fetchall()
+        
+        for record_id, exercise_name, purpose, notes in metadata_records:
+            updated_purpose = purpose
+            updated_notes = notes
+            changed = False
+            
+            if purpose and 'loose skin' in purpose.lower():
+                updated_purpose = purpose.replace('loose skin tightening', 'muscle development').replace('for loose skin', 'for core strength')
+                changed = True
+                
+            if notes and 'loose skin' in notes.lower():
+                updated_notes = notes.replace('loose skin', 'core development').replace('tightening', 'strengthening')
+                changed = True
+                
+            if changed:
+                cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?', 
+                             (updated_purpose, updated_notes, record_id))
+                changes_made.append(f"Updated metadata for {exercise_name}")
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True, 
+            'changes_made': changes_made,
+            'message': f'Cleaned up {len(changes_made)} remaining references'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/fix_newly_added', methods=['POST'])
 def fix_newly_added():
     """Fix newly_added flags based on actual log data"""
