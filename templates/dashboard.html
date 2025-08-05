@@ -688,6 +688,64 @@ function checkProgressionStatus(date) {
 
                 // Display progression notes
                 if (data.progression_notes && data.progression_notes.length > 0) {
+                    let notesHtml = '<div class="mt-3"><h6>Progression Notes:</h6>';
+                    data.progression_notes.forEach(note => {
+                        notesHtml += `<div class="alert alert-info py-2">
+                            <strong>${note.exercise}:</strong> ${note.progression}
+                        </div>`;
+                    });
+                    notesHtml += '</div>';
+                    notesDiv.innerHTML = notesHtml;
+                } else {
+                    notesDiv.innerHTML = '';
+                }
+            } else if (data.needs_analysis) {
+                statusDiv.innerHTML = `⏳ ${data.total_workouts} workouts ready for progression analysis`;
+                analyzeBtn.textContent = 'Analyze Progress';
+                notesDiv.innerHTML = '';
+            } else {
+                statusDiv.innerHTML = 'No workouts logged today';
+                analyzeBtn.style.display = 'none';
+                notesDiv.innerHTML = '';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking progression status:', error);
+        });
+}
+
+function analyzeProgression() {
+    const today = new Date().toISOString().split('T')[0];
+    const analyzeBtn = document.getElementById('analyzeProgressionBtn');
+    
+    analyzeBtn.disabled = true;
+    analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Analyzing...';
+
+    fetch('/analyze_day_progression', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ date: today })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Progression analysis completed!');
+            checkProgressionStatus(today);
+        } else {
+            alert('Error analyzing progression: ' + (data.error || data.message));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error analyzing progression');
+    })
+    .finally(() => {
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = '<i class="fas fa-chart-line me-1"></i>Analyze Progress';
+    });
+}h > 0) {
                     let notesHtml = '<h6>Today\'s Progression Notes:</h6><ul class="list-unstyled">';
                     data.progression_notes.forEach(note => {
                         notesHtml += `<li><strong>${note.exercise}:</strong> ${note.progression}</li>`;
