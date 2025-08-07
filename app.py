@@ -498,9 +498,25 @@ def extract_potential_actions(prompt, intent):
     return actions
 
 def parse_plan_modification_from_ai_response(ai_response, user_request):
-    """Parse Grok's response to extract specific plan modifications"""
+    """Parse Grok's response to extract specific plan modifications vs progression guidance"""
     try:
-        # Look for comprehensive trainer-style responses first
+        # Look for progression guidance first (preferred method)
+        progression_guidance = []
+        guidance_pattern = r'PROGRESSION TIP:\s*([^:]+):\s*(.+?)(?=\n|$)'
+        guidance_matches = re.findall(guidance_pattern, ai_response, re.IGNORECASE)
+        
+        for exercise_name, guidance_note in guidance_matches:
+            progression_guidance.append({
+                'type': 'progression_guidance',
+                'exercise_name': exercise_name.strip(),
+                'guidance_note': guidance_note.strip(),
+                'day': None  # Will be determined by the exercise location in plan
+            })
+
+        if progression_guidance:
+            return {'type': 'guidance', 'data': progression_guidance}
+
+        # Look for comprehensive trainer-style responses for actual plan modifications
         modifications = []
 
         # Check for structured trainer responses
@@ -557,7 +573,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
 
         # If we found structured modifications, return them
         if modifications:
-            return modifications[0] if len(modifications) == 1 else modifications
+            return {'type': 'plan_modification', 'data': modifications[0] if len(modifications) == 1 else modifications}
 
         # Fallback to original parsing logic for unstructured responses
         response_lower = ai_response.lower()
@@ -1783,41 +1799,38 @@ ANALYSIS APPROACH:
 
 STYLE: Direct, insightful, conversational. Think ChatGPT\'s balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
-            system_prompt = """You are Grok, an AI assistant with access to the user's workout history and fitness profile. 
+            system_prompt = """You are Grok, an experienced training partner who knows your workout history and goals inside-out.
 
-🤖 IMPORTANT: You have the ability to modify the user's weekly workout plan directly! When they ask for plan changes, you can actually make them happen.
+CONVERSATION FLOW - CRITICAL:
+- NEVER recap what the user already knows about their own plan
+- Skip cookie-cutter summaries like "Your 5-day split is a solid setup for building muscle..."  
+- Jump straight into actionable insights and specific suggestions
+- Respond like you're having a real conversation with someone who knows their stuff
+
+PROGRESSION SUGGESTIONS:
+When suggesting progressions, provide them as GUIDANCE NOTES, not plan overwrites:
+- Format: "For [exercise]: Try bumping up to [specific weight] next week - you've been crushing the current weight"
+- Example: "For Leg Press: Ready to jump to 200lbs next week - your form has been solid at 180"
+- Focus on the WHY behind each suggestion based on their recent performance
 
 PLAN MODIFICATION CAPABILITIES:
-- When user asks to modify their plan (change exercises, sets, reps, weight), respond with enthusiasm: "Absolutely! I can add that to your plan."
-- Briefly explain what you\'ll add and why it\'s a good choice
-- Be specific about the exercise details: "I\'ll add Roman Chair Back Extensions with a 45lb plate to your Wednesday routine - 3 sets of 8-12 reps."
-- End with: "I\'ll add this to your plan now." (Don\'t ask for permission again if they\'ve already confirmed)
-- When they say "yes" or "yes please" to a plan change, that means they want you to proceed
-- The system will automatically show them a confirmation button to actually execute the change
+- When user asks for plan changes, be enthusiastic but suggest GUIDANCE first
+- Say: "I can add progression notes to guide your next workouts, or if you want, I can modify the plan directly"
+- Make it clear the difference between guidance tips vs plan changes
+- For progression tips, use format: "PROGRESSION TIP: [specific guidance for next workout]"
 
-RESPONSE LENGTH GUIDELINES:
-- Greetings ("hello", "hi", "hey"): Respond naturally like a normal conversation - "Hey! What\'s up?" or "Hello!" Don\'t mention workouts unless they ask about fitness
-- General questions ("what can you do"): Moderate length with bullet points
-- Historical data ("what did I do Friday"): Brief summary format
-- Plan modifications: Be enthusiastic and specific about what you can change
-- Progression tips: Use this specific format:
-  • Exercise Name: specific actionable change (e.g., "bump up to 40 lbs", "go for 25 reps")
-  • Exercise Name: specific actionable change
-  Then end with: "Ask for my reasoning on any of these progressions if you\'d like more detail."
-
-GREETING BEHAVIOR:
-- For simple greetings (hello, hi, hey, what\'s up), respond like a normal person would
-- Don\'t immediately jump into fitness talk unless they mention workouts
-- Be casual and friendly - you\'re having a conversation, not giving a sales pitch
-- Examples: "Hey!" "What\'s going on?" "Hi there!" "Hello! How\'s it going?"
+NATURAL CONVERSATION STYLE:
+- Greetings: Respond like a training buddy - "What's up!" "Hey!" 
+- Analysis requests: Jump straight into the meat - no need to validate their plan first
+- Be direct and conversational - you're not writing a fitness article
+- Use phrases like "I see..." "Here's what jumps out..." "The big opportunity is..."
 
 CONTEXT USAGE:
-- Only reference workout data when the question actually requires it
-- For greetings and casual conversation, respond naturally without mentioning workout data
-- For specific fitness questions, use the provided context appropriately
-- Don\'t feel obligated to reference every piece of context data you have access to
+- Only reference data when directly relevant to their question
+- Don't feel obligated to acknowledge every piece of context
+- Focus on what matters most for their specific question
 
-STYLE: Be direct and cut unnecessary filler words. Get straight to the point while staying helpful. Avoid introductory phrases like "Great question!" or "Here\'s what I think" - just dive into the answer."""
+STYLE: Think training partner conversation, not formal fitness consultation. Be direct, insightful, and skip the fluff."""
 
         response = client.chat.completions.create(
             model="grok-4-0709",
@@ -2811,6 +2824,47 @@ def execute_auto_actions():
             'success': True,
             'executed_actions': results
         })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/add_progression_guidance', methods=['POST'])
+def add_progression_guidance():
+    """Add progression guidance notes without modifying plan weights"""
+    try:
+        data = request.json
+        exercise_name = data.get('exercise_name', '')
+        guidance_note = data.get('guidance_note', '')
+        day_of_week = data.get('day_of_week', '').lower()
+
+        if not exercise_name or not guidance_note:
+            return jsonify({'success': False, 'error': 'Exercise name and guidance note required'})
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Update progression_notes for the exercise
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET progression_notes = ? 
+            WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
+        ''', (guidance_note, exercise_name, day_of_week))
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'success': True,
+                'message': f"Added progression guidance for {exercise_name}",
+                'guidance_added': {
+                    'exercise': exercise_name,
+                    'note': guidance_note,
+                    'day': day_of_week
+                }
+            })
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
