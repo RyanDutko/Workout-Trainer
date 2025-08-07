@@ -1572,6 +1572,36 @@ def build_smart_context(prompt, query_intent, user_background=None):
             if keyword in prompt.lower():
                 mentioned_exercise = keyword
                 break
+        
+        # Also check if user is asking about their plan
+        if any(phrase in prompt.lower() for phrase in ['my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan', 'friday plan', 'saturday plan', 'sunday plan']):
+            # Include full weekly plan for plan queries
+            cursor.execute('''
+                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+                FROM weekly_plan 
+                ORDER BY 
+                    CASE day_of_week 
+                        WHEN 'monday' THEN 1 
+                        WHEN 'tuesday' THEN 2 
+                        WHEN 'wednesday' THEN 3 
+                        WHEN 'thursday' THEN 4 
+                        WHEN 'friday' THEN 5 
+                        WHEN 'saturday' THEN 6 
+                        WHEN 'sunday' THEN 7 
+                    END, exercise_order
+            ''')
+            weekly_plan = cursor.fetchall()
+            if weekly_plan:
+                context_info += "\n=== YOUR CURRENT WEEKLY PLAN ===\n"
+                current_day = ""
+                for row in weekly_plan:
+                    day, exercise, sets, reps, weight, order = row
+                    if day != current_day:
+                        if current_day:
+                            context_info += "\n"
+                        context_info += f"\n{day.upper()}:\n"
+                        current_day = day
+                    context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
 
         if mentioned_exercise:
             # Get history for this exercise and related ones
@@ -1626,11 +1656,40 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 context_info += f"  • {exercise}: {sets}x{reps}@{weight}\n"
 
     elif query_intent == 'general':
-        # Minimal context for general chat
+        # Include weekly plan for general queries that might reference plan
         context_info += "\n=== BASIC INFO ===\n"
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
         recent_count = cursor.fetchone()[0]
         context_info += f"Workouts this week: {recent_count}\n"
+        
+        # Always include weekly plan for any query that might reference days or exercises
+        if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
+            cursor.execute('''
+                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+                FROM weekly_plan 
+                ORDER BY 
+                    CASE day_of_week 
+                        WHEN 'monday' THEN 1 
+                        WHEN 'tuesday' THEN 2 
+                        WHEN 'wednesday' THEN 3 
+                        WHEN 'thursday' THEN 4 
+                        WHEN 'friday' THEN 5 
+                        WHEN 'saturday' THEN 6 
+                        WHEN 'sunday' THEN 7 
+                    END, exercise_order
+            ''')
+            weekly_plan = cursor.fetchall()
+            if weekly_plan:
+                context_info += "\n=== WEEKLY PLAN ===\n"
+                current_day = ""
+                for row in weekly_plan:
+                    day, exercise, sets, reps, weight, order = row
+                    if day != current_day:
+                        if current_day:
+                            context_info += "\n"
+                        context_info += f"\n{day.upper()}:\n"
+                        current_day = day
+                    context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
 
     conn.close()
     return context_info
