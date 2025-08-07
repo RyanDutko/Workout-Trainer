@@ -1720,6 +1720,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
             """)
             
             all_workouts = cursor.fetchall()
+            print(f"📊 Total workouts in database: {len(all_workouts)}")
+            
             specific_day_logs = []
             
             # Filter workouts by day name
@@ -1727,9 +1729,12 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 workout_date = workout[4]  # date_logged is at index 4
                 try:
                     workout_day = datetime.strptime(workout_date, '%Y-%m-%d').strftime('%A').lower()
+                    print(f"🗓️ Checking workout from {workout_date} ({workout_day}) - Exercise: {workout[0]}")
                     if workout_day == specific_day:
                         specific_day_logs.append(workout)
+                        print(f"✅ MATCH: {workout[0]} on {workout_date}")
                 except ValueError:
+                    print(f"⚠️ Invalid date format: {workout_date}")
                     continue
             
             print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
