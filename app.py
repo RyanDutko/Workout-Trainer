@@ -354,11 +354,11 @@ def analyze_query_intent(prompt, conversation_context=None):
         'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous'
     ]
     historical_discussion_score = sum(2 for phrase in historical_discussion_keywords if phrase in prompt_lower)
-    
+
     # Strong indicators for historical queries
     if any(phrase in prompt_lower for phrase in ['talk about my', 'discuss my', 'my recent', 'my workout from', 'how was my']):
         historical_discussion_score += 5
-    
+
     if historical_discussion_score > 0:
         intents['historical'] = min(historical_discussion_score * 0.2, 1.0)
 
@@ -386,7 +386,7 @@ def analyze_query_intent(prompt, conversation_context=None):
         plan_score += 1
     if any(phrase in prompt_lower for phrase in ['can you change', 'could you modify', 'would you update', 'please add']):
         plan_score += 2
-    
+
     # REDUCE plan modification score if this is clearly about past workouts
     if historical_discussion_score > 0:
         plan_score = max(0, plan_score - 3)
@@ -499,7 +499,6 @@ def extract_potential_actions(prompt, intent):
                 break
 
         # Try to extract exercise and modification details
-        exercise_match = None
         modification_type = 'update'  # default
 
         if any(word in prompt_lower for word in ['add', 'include']):
@@ -525,7 +524,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
         progression_guidance = []
         guidance_pattern = r'PROGRESSION TIP:\s*([^:]+):\s*(.+?)(?=\n|$)'
         guidance_matches = re.findall(guidance_pattern, ai_response, re.IGNORECASE)
-        
+
         for exercise_name, guidance_note in guidance_matches:
             progression_guidance.append({
                 'type': 'progression_guidance',
@@ -907,7 +906,7 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                             extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
 
                     # Add reasoning
-                    extracted_data['reasoning'] = f"Updated philosophy based on user request: {user_request[:100]}..."
+                    extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
 
                     print(f"🧠 Successfully rewrote philosophy with current context")
                     return extracted_data
@@ -1044,7 +1043,7 @@ def regenerate_exercise_metadata_from_plan():
                 purpose = "Upper body isolation hypertrophy"
                 progression_logic = "slow"
                 notes = "Isolation exercise for targeted growth"
-            elif any(word in exercise_lower for word in ['pushup', 'hanging leg', 'split squat', 'goblet']):
+            elif any(word in exercise_lower for word in ['pushup', 'split squat', 'goblet']):
                 purpose = "Bodyweight strength and control"
                 progression_logic = "slow"
                 notes = "Bodyweight progression: reps → tempo → weight"
@@ -1184,13 +1183,13 @@ def resolve_contextual_references(prompt, entities, conversation_context):
 
     # Enhanced reference resolution
     reference_map = {}
-    
+
     for conv in recent_convs:
         user_msg, ai_resp, exercise_mentioned, plan_mods, timestamp = conv
-        
+
         # Extract specific exercise variations mentioned in recent conversation
         import re
-        
+
         # Look for specific exercise patterns in recent conversation
         exercise_patterns = [
             r'(low to high chest fl[yi]e?s?)',
@@ -1203,16 +1202,16 @@ def resolve_contextual_references(prompt, entities, conversation_context):
             r'(\w+ curl)',
             r'(\w+ extension)'
         ]
-        
+
         combined_text = f"{user_msg} {ai_resp}".lower()
-        
+
         for pattern in exercise_patterns:
             matches = re.findall(pattern, combined_text)
             for match in matches:
                 exercise_name = match.strip()
                 if len(exercise_name) > 3:  # Avoid short meaningless matches
                     reference_map[exercise_name] = exercise_name
-        
+
         # Store the most mentioned exercise
         if exercise_mentioned and len(exercise_mentioned) > 3:
             reference_map['it'] = exercise_mentioned
@@ -1274,9 +1273,9 @@ def analyze_day_progression(date_str):
             WHERE date_logged = ?
             ORDER BY id
         ''', (date_str,))
-        
+
         day_workouts = cursor.fetchall()
-        
+
         if not day_workouts:
             conn.close()
             return {"success": False, "message": f"No workouts found for {date_str}. Make sure you have logged workouts for this date."}
@@ -1311,7 +1310,7 @@ def analyze_day_progression(date_str):
         # Build comprehensive context for Grok
         context_info = f"=== PROGRESSION ANALYSIS REQUEST ===\n"
         context_info += f"Date: {date_str} ({day_name.title()})\n\n"
-        
+
         if user_background:
             context_info += f"User Profile:\n"
             context_info += f"- Goal: {user_background.get('primary_goal', 'Not specified')}\n"
@@ -1360,7 +1359,7 @@ Please analyze today's workout performance and provide specific progression sugg
 
 For each exercise completed today, provide a progression note in this format:
 EXERCISE: [exercise name]
-PROGRESSION: [specific actionable suggestion, e.g., "Increase to 185lbs next week", "Add 1 rep per set", "Maintain weight, focus on form", "Deload to 160lbs - showing fatigue"]
+PROGRESSION: [specific actionable suggestion, e.g., "Increase to 185lbs next week", "Add 1 rep per set", "Maintain current intensity", "Deload to 160lbs - showing fatigue"]
 REASONING: [brief explanation of why this progression makes sense]
 
 SPECIAL HANDLING FOR SUBSTITUTIONS:
@@ -1379,7 +1378,7 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
 
         # Get Grok's analysis
         progression_analysis = get_grok_response_with_context(progression_prompt, user_background)
-        
+
         # Parse Grok's response to extract individual progression notes
         progression_updates = []
         lines = progression_analysis.split('\n')
@@ -1397,14 +1396,14 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
                         'progression': current_progression,
                         'reasoning': current_reasoning or ''
                     })
-                
+
                 current_exercise = line.replace('EXERCISE:', '').strip()
                 current_progression = None
                 current_reasoning = None
-                
+
             elif line.startswith('PROGRESSION:'):
                 current_progression = line.replace('PROGRESSION:', '').strip()
-                
+
             elif line.startswith('REASONING:'):
                 current_reasoning = line.replace('REASONING:', '').strip()
 
@@ -1428,7 +1427,7 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
                         full_note += f" - {update['reasoning']}"
                     progression_note = full_note
                     break
-            
+
             if not progression_note:
                 # Fallback generic note if Grok didn't provide specific guidance
                 progression_note = "Analysis pending - check performance vs plan"
@@ -1474,6 +1473,9 @@ def build_smart_context(prompt, query_intent, user_background=None):
             context_info += f"User's Goal: {user_background['primary_goal']}\n"
         if user_background.get('fitness_level'):
             context_info += f"Fitness Level: {user_background['fitness_level']}\n"
+
+    # Check for ANY plan-related query first - before intent-specific processing
+    print(f"🔍 DEBUG: build_smart_context called with intent='{query_intent}' and prompt='{prompt[:100]}...'")
 
     # Check for ANY plan-related query first - before intent-specific processing
     is_plan_query = any(phrase in prompt.lower() for phrase in [
@@ -1673,7 +1675,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             if keyword in prompt.lower():
                 mentioned_exercise = keyword
                 break
-        
+
         if mentioned_exercise:
             # Get history for this exercise and related ones
             cursor.execute("""
@@ -1699,7 +1701,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
     elif query_intent == 'historical':
         # Include recent workout summary organized by date
         context_info += "\n=== YOUR RECENT WORKOUT HISTORY ===\n"
-        
+
         # Check if user is asking about a specific day
         specific_day = None
         day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
@@ -1707,23 +1709,23 @@ def build_smart_context(prompt, query_intent, user_background=None):
             if day in prompt.lower():
                 specific_day = day
                 break
-        
+
         # If asking about a specific day, prioritize that day's data
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
-            
+
             # Get all workouts and filter by day name
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts 
                 ORDER BY date_logged DESC
             """)
-            
+
             all_workouts = cursor.fetchall()
             print(f"📊 Total workouts in database: {len(all_workouts)}")
-            
+
             specific_day_logs = []
-            
+
             # Filter workouts by day name
             for workout in all_workouts:
                 workout_date = workout[4]  # date_logged is at index 4
@@ -1731,21 +1733,21 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     # Parse the date and get the day name
                     date_obj = datetime.strptime(workout_date, '%Y-%m-%d')
                     workout_day = date_obj.strftime('%A').lower()
-                    
+
                     print(f"🗓️ Checking workout from {workout_date} ({workout_day}) - Exercise: {workout[0]}")
                     print(f"   📅 Date object: {date_obj}, Day calculation: {date_obj.weekday()} (0=Monday, 1=Tuesday...)")
                     print(f"   🎯 Looking for: '{specific_day}', Found: '{workout_day}', Match: {workout_day == specific_day}")
-                    
+
                     if workout_day == specific_day:
                         specific_day_logs.append(workout)
                         print(f"✅ MATCH: {workout[0]} on {workout_date} is a {workout_day}")
                     else:
                         print(f"❌ NO MATCH: {workout[0]} on {workout_date} is a {workout_day}, not {specific_day}")
-                        
+
                 except ValueError as e:
                     print(f"⚠️ Invalid date format: {workout_date} - Error: {e}")
                     continue
-            
+
             # Manual verification for debugging
             print(f"\n🔍 MANUAL DATE VERIFICATION:")
             try:
@@ -1755,9 +1757,9 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 print(f"   Weekday number: {aug_5_2025.weekday()} (0=Monday, 1=Tuesday, 2=Wednesday...)")
             except Exception as e:
                 print(f"   Error in manual verification: {e}")
-            
+
             print(f"\n🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
-            
+
             if specific_day_logs:
                 # Group by date and show the most recent one
                 workouts_by_date = {}
@@ -1766,14 +1768,14 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     if date not in workouts_by_date:
                         workouts_by_date[date] = []
                     workouts_by_date[date].append(w)
-                
+
                 # Show the most recent Tuesday workout
                 most_recent_date = sorted(workouts_by_date.keys(), reverse=True)[0]
                 day_name = datetime.strptime(most_recent_date, '%Y-%m-%d').strftime('%A')
-                
+
                 context_info += f"\n🎯 YOUR MOST RECENT {day_name.upper()} WORKOUT ({most_recent_date}):\n"
                 context_info += "=" * 60 + "\n"
-                
+
                 for w in workouts_by_date[most_recent_date]:
                     exercise, sets, reps, weight, _, notes, sub_reason = w
                     context_info += f"• {exercise}: {sets}x{reps} @ {weight}"
@@ -1782,22 +1784,23 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     if notes and not notes.startswith('[SUBSTITUTED'):
                         clean_notes = notes.split('[SUBSTITUTED')[0].strip()
                         if clean_notes:
-                            context_info += f" - {clean_notes[:50]}{'...' if len(clean_notes) > 50 else ''}"
+                            note_preview = clean_notes[:50] + "..." if len(clean_notes) > 50 else clean_notes
+                            context_info += f" - {note_preview}"
                     context_info += "\n"
-                
+
                 context_info += f"\n✨ IMPORTANT: These are your ACTUAL logged exercises from {most_recent_date}. "
                 context_info += f"Use ONLY this data when discussing this workout. Do NOT make up or invent different exercises.\n"
                 context_info += "=" * 60 + "\n"
-                
+
                 print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
-                
+
                 # CRITICAL: Skip all the other context building and return immediately
                 # This ensures Grok ONLY sees the actual workout data, not sample/plan data
                 conn.close()
                 return context_info
             else:
                 context_info += f"\n❌ No {specific_day.upper()} workouts found in your logs.\n"
-                
+
                 # Show what dates we DO have for debugging
                 if all_workouts:
                     context_info += "Available workout dates:\n"
@@ -1813,7 +1816,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                                 continue
                 else:
                     context_info += "No workouts found in database at all.\n"
-        
+
         # Also include general recent workout history for context
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
@@ -1822,7 +1825,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             LIMIT 30
         """)
         recent_logs = cursor.fetchall()
-        
+
         if recent_logs and not specific_day:
             # Group by date for better organization
             workouts_by_date = {}
@@ -1831,13 +1834,13 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 if date not in workouts_by_date:
                     workouts_by_date[date] = []
                 workouts_by_date[date].append(w)
-            
+
             # Show workouts organized by date with CLEAR day identification
             context_info += "\n=== ALL RECENT WORKOUTS ===\n"
             for date in sorted(workouts_by_date.keys(), reverse=True)[:8]:  # Last 8 workout days
                 day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
                 context_info += f"\n=== {day_name.upper()} {date} ===\n"
-                
+
                 for w in workouts_by_date[date]:
                     exercise, sets, reps, weight, _, notes, sub_reason = w
                     context_info += f"• {exercise}: {sets}x{reps}@{weight}"
@@ -1883,7 +1886,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
         recent_count = cursor.fetchone()[0]
         context_info += f"Workouts this week: {recent_count}\n"
-        
+
         # Always include weekly plan for any query that might reference days or exercises
         if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
             cursor.execute('''
@@ -2335,7 +2338,7 @@ def chat_stream():
                         'type': 'modify_plan_suggestion',
                         'data': plan_mod_data
                     })
-                    
+
                     # Add confirmation request to AI response if not already present
                     if 'confirm' not in response.lower() and 'proposed update' not in response.lower():
                         confirmation_text = f"\n\n🔄 **PROPOSED PLAN CHANGE:**\nReplace {plan_mod_data.get('old_exercise', 'current exercise')} with {plan_mod_data.get('exercise_name', 'new exercise')} on {plan_mod_data.get('day', 'workout day')}.\n\nSay 'yes' or 'confirm' to apply this change, or 'no' to keep discussing."
@@ -3835,7 +3838,7 @@ def delete_workout():
                     if created_by == 'grok_ai':
                         cursor.execute('''
                             UPDATE weekly_plan 
-                            SET newly_added = TRUE
+                            SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
                             WHERE LOWER(exercise_name) = LOWER(?)
                         ''', (exercise_name,))
 
@@ -3871,7 +3874,7 @@ def save_workout():
         weight = data.get('weight', '')
         notes = data.get('notes', '')
         date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         # Handle substitution data
         original_exercise = data.get('original_exercise', '')
         original_weight = data.get('original_weight', '')
@@ -4250,10 +4253,10 @@ def analyze_day_progression_api():
     try:
         data = request.json
         date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         result = analyze_day_progression(date_str)
         return jsonify(result)
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -4266,20 +4269,20 @@ def make_substitution_permanent():
         new_exercise = data.get('new_exercise')
         new_weight = data.get('new_weight')
         day_of_week = data.get('day_of_week')
-        
+
         if not all([original_exercise, new_exercise, new_weight, day_of_week]):
             return jsonify({'success': False, 'error': 'Missing required data'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Update the weekly plan
         cursor.execute('''
             UPDATE weekly_plan 
             SET exercise_name = ?, target_weight = ?, notes = COALESCE(notes, '') || ' [Substituted from: ' || ? || ']'
             WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
         ''', (new_exercise, new_weight, original_exercise, day_of_week.lower(), original_exercise))
-        
+
         if cursor.rowcount > 0:
             conn.commit()
             conn.close()
@@ -4290,7 +4293,7 @@ def make_substitution_permanent():
         else:
             conn.close()
             return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
-            
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -4300,14 +4303,14 @@ def get_day_progression_status(date):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Count total workouts and completed progression analysis for the date
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ?', (date,))
         total_workouts = cursor.fetchone()[0]
-        
+
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND progression_notes IS NOT NULL AND progression_notes != ""', (date,))
         completed_analysis = cursor.fetchone()[0]
-        
+
         # Get progression notes for display
         cursor.execute('''
             SELECT exercise_name, progression_notes 
@@ -4316,9 +4319,9 @@ def get_day_progression_status(date):
             ORDER BY id
         ''', (date,))
         progression_notes = cursor.fetchall()
-        
+
         conn.close()
-        
+
         return jsonify({
             'date': date,
             'total_workouts': total_workouts,
@@ -4326,7 +4329,7 @@ def get_day_progression_status(date):
             'needs_analysis': total_workouts > 0 and completed_analysis == 0,
             'progression_notes': [{'exercise': note[0], 'progression': note[1]} for note in progression_notes]
         })
-        
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
