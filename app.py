@@ -1728,16 +1728,35 @@ def build_smart_context(prompt, query_intent, user_background=None):
             for workout in all_workouts:
                 workout_date = workout[4]  # date_logged is at index 4
                 try:
-                    workout_day = datetime.strptime(workout_date, '%Y-%m-%d').strftime('%A').lower()
+                    # Parse the date and get the day name
+                    date_obj = datetime.strptime(workout_date, '%Y-%m-%d')
+                    workout_day = date_obj.strftime('%A').lower()
+                    
                     print(f"🗓️ Checking workout from {workout_date} ({workout_day}) - Exercise: {workout[0]}")
+                    print(f"   📅 Date object: {date_obj}, Day calculation: {date_obj.weekday()} (0=Monday, 1=Tuesday...)")
+                    print(f"   🎯 Looking for: '{specific_day}', Found: '{workout_day}', Match: {workout_day == specific_day}")
+                    
                     if workout_day == specific_day:
                         specific_day_logs.append(workout)
-                        print(f"✅ MATCH: {workout[0]} on {workout_date}")
-                except ValueError:
-                    print(f"⚠️ Invalid date format: {workout_date}")
+                        print(f"✅ MATCH: {workout[0]} on {workout_date} is a {workout_day}")
+                    else:
+                        print(f"❌ NO MATCH: {workout[0]} on {workout_date} is a {workout_day}, not {specific_day}")
+                        
+                except ValueError as e:
+                    print(f"⚠️ Invalid date format: {workout_date} - Error: {e}")
                     continue
             
-            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
+            # Manual verification for debugging
+            print(f"\n🔍 MANUAL DATE VERIFICATION:")
+            try:
+                aug_5_2025 = datetime(2025, 8, 5)
+                aug_5_day = aug_5_2025.strftime('%A').lower()
+                print(f"   August 5, 2025 is a: {aug_5_day}")
+                print(f"   Weekday number: {aug_5_2025.weekday()} (0=Monday, 1=Tuesday, 2=Wednesday...)")
+            except Exception as e:
+                print(f"   Error in manual verification: {e}")
+            
+            print(f"\n🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
             
             if specific_day_logs:
                 # Group by date and show the most recent one
