@@ -34,7 +34,9 @@ def init_db():
         performance_context TEXT,
         environmental_factors TEXT,
         difficulty_rating INTEGER,
-        gym_location TEXT
+        gym_location TEXT,
+        progression_notes TEXT,
+        day_completed BOOLEAN DEFAULT FALSE
     )
     ''')
 
@@ -243,7 +245,9 @@ def init_db():
         ('performance_context', 'TEXT'),
         ('environmental_factors', 'TEXT'),
         ('difficulty_rating', 'INTEGER'),
-        ('gym_location', 'TEXT')
+        ('gym_location', 'TEXT'),
+        ('progression_notes', 'TEXT'),
+        ('day_completed', 'BOOLEAN DEFAULT FALSE')
     ]
 
     for column_name, column_def in workout_columns_to_add:
@@ -1191,6 +1195,201 @@ def get_conversation_state():
     except Exception as e:
         print(f"Error getting conversation state: {e}")
         return None
+
+def analyze_day_progression(date_str):
+    """Analyze progression for all exercises completed on a specific day"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get all workouts for this date
+        cursor.execute('''
+            SELECT id, exercise_name, sets, reps, weight, notes, progression_notes
+            FROM workouts 
+            WHERE date_logged = ?
+            ORDER BY id
+        ''', (date_str,))
+        
+        day_workouts = cursor.fetchall()
+        
+        if not day_workouts:
+            conn.close()
+            return {"success": False, "message": f"No workouts found for {date_str}. Make sure you have logged workouts for this date."}
+
+        # Get user context for better progression analysis
+        cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
+        user_bg = cursor.fetchone()
+        user_background = None
+        if user_bg:
+            columns = [description[0] for description in cursor.description]
+            user_background = dict(zip(columns, user_bg))
+
+        # Get weekly plan context
+        day_name = datetime.strptime(date_str, '%Y-%m-%d').strftime('%A').lower()
+        cursor.execute('''
+            SELECT exercise_name, target_sets, target_reps, target_weight 
+            FROM weekly_plan 
+            WHERE day_of_week = ?
+        ''', (day_name,))
+        planned_exercises = cursor.fetchall()
+
+        # Get recent workout history for context (last 4 weeks)
+        four_weeks_ago = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(weeks=4)).strftime('%Y-%m-%d')
+        cursor.execute('''
+            SELECT exercise_name, sets, reps, weight, date_logged, notes
+            FROM workouts 
+            WHERE date_logged >= ? AND date_logged < ?
+            ORDER BY exercise_name, date_logged DESC
+        ''', (four_weeks_ago, date_str))
+        recent_history = cursor.fetchall()
+
+        # Build comprehensive context for Grok
+        context_info = f"=== PROGRESSION ANALYSIS REQUEST ===\n"
+        context_info += f"Date: {date_str} ({day_name.title()})\n\n"
+        
+        if user_background:
+            context_info += f"User Profile:\n"
+            context_info += f"- Goal: {user_background.get('primary_goal', 'Not specified')}\n"
+            context_info += f"- Experience: {user_background.get('years_training', 'Not specified')} years\n"
+            context_info += f"- Fitness Level: {user_background.get('fitness_level', 'Not specified')}\n"
+            if user_background.get('injuries_history'):
+                context_info += f"- Injuries: {user_background['injuries_history']}\n"
+            context_info += "\n"
+
+        context_info += f"TODAY'S COMPLETED WORKOUTS:\n"
+        for workout_id, exercise, sets, reps, weight, notes, existing_progression in day_workouts:
+            context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+            if notes:
+                context_info += f" - Notes: {notes}"
+                # Check if this was a substitution and extract the details
+                if "SUBSTITUTED FROM:" in notes:
+                    context_info += f"\n  ⚠️ SUBSTITUTION ALERT: This was a substituted exercise - different weight scale than original"
+            context_info += "\n"
+
+        if planned_exercises:
+            context_info += f"\nPLANNED FOR {day_name.upper()}:\n"
+            for exercise, target_sets, target_reps, target_weight in planned_exercises:
+                context_info += f"• {exercise}: {target_sets}x{target_reps}@{target_weight}\n"
+
+        if recent_history:
+            context_info += f"\nRECENT HISTORY (Last 4 weeks):\n"
+            current_exercise = ""
+            for exercise, sets, reps, weight, date, notes in recent_history[:20]:  # Limit for context
+                if exercise != current_exercise:
+                    context_info += f"\n{exercise}:\n"
+                    current_exercise = exercise
+                context_info += f"  {date}: {sets}x{reps}@{weight}"
+                if notes:
+                    context_info += f" - {notes}"
+                context_info += "\n"
+
+        # Create Grok prompt for progression analysis
+        progression_prompt = f"""{context_info}
+
+Please analyze today's workout performance and provide specific progression suggestions for each exercise. Consider:
+- How today's performance compares to the planned targets
+- Recent performance trends from workout history
+- Appropriate progression based on user's experience level
+- Any performance notes that indicate difficulty or ease
+- CRITICAL: For substituted exercises, understand that weight scales are completely different between exercises
+
+For each exercise completed today, provide a progression note in this format:
+EXERCISE: [exercise name]
+PROGRESSION: [specific actionable suggestion, e.g., "Increase to 185lbs next week", "Add 1 rep per set", "Maintain weight, focus on form", "Deload to 160lbs - showing fatigue"]
+REASONING: [brief explanation of why this progression makes sense]
+
+SPECIAL HANDLING FOR SUBSTITUTIONS:
+If an exercise was substituted (look for "SUBSTITUTED FROM:" in the notes), understand these key points:
+1. The weight used is for the NEW exercise, not the original planned exercise
+2. Different exercises use completely different weight scales (machine vs cable vs free weight)
+3. Focus progression advice on the substituted exercise performed, not the original planned exercise
+
+For substitutions, use this format:
+EXERCISE: [substituted exercise name] 
+SUBSTITUTION_ANALYSIS: "You substituted [original exercise] with [new exercise]. Based on your performance at [actual weight used], suggest [specific next progression for the substituted exercise]."
+SUBSTITUTION_QUESTION: "Great choice on [substituted exercise]! Would you like to make this a permanent replacement for [original exercise] in your plan, or keep trying [original exercise] next week?"
+REASONING: [why the substitution worked well and progression logic for the actual exercise performed]
+
+Keep suggestions practical and progressive. Base recommendations on actual performance vs. plan."""
+
+        # Get Grok's analysis
+        progression_analysis = get_grok_response_with_context(progression_prompt, user_background)
+        
+        # Parse Grok's response to extract individual progression notes
+        progression_updates = []
+        lines = progression_analysis.split('\n')
+        current_exercise = None
+        current_progression = None
+        current_reasoning = None
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('EXERCISE:'):
+                # Save previous exercise if exists
+                if current_exercise and current_progression:
+                    progression_updates.append({
+                        'exercise': current_exercise,
+                        'progression': current_progression,
+                        'reasoning': current_reasoning or ''
+                    })
+                
+                current_exercise = line.replace('EXERCISE:', '').strip()
+                current_progression = None
+                current_reasoning = None
+                
+            elif line.startswith('PROGRESSION:'):
+                current_progression = line.replace('PROGRESSION:', '').strip()
+                
+            elif line.startswith('REASONING:'):
+                current_reasoning = line.replace('REASONING:', '').strip()
+
+        # Save last exercise
+        if current_exercise and current_progression:
+            progression_updates.append({
+                'exercise': current_exercise,
+                'progression': current_progression,
+                'reasoning': current_reasoning or ''
+            })
+
+        # Update workout records with progression notes
+        updated_count = 0
+        for workout_id, exercise_name, sets, reps, weight, notes, existing_progression in day_workouts:
+            # Find matching progression update
+            progression_note = None
+            for update in progression_updates:
+                if update['exercise'].lower() in exercise_name.lower() or exercise_name.lower() in update['exercise'].lower():
+                    full_note = f"{update['progression']}"
+                    if update['reasoning']:
+                        full_note += f" - {update['reasoning']}"
+                    progression_note = full_note
+                    break
+            
+            if not progression_note:
+                # Fallback generic note if Grok didn't provide specific guidance
+                progression_note = "Analysis pending - check performance vs plan"
+
+            # Update the workout record (always set day_completed = TRUE)
+            cursor.execute('''
+                UPDATE workouts 
+                SET progression_notes = ?, day_completed = TRUE 
+                WHERE id = ?
+            ''', (progression_note, workout_id))
+            updated_count += 1
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "success": True, 
+            "message": f"Generated progression notes for {updated_count} exercises",
+            "date": date_str,
+            "full_analysis": progression_analysis,
+            "individual_updates": progression_updates
+        }
+
+    except Exception as e:
+        print(f"Error in analyze_day_progression: {e}")
+        return {"success": False, "error": str(e)}
 
 def build_smart_context(prompt, query_intent, user_background=None):
     """Build context based on query intent to avoid overwhelming Grok"""
@@ -3202,6 +3401,47 @@ def get_exercise_performance(exercise):
             'has_real_data': False
         })
 
+@app.route('/edit_workout', methods=['POST'])
+def edit_workout():
+    """Edit an existing workout entry"""
+    try:
+        data = request.json
+        workout_id = data.get('workout_id')
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets', 1)
+        reps = data.get('reps', '')
+        weight = data.get('weight', '')
+        notes = data.get('notes', '')
+
+        if not workout_id:
+            return jsonify({'success': False, 'error': 'Workout ID is required'})
+
+        if not exercise_name:
+            return jsonify({'success': False, 'error': 'Exercise name is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update the workout entry (preserving original date_logged and id)
+        cursor.execute('''
+            UPDATE workouts 
+            SET exercise_name = ?, sets = ?, reps = ?, weight = ?, notes = ?
+            WHERE id = ?
+        ''', (exercise_name, sets, reps, weight, notes, workout_id))
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            print(f"✏️ Updated workout ID {workout_id}: {exercise_name} {sets}x{reps}@{weight}")
+            return jsonify({'success': True, 'message': 'Workout updated successfully'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Workout not found'})
+
+    except Exception as e:
+        print(f"Error editing workout: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/delete_workout', methods=['POST'])
 def delete_workout():
     """Delete a workout entry"""
@@ -3280,6 +3520,11 @@ def save_workout():
         weight = data.get('weight', '')
         notes = data.get('notes', '')
         date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # Handle substitution data
+        original_exercise = data.get('original_exercise', '')
+        original_weight = data.get('original_weight', '')
+        substitution_reason = data.get('substitution_reason', '')
 
         if not exercise_name:
             return jsonify({'status': 'error', 'message': 'Exercise name is required'})
@@ -3287,10 +3532,17 @@ def save_workout():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Build substitution context for notes if this was a substitution
+        substitution_context = ''
+        if original_exercise and substitution_reason:
+            # Store the substitution details in a structured way for Grok to understand
+            substitution_context = f" [SUBSTITUTED FROM: {original_exercise} (planned {original_weight}) -> {exercise_name} (actual {weight}) | REASON: {substitution_reason}]"
+            notes = (notes + substitution_context).strip()
+
         cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (exercise_name, sets, reps, weight, notes, date))
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, substitution_reason)
+            VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
+        ''', (exercise_name, sets, reps, weight, notes, date, substitution_reason))
 
         # Remove newly_added flag for this exercise since it's been completed
         cursor.execute('''
@@ -3322,7 +3574,11 @@ def save_workout():
         conn.commit()
         conn.close()
 
-        return jsonify({'status': 'success', 'message': 'Workout logged successfully'})
+        return jsonify({
+            'status': 'success', 
+            'message': 'Workout logged successfully',
+            'progression_analysis_available': True  # Signal that progression analysis can be triggered
+        })
 
     except Exception as e:
         print(f"Error saving workout: {e}")
@@ -3636,6 +3892,92 @@ def mark_exercise_new():
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/analyze_day_progression', methods=['POST'])
+def analyze_day_progression_api():
+    """API endpoint to trigger day progression analysis"""
+    try:
+        data = request.json
+        date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        result = analyze_day_progression(date_str)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/make_substitution_permanent', methods=['POST'])
+def make_substitution_permanent():
+    """Make a workout substitution permanent in the weekly plan"""
+    try:
+        data = request.json
+        original_exercise = data.get('original_exercise')
+        new_exercise = data.get('new_exercise')
+        new_weight = data.get('new_weight')
+        day_of_week = data.get('day_of_week')
+        
+        if not all([original_exercise, new_exercise, new_weight, day_of_week]):
+            return jsonify({'success': False, 'error': 'Missing required data'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Update the weekly plan
+        cursor.execute('''
+            UPDATE weekly_plan 
+            SET exercise_name = ?, target_weight = ?, notes = COALESCE(notes, '') || ' [Substituted from: ' || ? || ']'
+            WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+        ''', (new_exercise, new_weight, original_exercise, day_of_week.lower(), original_exercise))
+        
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({
+                'success': True, 
+                'message': f'Permanently replaced {original_exercise} with {new_exercise} on {day_of_week}'
+            })
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/get_day_progression_status/<date>')
+def get_day_progression_status(date):
+    """Check if a day's progression analysis has been completed"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Count total workouts and completed progression analysis for the date
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ?', (date,))
+        total_workouts = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND progression_notes IS NOT NULL AND progression_notes != ""', (date,))
+        completed_analysis = cursor.fetchone()[0]
+        
+        # Get progression notes for display
+        cursor.execute('''
+            SELECT exercise_name, progression_notes 
+            FROM workouts 
+            WHERE date_logged = ? AND progression_notes IS NOT NULL
+            ORDER BY id
+        ''', (date,))
+        progression_notes = cursor.fetchall()
+        
+        conn.close()
+        
+        return jsonify({
+            'date': date,
+            'total_workouts': total_workouts,
+            'analysis_completed': completed_analysis,
+            'needs_analysis': total_workouts > 0 and completed_analysis == 0,
+            'progression_notes': [{'exercise': note[0], 'progression': note[1]} for note in progression_notes]
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 if __name__ == '__main__':
     init_db()
