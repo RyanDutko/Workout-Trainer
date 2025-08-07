@@ -13,8 +13,10 @@ app = Flask(__name__)
 
 # Database initialization
 def get_db_connection():
-    """Get a database connection with proper timeout"""
-    return sqlite3.connect('workout_logs.db', timeout=10.0)
+    """Get a database connection with proper timeout and thread safety"""
+    conn = sqlite3.connect('workout_logs.db', timeout=30.0, check_same_thread=False)
+    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
+    return conn
 
 def init_db():
     conn = get_db_connection()
@@ -345,6 +347,21 @@ def analyze_query_intent(prompt, conversation_context=None):
     if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
         return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
 
+    # CRITICAL FIX: Historical/workout discussion takes precedence over plan modification
+    # When someone wants to discuss past workouts, this should be historical, not plan modification
+    historical_discussion_keywords = [
+        'talk about', 'discuss', 'my workout', 'my recent workout', 'how did', 'what did', 
+        'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous'
+    ]
+    historical_discussion_score = sum(2 for phrase in historical_discussion_keywords if phrase in prompt_lower)
+    
+    # Strong indicators for historical queries
+    if any(phrase in prompt_lower for phrase in ['talk about my', 'discuss my', 'my recent', 'my workout from', 'how was my']):
+        historical_discussion_score += 5
+    
+    if historical_discussion_score > 0:
+        intents['historical'] = min(historical_discussion_score * 0.2, 1.0)
+
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
     live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
@@ -359,17 +376,20 @@ def analyze_query_intent(prompt, conversation_context=None):
     if log_score > 0:
         intents['workout_logging'] = min(log_score * 0.3, 1.0)
 
-    # Plan modification intent
+    # Plan modification intent - REDUCED scoring when historical discussion detected
     plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace', 'adjust', 'tweak', 'switch']
     plan_score = sum(1 for word in plan_keywords if word in prompt_lower)
 
-    # Boost score if day mentioned or context suggests plan modification
-    if any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']):
+    # CRITICAL: Don't boost plan modification score just for mentioning days in historical context
+    # Only boost if it's actually about planning, not discussing past workouts
+    if any(phrase in prompt_lower for phrase in ['my plan', 'weekly plan', 'workout plan', 'current plan', 'next week']):
+        plan_score += 1
+    if any(phrase in prompt_lower for phrase in ['can you change', 'could you modify', 'would you update', 'please add']):
         plan_score += 2
-    if any(phrase in prompt_lower for phrase in ['my plan', 'weekly plan', 'workout plan', 'current plan']):
-        plan_score += 1
-    if any(phrase in prompt_lower for phrase in ['can you', 'could you', 'would you', 'please']):
-        plan_score += 1
+    
+    # REDUCE plan modification score if this is clearly about past workouts
+    if historical_discussion_score > 0:
+        plan_score = max(0, plan_score - 3)
 
     if plan_score > 0:
         intents['plan_modification'] = min(plan_score * 0.3, 1.0)
@@ -386,11 +406,12 @@ def analyze_query_intent(prompt, conversation_context=None):
     if exercise_score > 0:
         intents['exercise_specific'] = min(exercise_score * 0.2, 1.0)
 
-    # Historical queries
-    historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
-    hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
-    if hist_score > 0:
-        intents['historical'] = min(hist_score * 0.25, 1.0)
+    # Enhanced Historical queries - don't duplicate if already scored above
+    if 'historical' not in intents:
+        historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
+        hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
+        if hist_score > 0:
+            intents['historical'] = min(hist_score * 0.25, 1.0)
 
     # General fitness chat
     general_keywords = ['hello', 'hi', 'how are', 'what can', 'help', 'advice', 'tips']
@@ -718,7 +739,7 @@ def remove_text_and_cleanup(original_text, target_text):
 def update_progression_notes_from_performance(exercise_name, day_of_week, performance_notes):
     """Update progression notes based on workout performance"""
     try:
-        conn = sqlite3.connect('workout_logs.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         # Analyze performance and generate progression note
@@ -738,13 +759,20 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
                 WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
             ''', (progression_note, exercise_name, day_of_week))
 
-            conn.commit()
-            print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
+            if cursor.rowcount > 0:
+                conn.commit()
+                print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
+            else:
+                print(f"⚠️ Exercise {exercise_name} not found in weekly plan for {day_of_week}")
 
         conn.close()
 
     except Exception as e:
         print(f"Error updating progression notes: {e}")
+        try:
+            conn.close()
+        except:
+            pass
 
 def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
@@ -1648,28 +1676,46 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     context_info += "\n"
 
     elif query_intent == 'historical':
-        # Include recent workout summary
-        context_info += "\n=== RECENT HISTORY ===\n"
+        # Include recent workout summary organized by date
+        context_info += "\n=== YOUR RECENT WORKOUT HISTORY ===\n"
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
             FROM workouts 
-            ORDER BY date_logged DESC 
-            LIMIT 20
+            ORDER BY date_logged DESC, id ASC
+            LIMIT 30
         """)
         recent_logs = cursor.fetchall()
+        
         if recent_logs:
-            context_info += "Recent workouts:\n"
-            for w in recent_logs[:10]:
-                context_info += f"• {w[0]}: {w[1]}x{w[2]}@{w[3]} ({w[4]})"
-                if w[6]:  # substitution_reason
-                    context_info += f" [SUBSTITUTED: {w[6]}]"
-                context_info += "\n"
+            # Group by date for better organization
+            workouts_by_date = {}
+            for w in recent_logs:
+                date = w[4]
+                if date not in workouts_by_date:
+                    workouts_by_date[date] = []
+                workouts_by_date[date].append(w)
+            
+            # Show workouts organized by date
+            for date in sorted(workouts_by_date.keys(), reverse=True)[:7]:  # Last 7 workout days
+                day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+                context_info += f"\n{day_name.upper()} ({date}):\n"
+                
+                for w in workouts_by_date[date]:
+                    exercise, sets, reps, weight, _, notes, sub_reason = w
+                    context_info += f"  • {exercise}: {sets}x{reps}@{weight}"
+                    if sub_reason:
+                        context_info += f" [SUBSTITUTED: {sub_reason}]"
+                    if notes and len(notes) > 0:
+                        # Show first 50 chars of notes
+                        note_preview = notes[:50] + "..." if len(notes) > 50 else notes
+                        context_info += f" - {note_preview}"
+                    context_info += "\n"
 
         # Include weekly plan for reference
         cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week')
         planned_exercises = cursor.fetchall()
         if planned_exercises:
-            context_info += "\nWeekly Plan for Reference:\n"
+            context_info += "\n=== WEEKLY PLAN (for reference) ===\n"
             current_day = ""
             for day, exercise, sets, reps, weight in planned_exercises:
                 if day != current_day:
