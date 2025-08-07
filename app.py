@@ -1710,14 +1710,14 @@ def build_smart_context(prompt, query_intent, user_background=None):
         
         # If asking about a specific day, prioritize that day's data
         if specific_day:
-            # Find the most recent occurrence of that day
+            # Find the most recent occurrence of that day using a simpler approach
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts 
-                WHERE strftime('%w', date_logged) = ?
+                WHERE LOWER(strftime('%A', date_logged)) = LOWER(?)
                 ORDER BY date_logged DESC
-                LIMIT 20
-            """, (str((day_names.index(specific_day) + 1) % 7),))
+                LIMIT 30
+            """, (specific_day,))
             
             specific_day_logs = cursor.fetchall()
             
@@ -1730,16 +1730,17 @@ def build_smart_context(prompt, query_intent, user_background=None):
                         workouts_by_date[date] = []
                     workouts_by_date[date].append(w)
                 
-                context_info += f"\n🎯 FOCUS: {specific_day.upper()} WORKOUTS\n"
+                context_info += f"\n🎯 EXACT DATA FOR {specific_day.upper()} WORKOUTS:\n"
+                context_info += f"Found {len(specific_day_logs)} {specific_day} workout entries\n"
                 
-                # Show most recent first, clearly labeled
-                for date in sorted(workouts_by_date.keys(), reverse=True)[:3]:  # Last 3 occurrences
+                # Show most recent first, with VERY clear labeling
+                for date in sorted(workouts_by_date.keys(), reverse=True)[:4]:  # Last 4 occurrences
                     day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                    context_info += f"\n=== {day_name.upper()} {date} ===\n"
+                    context_info += f"\n=== MOST RECENT {day_name.upper()} WORKOUT: {date} ===\n"
                     
                     for w in workouts_by_date[date]:
                         exercise, sets, reps, weight, _, notes, sub_reason = w
-                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+                        context_info += f"✓ {exercise}: {sets} sets x {reps} reps @ {weight}"
                         if sub_reason:
                             context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
                         if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
@@ -1749,9 +1750,22 @@ def build_smart_context(prompt, query_intent, user_background=None):
                                 note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
                                 context_info += f" - {note_preview}"
                         context_info += "\n"
-                    context_info += "\n"
+                    
+                    # Add a clear break and stop after showing the most recent Tuesday
+                    if date == sorted(workouts_by_date.keys(), reverse=True)[0]:
+                        context_info += f"\n📊 SUMMARY: This was your most recent {specific_day.upper()} workout\n"
+                        context_info += "=".join([""] * 50) + "\n"
+                        break
             else:
                 context_info += f"\n⚠️ No {specific_day.upper()} workouts found in recent history.\n"
+                print(f"🔍 DEBUG: No {specific_day} workouts found. Checking all workout dates...")
+                
+                # Debug: Show all available workout dates
+                cursor.execute("SELECT DISTINCT date_logged, strftime('%A', date_logged) as day_name FROM workouts ORDER BY date_logged DESC LIMIT 10")
+                all_dates = cursor.fetchall()
+                print(f"📅 Available workout dates: {all_dates}")
+                
+                context_info += f"\nDEBUG: Available workout dates: {[f'{date} ({day})' for date, day in all_dates]}\n"
         
         # Also include general recent workout history for context
         cursor.execute("""
@@ -1948,13 +1962,14 @@ CONVERSATION FLOW - CRITICAL:
 
 HISTORICAL WORKOUT DISCUSSIONS - SPECIAL INSTRUCTIONS:
 When user asks about specific workout days (like "my Tuesday workout" or "recent workout from Tuesday"):
-- Look for the "🎯 FOCUS:" section in the context - this contains the exact day they're asking about
+- Look for the "🎯 EXACT DATA FOR [DAY] WORKOUTS:" section in the context - this contains their actual logged workouts
 - Reference their ACTUAL exercises, weights, and performance from that specific day
-- Use the exact exercise names, weights, and reps shown in the focused data
-- If they ask about "Tuesday" - look for "TUESDAY" sections in the context
-- Never give generic advice - always reference their specific workout data
-- Example: "Your Tuesday leg session looked solid - I see you hit 225x8 on squats..."
-- If no data is found for that day, clearly state that no workouts were logged for that day
+- Use the exact exercise names, weights, and reps shown in the data
+- If they ask about "Tuesday" - look for "TUESDAY WORKOUT:" sections in the context
+- NEVER give generic advice - always reference their specific workout data with exact numbers
+- Example: "I see your Tuesday workout - you hit Leg Press for 3x12@180lbs and Leg Curls for 3x12@70lbs..."
+- If you see "No [DAY] workouts found", clearly state that no workouts were logged for that day
+- Always start by confirming what specific workout data you can see for that day
 
 EXERCISE VARIATION DISCUSSIONS:
 When user mentions specific exercise variations (like "low to high chest flys" vs "high to low chest flys"):
