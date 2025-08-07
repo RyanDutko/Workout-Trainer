@@ -1159,21 +1159,21 @@ def get_conversation_context(days_back=14, limit=10):
         return ""
 
 def resolve_contextual_references(prompt, entities, conversation_context):
-    """Resolve pronouns and references using conversation context"""
+    """Enhanced resolution of pronouns and references using conversation context"""
     if not entities.get('references') or not conversation_context:
         return prompt, {}
 
     resolved_entities = {}
 
-    # Get last conversation for context
+    # Get last conversation for context with more detail
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT user_message, ai_response, exercise_mentioned, plan_modifications
+        SELECT user_message, ai_response, exercise_mentioned, plan_modifications, timestamp
         FROM conversations 
         ORDER BY timestamp DESC 
-        LIMIT 3
+        LIMIT 5
     ''')
 
     recent_convs = cursor.fetchall()
@@ -1182,30 +1182,51 @@ def resolve_contextual_references(prompt, entities, conversation_context):
     if not recent_convs:
         return prompt, resolved_entities
 
-    # Try to resolve "it", "that", "the exercise" etc.
+    # Enhanced reference resolution
+    reference_map = {}
+    
     for conv in recent_convs:
-        user_msg, ai_resp, exercise_mentioned, plan_mods = conv
+        user_msg, ai_resp, exercise_mentioned, plan_mods, timestamp = conv
+        
+        # Extract specific exercise variations mentioned in recent conversation
+        import re
+        
+        # Look for specific exercise patterns in recent conversation
+        exercise_patterns = [
+            r'(low to high chest fl[yi]e?s?)',
+            r'(high to low chest fl[yi]e?s?)',
+            r'(heavy [\w\s]+ chest fl[yi]e?s?)',
+            r'(light [\w\s]+ chest fl[yi]e?s?)',
+            r'(first [\w\s]+)',
+            r'(second [\w\s]+)',
+            r'(\w+ press)',
+            r'(\w+ curl)',
+            r'(\w+ extension)'
+        ]
+        
+        combined_text = f"{user_msg} {ai_resp}".lower()
+        
+        for pattern in exercise_patterns:
+            matches = re.findall(pattern, combined_text)
+            for match in matches:
+                exercise_name = match.strip()
+                if len(exercise_name) > 3:  # Avoid short meaningless matches
+                    reference_map[exercise_name] = exercise_name
+        
+        # Store the most mentioned exercise
+        if exercise_mentioned and len(exercise_mentioned) > 3:
+            reference_map['it'] = exercise_mentioned
+            reference_map['that'] = exercise_mentioned
+            reference_map['the exercise'] = exercise_mentioned
 
-        # If previous conversation mentioned a specific exercise
-        if exercise_mentioned:
-            resolved_entities['exercise'] = exercise_mentioned
-            # Replace references in prompt
-            prompt = prompt.replace(' it ', f' {exercise_mentioned} ')
-            prompt = prompt.replace(' that ', f' {exercise_mentioned} ')
-            break
+    # Apply reference resolution to prompt
+    resolved_prompt = prompt
+    for reference, actual_exercise in reference_map.items():
+        if reference in prompt.lower():
+            resolved_prompt = resolved_prompt.replace(reference, actual_exercise)
+            resolved_entities[reference] = actual_exercise
 
-        # If AI response mentioned specific exercises
-        if ai_resp:
-            import re
-            exercise_pattern = r'(tricep extension|bicep curl|bench press|squat|deadlift|overhead press|lat pulldown|chest press|leg press)'
-            exercise_match = re.search(exercise_pattern, ai_resp.lower())
-            if exercise_match:
-                resolved_entities['exercise'] = exercise_match.group(1)
-                prompt = prompt.replace(' it ', f' {exercise_match.group(1)} ')
-                prompt = prompt.replace(' that ', f' {exercise_match.group(1)} ')
-                break
-
-    return prompt, resolved_entities
+    return resolved_prompt, resolved_entities
 
 def get_conversation_state():
     """Get current conversation state for context-aware responses"""
@@ -1935,6 +1956,20 @@ When user asks about specific workout days (like "my Tuesday workout" or "recent
 - Example: "Your Tuesday leg session looked solid - I see you hit 225x8 on squats..."
 - If no data is found for that day, clearly state that no workouts were logged for that day
 
+EXERCISE VARIATION DISCUSSIONS:
+When user mentions specific exercise variations (like "low to high chest flys" vs "high to low chest flys"):
+- Reference the EXACT exercise names from their workout data
+- If they mention "the first one" or "the second one" or "the heavy one", look at the context to understand which specific exercise they mean
+- When suggesting exercise substitutions, be very specific about which exercise you're suggesting to replace
+- Always end plan change suggestions with a clear confirmation request
+
+PLAN MODIFICATION FLOW:
+When suggesting plan changes:
+1. Be specific about what you're suggesting to replace
+2. Explain the reasoning clearly
+3. End with: "Should I make this change to your plan? Say 'yes' to confirm."
+4. Wait for user confirmation before making changes
+
 PROGRESSION SUGGESTIONS:
 When suggesting progressions, provide them as GUIDANCE NOTES, not plan overwrites:
 - Format: "For [exercise]: Try bumping up to [specific weight] next week - you've been crushing the current weight"
@@ -2237,6 +2272,11 @@ def chat_stream():
                         'type': 'modify_plan_suggestion',
                         'data': plan_mod_data
                     })
+                    
+                    # Add confirmation request to AI response if not already present
+                    if 'confirm' not in response.lower() and 'proposed update' not in response.lower():
+                        confirmation_text = f"\n\n🔄 **PROPOSED PLAN CHANGE:**\nReplace {plan_mod_data.get('old_exercise', 'current exercise')} with {plan_mod_data.get('exercise_name', 'new exercise')} on {plan_mod_data.get('day', 'workout day')}.\n\nSay 'yes' or 'confirm' to apply this change, or 'no' to keep discussing."
+                        response += confirmation_text
 
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
