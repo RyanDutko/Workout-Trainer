@@ -1682,7 +1682,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
             FROM workouts 
             ORDER BY date_logged DESC, id ASC
-            LIMIT 30
+            LIMIT 50
         """)
         recent_logs = cursor.fetchall()
         
@@ -1695,33 +1695,49 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     workouts_by_date[date] = []
                 workouts_by_date[date].append(w)
             
-            # Show workouts organized by date
-            for date in sorted(workouts_by_date.keys(), reverse=True)[:7]:  # Last 7 workout days
+            # Show workouts organized by date with CLEAR day identification
+            for date in sorted(workouts_by_date.keys(), reverse=True)[:10]:  # Last 10 workout days
                 day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                context_info += f"\n{day_name.upper()} ({date}):\n"
+                context_info += f"\n=== {day_name.upper()} {date} ===\n"
                 
                 for w in workouts_by_date[date]:
                     exercise, sets, reps, weight, _, notes, sub_reason = w
-                    context_info += f"  • {exercise}: {sets}x{reps}@{weight}"
+                    context_info += f"• {exercise}: {sets}x{reps}@{weight}"
                     if sub_reason:
-                        context_info += f" [SUBSTITUTED: {sub_reason}]"
-                    if notes and len(notes) > 0:
-                        # Show first 50 chars of notes
-                        note_preview = notes[:50] + "..." if len(notes) > 50 else notes
-                        context_info += f" - {note_preview}"
+                        context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
+                    if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
+                        # Show notes but clean up substitution metadata
+                        clean_notes = notes.split('[SUBSTITUTED')[0].strip()
+                        if clean_notes:
+                            note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
+                            context_info += f" - {note_preview}"
                     context_info += "\n"
+                context_info += "\n"
 
         # Include weekly plan for reference
-        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY day_of_week')
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight 
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END
+        ''')
         planned_exercises = cursor.fetchall()
         if planned_exercises:
-            context_info += "\n=== WEEKLY PLAN (for reference) ===\n"
+            context_info += "=== WEEKLY PLAN (for reference) ===\n"
             current_day = ""
             for day, exercise, sets, reps, weight in planned_exercises:
                 if day != current_day:
-                    context_info += f"\n{day.title()}:\n"
+                    context_info += f"\n{day.upper()}:\n"
                     current_day = day
-                context_info += f"  • {exercise}: {sets}x{reps}@{weight}\n"
+                context_info += f"• {exercise}: {sets}x{reps}@{weight}\n"
 
     elif query_intent == 'general':
         # Include weekly plan for general queries that might reference plan
@@ -1853,6 +1869,15 @@ CONVERSATION FLOW - CRITICAL:
 - Jump straight into actionable insights and specific suggestions
 - Respond like you're having a real conversation with someone who knows their stuff
 
+HISTORICAL WORKOUT DISCUSSIONS - SPECIAL INSTRUCTIONS:
+When user asks about specific workout days (like "my Tuesday workout" or "recent workout from Tuesday"):
+- Look at the workout data organized by day
+- Find the specific day they're asking about
+- Reference their ACTUAL exercises, weights, and performance from that day
+- If they ask about "Tuesday" - look for data marked "TUESDAY" in the context
+- Never give generic advice - always reference their specific workout data
+- Example: "Your Tuesday leg session looked solid - I see you hit 225x8 on squats..."
+
 PROGRESSION SUGGESTIONS:
 When suggesting progressions, provide them as GUIDANCE NOTES, not plan overwrites:
 - Format: "For [exercise]: Try bumping up to [specific weight] next week - you've been crushing the current weight"
@@ -1872,9 +1897,10 @@ NATURAL CONVERSATION STYLE:
 - Use phrases like "I see..." "Here's what jumps out..." "The big opportunity is..."
 
 CONTEXT USAGE:
-- Only reference data when directly relevant to their question
-- Don't feel obligated to acknowledge every piece of context
-- Focus on what matters most for their specific question
+- ALWAYS use the actual workout data provided in context
+- When they mention a specific day, find that day in the workout history
+- Reference specific exercises, weights, and reps they actually performed
+- Don't make up workouts or give generic responses
 
 STYLE: Think training partner conversation, not formal fitness consultation. Be direct, insightful, and skip the fluff."""
 
