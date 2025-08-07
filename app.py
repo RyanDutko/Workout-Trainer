@@ -1712,7 +1712,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
             
-            # Simple direct approach - get all workouts and filter by day name
+            # Get all workouts and filter by day name
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts 
@@ -1748,6 +1748,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 day_name = datetime.strptime(most_recent_date, '%Y-%m-%d').strftime('%A')
                 
                 context_info += f"\n🎯 YOUR MOST RECENT {day_name.upper()} WORKOUT ({most_recent_date}):\n"
+                context_info += "=" * 60 + "\n"
                 
                 for w in workouts_by_date[most_recent_date]:
                     exercise, sets, reps, weight, _, notes, sub_reason = w
@@ -1760,10 +1761,15 @@ def build_smart_context(prompt, query_intent, user_background=None):
                             context_info += f" - {clean_notes[:50]}{'...' if len(clean_notes) > 50 else ''}"
                     context_info += "\n"
                 
-                context_info += f"\n✨ This is your actual {specific_day.upper()} workout data from {most_recent_date}\n"
+                context_info += f"\n✨ IMPORTANT: These are your ACTUAL logged exercises from {most_recent_date}. "
+                context_info += f"Use ONLY this data when discussing this workout. Do NOT make up or invent different exercises.\n"
                 context_info += "=" * 60 + "\n"
                 
                 print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
+                
+                # CRITICAL: Skip all the other context building and return immediately
+                # This ensures Grok ONLY sees the actual workout data, not sample/plan data
+                conn.close()
                 return context_info
             else:
                 context_info += f"\n❌ No {specific_day.upper()} workouts found in your logs.\n"
@@ -1979,14 +1985,15 @@ CONVERSATION FLOW - CRITICAL:
 
 HISTORICAL WORKOUT DISCUSSIONS - SPECIAL INSTRUCTIONS:
 When user asks about specific workout days (like "my Tuesday workout" or "recent workout from Tuesday"):
-- Look for the "🎯 EXACT DATA FOR [DAY] WORKOUTS:" section in the context - this contains their actual logged workouts
-- Reference their ACTUAL exercises, weights, and performance from that specific day
-- Use the exact exercise names, weights, and reps shown in the data
-- If they ask about "Tuesday" - look for "TUESDAY WORKOUT:" sections in the context
-- NEVER give generic advice - always reference their specific workout data with exact numbers
-- Example: "I see your Tuesday workout - you hit Leg Press for 3x12@180lbs and Leg Curls for 3x12@70lbs..."
+- Look for the "🎯 YOUR MOST RECENT [DAY] WORKOUT" section in the context - this contains their actual logged workouts
+- CRITICAL: Use ONLY the exercises, weights, and reps listed in that section
+- Do NOT make up or invent exercises that aren't in the actual logged data
+- Do NOT use sample data or planned exercises - only use what they actually logged
+- Reference their ACTUAL exercises, weights, and performance from that specific day with exact numbers
+- Example: "I see your Tuesday workout - you hit [EXACT EXERCISE]: [EXACT SETS]x[EXACT REPS]@[EXACT WEIGHT]..."
 - If you see "No [DAY] workouts found", clearly state that no workouts were logged for that day
 - Always start by confirming what specific workout data you can see for that day
+- During testing phase: Acknowledge the specific exercises you see to confirm you're pulling the right data
 
 EXERCISE VARIATION DISCUSSIONS:
 When user mentions specific exercise variations (like "low to high chest flys" vs "high to low chest flys"):
