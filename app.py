@@ -1410,6 +1410,42 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if user_background.get('fitness_level'):
             context_info += f"Fitness Level: {user_background['fitness_level']}\n"
 
+    # Check for ANY plan-related query first - before intent-specific processing
+    is_plan_query = any(phrase in prompt.lower() for phrase in [
+        'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan', 
+        'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
+        'plan for', 'workout plan'
+    ])
+
+    if is_plan_query:
+        # Always include weekly plan for plan queries regardless of detected intent
+        cursor.execute('''
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            ORDER BY 
+                CASE day_of_week 
+                    WHEN 'monday' THEN 1 
+                    WHEN 'tuesday' THEN 2 
+                    WHEN 'wednesday' THEN 3 
+                    WHEN 'thursday' THEN 4 
+                    WHEN 'friday' THEN 5 
+                    WHEN 'saturday' THEN 6 
+                    WHEN 'sunday' THEN 7 
+                END, exercise_order
+        ''')
+        weekly_plan = cursor.fetchall()
+        if weekly_plan:
+            context_info += "\n=== YOUR WEEKLY WORKOUT PLAN ===\n"
+            current_day = ""
+            for row in weekly_plan:
+                day, exercise, sets, reps, weight, order = row
+                if day != current_day:
+                    if current_day:
+                        context_info += "\n"
+                    context_info += f"\n{day.upper()}:\n"
+                    current_day = day
+                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+
     if query_intent == 'full_plan_review':
         # Provide EVERYTHING for comprehensive analysis
         context_info += "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
@@ -1573,36 +1609,6 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 mentioned_exercise = keyword
                 break
         
-        # Also check if user is asking about their plan
-        if any(phrase in prompt.lower() for phrase in ['my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan', 'friday plan', 'saturday plan', 'sunday plan']):
-            # Include full weekly plan for plan queries
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-                FROM weekly_plan 
-                ORDER BY 
-                    CASE day_of_week 
-                        WHEN 'monday' THEN 1 
-                        WHEN 'tuesday' THEN 2 
-                        WHEN 'wednesday' THEN 3 
-                        WHEN 'thursday' THEN 4 
-                        WHEN 'friday' THEN 5 
-                        WHEN 'saturday' THEN 6 
-                        WHEN 'sunday' THEN 7 
-                    END, exercise_order
-            ''')
-            weekly_plan = cursor.fetchall()
-            if weekly_plan:
-                context_info += "\n=== YOUR CURRENT WEEKLY PLAN ===\n"
-                current_day = ""
-                for row in weekly_plan:
-                    day, exercise, sets, reps, weight, order = row
-                    if day != current_day:
-                        if current_day:
-                            context_info += "\n"
-                        context_info += f"\n{day.upper()}:\n"
-                        current_day = day
-                    context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
-
         if mentioned_exercise:
             # Get history for this exercise and related ones
             cursor.execute("""
