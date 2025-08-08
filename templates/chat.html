@@ -45,6 +45,12 @@
                     <button class="btn btn-outline-danger btn-sm" onclick="clearConversation()">
                         <i class="fas fa-trash me-1"></i>Clear Chat
                     </button>
+                    <button class="btn btn-outline-success btn-sm" onclick="askDaySpecificQuestion('show me my Tuesday workout')">
+                        <i class="fas fa-calendar-day me-1"></i>My Tuesday
+                    </button>
+                    <button class="btn btn-outline-success btn-sm" onclick="askDaySpecificQuestion('show me what I did on Monday')">
+                        <i class="fas fa-calendar-day me-1"></i>My Monday
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" onclick="askQuestion('How should I progress my bench press?')">
                         Bench Press Progression
                     </button>
@@ -171,6 +177,22 @@ function clearConversation() {
     messageInput.value = '';
 }
 
+// Smart context management - limit context for day-specific queries
+function getSmartContext(currentMessage) {
+    const daySpecificTerms = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'show me what i did', 'my workout'];
+    const isDaySpecific = daySpecificTerms.some(term => currentMessage.toLowerCase().includes(term));
+    
+    if (isDaySpecific) {
+        // For day-specific queries, only use last 2 exchanges to avoid confusion
+        const messages = conversationHistory.split('\n\n');
+        const recentMessages = messages.slice(-4).join('\n\n'); // Last 2 user-AI exchanges
+        return recentMessages;
+    }
+    
+    // For other queries, limit to last 1000 chars to prevent overwhelming context
+    return conversationHistory.slice(-1000);
+}
+
 chatForm.addEventListener('submit', function(e) {
     e.preventDefault();
     const message = messageInput.value.trim();
@@ -189,13 +211,16 @@ chatForm.addEventListener('submit', function(e) {
     // Create streaming AI message container
     const aiMessageId = addStreamingMessage();
 
+    // Use smart context management for better day-specific queries
+    const smartContext = getSmartContext(message);
+    
     // Send to AI with streaming
     fetch('/chat_stream', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'message=' + encodeURIComponent(message) + '&conversation_history=' + encodeURIComponent(conversationHistory)
+        body: 'message=' + encodeURIComponent(message) + '&conversation_history=' + encodeURIComponent(smartContext)
     })
     .then(response => {
         const reader = response.body.getReader();
@@ -415,6 +440,15 @@ function confirmPlanChange(exercise, day, sets, reps, weight) {
 }
 
 function askQuestion(question) {
+    messageInput.value = question;
+    chatForm.dispatchEvent(new Event('submit'));
+}
+
+function askDaySpecificQuestion(question) {
+    // Clear old conversation context for day-specific queries to avoid confusion
+    conversationHistory = '';
+    addMessage('🔄 Cleared conversation context for accurate day-specific query', 'system');
+    
     messageInput.value = question;
     chatForm.dispatchEvent(new Event('submit'));
 }
