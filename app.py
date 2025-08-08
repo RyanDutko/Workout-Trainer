@@ -2008,6 +2008,10 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
         # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
 
+        # DEBUG: Print the full prompt being sent to ChatGPT
+        print("📦 Final prompt sent to GPT:\n", full_prompt)
+        print("=" * 80)
+
         # Adjust system prompt based on query type
         if is_comprehensive_modification:
             system_prompt = """You are Grok, an experienced personal trainer with deep understanding of program design. You're analyzing a user's request to modify their training priorities.
