@@ -1759,7 +1759,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
     elif query_intent == 'progression':
         return build_progression_context()
     
-    elif any(phrase in prompt.lower() for phrase in [
+    elif query_intent == 'plan_modification' or any(phrase in prompt.lower() for phrase in [
         'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
