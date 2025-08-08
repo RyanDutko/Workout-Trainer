@@ -1718,6 +1718,21 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
 
+            # First, let's see ALL recent workouts with their day names
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason,
+                       strftime('%w', date_logged) as day_number,
+                       strftime('%A', date_logged) as day_name
+                FROM workouts
+                WHERE date_logged >= date('now', '-14 days')
+                ORDER BY date_logged DESC
+            """)
+            
+            all_recent = cursor.fetchall()
+            print(f"🔍 DEBUG - All recent workouts:")
+            for w in all_recent:
+                print(f"  {w[4]} ({w[8]}, day #{w[7]}): {w[0]} - {w[1]}x{w[2]}@{w[3]}")
+
             # Use SQL to directly filter by day name for better performance
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
@@ -1735,7 +1750,21 @@ def build_smart_context(prompt, query_intent, user_background=None):
             """, (specific_day,))
 
             specific_day_logs = cursor.fetchall()
-            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
+            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts using strftime method")
+            
+            # Try alternative approach - direct day name matching
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+                FROM workouts
+                WHERE LOWER(strftime('%A', date_logged)) = LOWER(?)
+                ORDER BY date_logged DESC
+            """, (specific_day,))
+            
+            alt_day_logs = cursor.fetchall()
+            print(f"🔍 Found {len(alt_day_logs)} {specific_day} workouts using day name method")
+            
+            # Use whichever method found results
+            specific_day_logs = specific_day_logs if specific_day_logs else alt_day_logs
 
             if specific_day_logs:
                 # Group by date and show the most recent one
