@@ -350,7 +350,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     # CRITICAL FIX: Historical/workout discussion takes precedence over plan modification
     # When someone wants to discuss past workouts, this should be historical, not plan modification
     historical_discussion_keywords = [
-        'talk about', 'discuss', 'my workout', 'my recent workout', 'how did', 'what did', 
+        'talk about', 'discuss', 'my workout', 'my recent workout', 'how did', 'what did',
         'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous'
     ]
     historical_discussion_score = sum(2 for phrase in historical_discussion_keywords if phrase in prompt_lower)
@@ -461,7 +461,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     elif intents:
         best_intent = sorted_intents[0]
         return {
-            'intent': best_intent[0], 
+            'intent': best_intent[0],
             'confidence': best_intent[1],
             'all_intents': intents,
             'entities': detected_entities,
@@ -674,7 +674,7 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
                 if current_text and target_text.lower() in current_text.lower():
                     # Remove the target text and clean up
                     updated_text = remove_text_and_cleanup(current_text, target_text)
-                    cursor.execute(f'UPDATE plan_context SET {field} = ?, updated_date = ? WHERE id = ?', 
+                    cursor.execute(f'UPDATE plan_context SET {field} = ?, updated_date = ? WHERE id = ?',
                                  (updated_text, datetime.now().strftime('%Y-%m-%d'), record_id))
                     changes_made.append(f"Updated {field} in plan_context")
 
@@ -688,7 +688,7 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
             for record_id, exercise_name, current_text in records:
                 if current_text and target_text.lower() in current_text.lower():
                     updated_text = remove_text_and_cleanup(current_text, target_text)
-                    cursor.execute(f'UPDATE exercise_metadata SET {field} = ? WHERE id = ?', 
+                    cursor.execute(f'UPDATE exercise_metadata SET {field} = ? WHERE id = ?',
                                  (updated_text, record_id))
                     changes_made.append(f"Updated {field} for {exercise_name}")
 
@@ -699,7 +699,7 @@ def remove_loose_skin_references_comprehensive(target_text="loose skin"):
         for record_id, exercise_name, current_notes in records:
             if current_notes and target_text.lower() in current_notes.lower():
                 updated_notes = remove_text_and_cleanup(current_notes, target_text)
-                cursor.execute('UPDATE weekly_plan SET notes = ? WHERE id = ?', 
+                cursor.execute('UPDATE weekly_plan SET notes = ? WHERE id = ?',
                              (updated_notes, record_id))
                 changes_made.append(f"Updated notes for {exercise_name}")
 
@@ -753,8 +753,8 @@ def update_progression_notes_from_performance(exercise_name, day_of_week, perfor
 
         if progression_note:
             cursor.execute('''
-                UPDATE weekly_plan 
-                SET progression_notes = ? 
+                UPDATE weekly_plan
+                SET progression_notes = ?
                 WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
             ''', (progression_note, exercise_name, day_of_week))
 
@@ -842,9 +842,9 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
 
             cursor.execute('''
                 SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
-                FROM plan_context 
-                WHERE user_id = 1 
-                ORDER BY created_date DESC 
+                FROM plan_context
+                WHERE user_id = 1
+                ORDER BY created_date DESC
                 LIMIT 1
             ''')
 
@@ -876,11 +876,10 @@ Make sure to provide complete, updated versions of all sections, not just acknow
 
                 # Get Grok's structured rewrite
                 try:
-                    from openai import OpenAI
-                    client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-
+                    # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
+                    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
                     response = client.chat.completions.create(
-                        model="grok-4-0709",
+                        model="gpt-4", # Updated model name
                         messages=[
                             {"role": "system", "content": "You are updating a user's training philosophy. Provide complete, structured sections as requested."},
                             {"role": "user", "content": rewrite_prompt}
@@ -1018,7 +1017,7 @@ def regenerate_exercise_metadata_from_plan():
 
         # Get all exercises from current weekly plan
         cursor.execute('''
-            SELECT DISTINCT exercise_name FROM weekly_plan 
+            SELECT DISTINCT exercise_name FROM weekly_plan
             ORDER BY exercise_name
         ''')
         exercises = cursor.fetchall()
@@ -1028,25 +1027,29 @@ def regenerate_exercise_metadata_from_plan():
 
             # Determine purpose and progression based on exercise type
             if any(word in exercise_lower for word in ['ab', 'crunch', 'core', 'woodchop', 'back extension']):
-                purpose = "Midsection hypertrophy for loose skin tightening"
+                purpose = "Midsection hypertrophy for muscle development"
                 progression_logic = "aggressive"
                 notes = "Core work treated as main lift per plan philosophy"
-            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'pull', 'squat', 'deadlift']):
+            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
                 purpose = "Compound strength and mass building"
                 progression_logic = "aggressive"
                 notes = "Main compound movement"
-            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'adductor']):
+            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
                 purpose = "Lower body isolation and hypertrophy"
                 progression_logic = "aggressive"
                 notes = "Machine-based isolation for joint safety"
-            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt']):
+            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
                 purpose = "Upper body isolation hypertrophy"
                 progression_logic = "slow"
                 notes = "Isolation exercise for targeted growth"
-            elif any(word in exercise_lower for word in ['pushup', 'split squat', 'goblet']):
+            elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
                 purpose = "Bodyweight strength and control"
                 progression_logic = "slow"
                 notes = "Bodyweight progression: reps → tempo → weight"
+            elif 'finisher' in exercise_lower:
+                purpose = "High-rep endurance and muscle pump"
+                progression_logic = "maintain"
+                notes = "High-rep finisher work"
             else:
                 purpose = "Hypertrophy and strength development"
                 progression_logic = "normal"
@@ -1127,11 +1130,11 @@ def get_conversation_context(days_back=14, limit=10):
         cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
 
         cursor.execute('''
-            SELECT user_message, ai_response, detected_intent, exercise_mentioned, 
+            SELECT user_message, ai_response, detected_intent, exercise_mentioned,
                    form_cues_given, performance_notes, timestamp
-            FROM conversations 
-            WHERE timestamp >= ? 
-            ORDER BY timestamp DESC 
+            FROM conversations
+            WHERE timestamp >= ?
+            ORDER BY timestamp DESC
             LIMIT ?
         ''', (cutoff_date, limit))
 
@@ -1170,8 +1173,8 @@ def resolve_contextual_references(prompt, entities, conversation_context):
 
     cursor.execute('''
         SELECT user_message, ai_response, exercise_mentioned, plan_modifications, timestamp
-        FROM conversations 
-        ORDER BY timestamp DESC 
+        FROM conversations
+        ORDER BY timestamp DESC
         LIMIT 5
     ''')
 
@@ -1235,10 +1238,10 @@ def get_conversation_state():
 
         # Get last conversation
         cursor.execute('''
-            SELECT detected_intent, exercise_mentioned, plan_modifications, 
+            SELECT detected_intent, exercise_mentioned, plan_modifications,
                    extracted_workout_data, timestamp
-            FROM conversations 
-            ORDER BY timestamp DESC 
+            FROM conversations
+            ORDER BY timestamp DESC
             LIMIT 1
         ''')
 
@@ -1269,7 +1272,7 @@ def analyze_day_progression(date_str):
         # Get all workouts for this date
         cursor.execute('''
             SELECT id, exercise_name, sets, reps, weight, notes, progression_notes
-            FROM workouts 
+            FROM workouts
             WHERE date_logged = ?
             ORDER BY id
         ''', (date_str,))
@@ -1291,8 +1294,8 @@ def analyze_day_progression(date_str):
         # Get weekly plan context
         day_name = datetime.strptime(date_str, '%Y-%m-%d').strftime('%A').lower()
         cursor.execute('''
-            SELECT exercise_name, target_sets, target_reps, target_weight 
-            FROM weekly_plan 
+            SELECT exercise_name, target_sets, target_reps, target_weight
+            FROM weekly_plan
             WHERE day_of_week = ?
         ''', (day_name,))
         planned_exercises = cursor.fetchall()
@@ -1301,7 +1304,7 @@ def analyze_day_progression(date_str):
         four_weeks_ago = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(weeks=4)).strftime('%Y-%m-%d')
         cursor.execute('''
             SELECT exercise_name, sets, reps, weight, date_logged, notes
-            FROM workouts 
+            FROM workouts
             WHERE date_logged >= ? AND date_logged < ?
             ORDER BY exercise_name, date_logged DESC
         ''', (four_weeks_ago, date_str))
@@ -1369,7 +1372,7 @@ If an exercise was substituted (look for "SUBSTITUTED FROM:" in the notes), unde
 3. Focus progression advice on the substituted exercise performed, not the original planned exercise
 
 For substitutions, use this format:
-EXERCISE: [substituted exercise name] 
+EXERCISE: [substituted exercise name]
 SUBSTITUTION_ANALYSIS: "You substituted [original exercise] with [new exercise]. Based on your performance at [actual weight used], suggest [specific next progression for the substituted exercise]."
 SUBSTITUTION_QUESTION: "Great choice on [substituted exercise]! Would you like to make this a permanent replacement for [original exercise] in your plan, or keep trying [original exercise] next week?"
 REASONING: [why the substitution worked well and progression logic for the actual exercise performed]
@@ -1377,6 +1380,7 @@ REASONING: [why the substitution worked well and progression logic for the actua
 Keep suggestions practical and progressive. Base recommendations on actual performance vs. plan."""
 
         # Get Grok's analysis
+        # progression_analysis = get_grok_response_with_context(progression_prompt, user_background) # Grok API call
         progression_analysis = get_grok_response_with_context(progression_prompt, user_background)
 
         # Parse Grok's response to extract individual progression notes
@@ -1434,8 +1438,8 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
 
             # Update the workout record (always set day_completed = TRUE)
             cursor.execute('''
-                UPDATE workouts 
-                SET progression_notes = ?, day_completed = TRUE 
+                UPDATE workouts
+                SET progression_notes = ?, day_completed = TRUE
                 WHERE id = ?
             ''', (progression_note, workout_id))
             updated_count += 1
@@ -1444,7 +1448,7 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
         conn.close()
 
         return {
-            "success": True, 
+            "success": True,
             "message": f"Generated progression notes for {updated_count} exercises",
             "date": date_str,
             "full_analysis": progression_analysis,
@@ -1479,7 +1483,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
     # Check for ANY plan-related query first - before intent-specific processing
     is_plan_query = any(phrase in prompt.lower() for phrase in [
-        'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan', 
+        'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
     ])
@@ -1488,16 +1492,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Always include weekly plan for plan queries regardless of detected intent
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan 
-            ORDER BY 
-                CASE day_of_week 
-                    WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3 
-                    WHEN 'thursday' THEN 4 
-                    WHEN 'friday' THEN 5 
-                    WHEN 'saturday' THEN 6 
-                    WHEN 'sunday' THEN 7 
+            FROM weekly_plan
+            ORDER BY
+                CASE day_of_week
+                    WHEN 'monday' THEN 1
+                    WHEN 'tuesday' THEN 2
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
                 END, exercise_order
         ''')
         weekly_plan = cursor.fetchall()
@@ -1574,7 +1578,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Recent performance history (last 3 weeks)
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-            FROM workouts 
+            FROM workouts
             WHERE date_logged >= date('now', '-21 days')
             ORDER BY date_logged DESC
         """)
@@ -1585,7 +1589,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 exercise, sets, reps, weight, date, notes, sub_reason = log
                 context_info += f"• {date}: {exercise} {sets}x{reps}@{weight}"
                 if sub_reason:
-                    context_info += f" [SUBSTITUTED: {sub_reason}]"
+                    context_info += f" [SUBSTITUTED from {sub_reason}]"
                 if notes:
                     context_info += f" - {notes}"
                 context_info += "\n"
@@ -1593,16 +1597,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Add complete weekly plan for context with proper formatting
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan 
-            ORDER BY 
-                CASE day_of_week 
-                    WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3 
-                    WHEN 'thursday' THEN 4 
-                    WHEN 'friday' THEN 5 
-                    WHEN 'saturday' THEN 6 
-                    WHEN 'sunday' THEN 7 
+            FROM weekly_plan
+            ORDER BY
+                CASE day_of_week
+                    WHEN 'monday' THEN 1
+                    WHEN 'tuesday' THEN 2
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
                 END, exercise_order
         ''')
         weekly_plan = cursor.fetchall()
@@ -1629,7 +1633,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Get recent workouts for trend analysis
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
-            FROM workouts 
+            FROM workouts
             WHERE date_logged >= date('now', '-14 days')
             ORDER BY exercise_name, date_logged DESC
         """)
@@ -1680,7 +1684,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             # Get history for this exercise and related ones
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
-                FROM workouts 
+                FROM workouts
                 WHERE LOWER(exercise_name) LIKE ?
                 ORDER BY date_logged DESC
                 LIMIT 10
@@ -1717,7 +1721,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             # Get all workouts and filter by day name
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-                FROM workouts 
+                FROM workouts
                 ORDER BY date_logged DESC
             """)
 
@@ -1820,7 +1824,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Also include general recent workout history for context
         cursor.execute("""
             SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-            FROM workouts 
+            FROM workouts
             ORDER BY date_logged DESC, id ASC
             LIMIT 30
         """)
@@ -1857,17 +1861,17 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
         # Include weekly plan for reference
         cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight 
-            FROM weekly_plan 
-            ORDER BY 
-                CASE day_of_week 
-                    WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3 
-                    WHEN 'thursday' THEN 4 
-                    WHEN 'friday' THEN 5 
-                    WHEN 'saturday' THEN 6 
-                    WHEN 'sunday' THEN 7 
+            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight
+            FROM weekly_plan
+            ORDER BY
+                CASE day_of_week
+                    WHEN 'monday' THEN 1
+                    WHEN 'tuesday' THEN 2
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
                 END
         ''')
         planned_exercises = cursor.fetchall()
@@ -1891,16 +1895,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
             cursor.execute('''
                 SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-                FROM weekly_plan 
-                ORDER BY 
-                    CASE day_of_week 
-                        WHEN 'monday' THEN 1 
-                        WHEN 'tuesday' THEN 2 
-                        WHEN 'wednesday' THEN 3 
-                        WHEN 'thursday' THEN 4 
-                        WHEN 'friday' THEN 5 
-                        WHEN 'saturday' THEN 6 
-                        WHEN 'sunday' THEN 7 
+                FROM weekly_plan
+                ORDER BY
+                    CASE day_of_week
+                        WHEN 'monday' THEN 1
+                        WHEN 'tuesday' THEN 2
+                        WHEN 'wednesday' THEN 3
+                        WHEN 'thursday' THEN 4
+                        WHEN 'friday' THEN 5
+                        WHEN 'saturday' THEN 6
+                        WHEN 'sunday' THEN 7
                     END, exercise_order
             ''')
             weekly_plan = cursor.fetchall()
@@ -1922,7 +1926,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
 def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
     """Context-aware Grok response with smart context selection"""
     try:
-        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
+        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
         # Check for comprehensive plan modification requests
         is_comprehensive_modification = 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt
@@ -1942,7 +1947,7 @@ TRAINER MINDSET - CRITICAL:
 You are acting as an experienced personal trainer, not just an AI assistant. This means:
 
 - ALWAYS consider the user's current weekly training volume before suggesting changes
-- Understand that more isn\'t always better - recovery and balance matter
+- Understand that more isn't always better - recovery and balance matter
 - When asked to add exercises, first evaluate if the body part/day already has sufficient volume
 - Suggest MODIFICATIONS (swaps, replacements) rather than just additions when appropriate
 - Consider the impact on other training days and muscle groups
@@ -1972,15 +1977,15 @@ For each suggested change:
 
 OR
 
-- ADD: [Day] - [new exercise] 
+- ADD: [Day] - [new exercise]
   - Sets/reps: [specific prescription]
   - Reasoning: [why adding is appropriate here]
-  - Consideration: [note about current day\'s load]
+  - Consideration: [note about current day's load]
 
 TRAINER LANGUAGE:
 - Use phrases like "Your current leg volume is already high, so instead of adding more..."
 - "This would be a smart swap because..."
-- "I\'d recommend replacing rather than adding because..."
+- "I'd recommend replacing rather than adding because..."
 - Think programming, not just exercise selection
 
 Be specific with exercise names, sets, reps, and weights. Always explain the programming logic behind your suggestions."""
@@ -1991,7 +1996,7 @@ Be specific with exercise names, sets, reps, and weights. Always explain the pro
 LENGTH CONSTRAINTS:
 - Keep total response under 600 words
 - Focus on 3-5 key insights maximum
-- Don\'t analyze every single exercise - pick the most important ones
+- Don't analyze every single exercise - pick the most important ones
 - Use bullet points for clarity
 
 ANALYSIS APPROACH:
@@ -2000,13 +2005,13 @@ ANALYSIS APPROACH:
 3. Identify 2-3 main improvement areas with specific suggestions
 4. End with "What would you like me to elaborate on?" to encourage follow-up
 
-STYLE: Direct, insightful, conversational. Think ChatGPT\'s balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
+STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
             system_prompt = """You are Grok, an experienced training partner who knows your workout history and goals inside-out.
 
 CONVERSATION FLOW - CRITICAL:
 - NEVER recap what the user already knows about their own plan
-- Skip cookie-cutter summaries like "Your 5-day split is a solid setup for building muscle..."  
+- Skip cookie-cutter summaries like "Your 5-day split is a solid setup for building muscle..."
 - Jump straight into actionable insights and specific suggestions
 - Respond like you're having a real conversation with someone who knows their stuff
 
@@ -2049,7 +2054,7 @@ PLAN MODIFICATION CAPABILITIES:
 - For progression tips, use format: "PROGRESSION TIP: [specific guidance for next workout]"
 
 NATURAL CONVERSATION STYLE:
-- Greetings: Respond like a training buddy - "What's up!" "Hey!" 
+- Greetings: Respond like a training buddy - "What's up!" "Hey!"
 - Analysis requests: Jump straight into the meat - no need to validate their plan first
 - Be direct and conversational - you're not writing a fitness article
 - Use phrases like "I see..." "Here's what jumps out..." "The big opportunity is..."
@@ -2058,12 +2063,10 @@ CONTEXT USAGE:
 - ALWAYS use the actual workout data provided in context
 - When they mention a specific day, find that day in the workout history
 - Reference specific exercises, weights, and reps they actually performed
-- Don't make up workouts or give generic responses
-
-STYLE: Think training partner conversation, not formal fitness consultation. Be direct, insightful, and skip the fluff."""
+- Don't make up workouts or give generic responses"""
 
         response = client.chat.completions.create(
-            model="grok-4-0709",
+            model="gpt-4", # Updated model name
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": full_prompt}
@@ -2096,8 +2099,8 @@ def dashboard():
 
         # Check if this exercise was logged today
         cursor.execute('''
-            SELECT sets, reps, weight, notes 
-            FROM workouts 
+            SELECT sets, reps, weight, notes
+            FROM workouts
             WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
             ORDER BY id DESC LIMIT 1
         ''', (exercise_name, today_date))
@@ -2204,7 +2207,7 @@ def dashboard():
 
     conn.close()
 
-    return render_template('dashboard.html', 
+    return render_template('dashboard.html',
                          today=today,
                          today_date=today_date,
                          today_plan=today_plan,
@@ -2288,8 +2291,8 @@ def chat_stream():
                     temp_analysis = analyze_query_intent(message)
                     if temp_analysis.get('entities', {}).get('references'):
                         current_message, resolved_refs = resolve_contextual_references(
-                            message, 
-                            temp_analysis['entities'], 
+                            message,
+                            temp_analysis['entities'],
                             conversation_state
                         )
                         print(f"🔗 Resolved references: {original_message} → {current_message}")
@@ -2299,7 +2302,7 @@ def chat_stream():
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
-                detected_entities = intent_analysis.get('entities', {})
+                detected_entities = intent_analysis.get('entities', [])
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
@@ -2356,7 +2359,7 @@ def chat_stream():
                         try:
                             cursor.execute('''
                                 INSERT OR REPLACE INTO plan_context
-                                (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations, 
+                                (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations,
                                  created_by_ai, creation_reasoning, created_date, updated_date)
                                 VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
                             ''', (
@@ -2392,9 +2395,9 @@ def chat_stream():
 
                 # Get or create conversation thread
                 cursor.execute('''
-                    SELECT id FROM conversation_threads 
-                    WHERE user_id = 1 AND is_active = TRUE 
-                    ORDER BY updated_timestamp DESC 
+                    SELECT id FROM conversation_threads
+                    WHERE user_id = 1 AND is_active = TRUE
+                    ORDER BY updated_timestamp DESC
                     LIMIT 1
                 ''')
                 thread_result = cursor.fetchone()
@@ -2402,29 +2405,29 @@ def chat_stream():
                 if not thread_result:
                     # Create new thread
                     cursor.execute('''
-                        INSERT INTO conversation_threads 
+                        INSERT INTO conversation_threads
                         (user_id, thread_type, thread_subject, current_context, last_intent)
                         VALUES (1, 'chat', ?, ?, ?)
-                    ''', (current_message[:50] + "..." if len(current_message) > 50 else current_message, 
+                    ''', (current_message[:50] + "..." if len(current_message) > 50 else current_message,
                           detected_intent, detected_intent))
                     thread_id = cursor.lastrowid
                 else:
                     thread_id = thread_result[0]
                     # Update thread context
                     cursor.execute('''
-                        UPDATE conversation_threads 
+                        UPDATE conversation_threads
                         SET current_context = ?, last_intent = ?, updated_timestamp = datetime('now', 'localtime')
                         WHERE id = ?
                     ''', (detected_intent, detected_intent, thread_id))
 
                 # Store enhanced conversation
                 cursor.execute('''
-                    INSERT INTO conversations 
-                    (user_message, ai_response, detected_intent, confidence_score, exercise_mentioned, 
+                    INSERT INTO conversations
+                    (user_message, ai_response, detected_intent, confidence_score, exercise_mentioned,
                      form_cues_given, coaching_context, plan_modifications, extracted_workout_data,
                      session_id, conversation_thread_id, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (current_message, response, detected_intent, confidence_score, exercise_mentioned, 
+                ''', (current_message, response, detected_intent, confidence_score, exercise_mentioned,
                       form_cues, coaching_context, plan_modifications, extracted_workout_data,
                       session_id, thread_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
@@ -2433,7 +2436,7 @@ def chat_stream():
                 # Store potential auto-actions for future execution
                 for action in potential_actions:
                     cursor.execute('''
-                        INSERT INTO auto_actions 
+                        INSERT INTO auto_actions
                         (conversation_id, action_type, action_data)
                         VALUES (?, ?, ?)
                     ''', (conversation_id, action['type'], json.dumps(action['data'])))
@@ -2519,10 +2522,10 @@ def get_plan(date):
         day_name = date_obj.strftime('%A').lower()
 
         cursor.execute('''
-            SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order, 
+            SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order,
                    COALESCE(notes, ""), COALESCE(progression_notes, "")
-            FROM weekly_plan 
-            WHERE day_of_week = ? 
+            FROM weekly_plan
+            WHERE day_of_week = ?
             ORDER BY exercise_order
         ''', (day_name,))
 
@@ -2626,9 +2629,9 @@ def get_stored_context():
         cursor.execute('''
             SELECT plan_philosophy, training_style, weekly_structure, progression_strategy,
                    special_considerations, created_by_ai, creation_reasoning, created_date, updated_date
-            FROM plan_context 
-            WHERE user_id = 1 
-            ORDER BY created_date DESC 
+            FROM plan_context
+            WHERE user_id = 1
+            ORDER BY created_date DESC
             LIMIT 1
         ''')
 
@@ -2651,7 +2654,7 @@ def get_stored_context():
         # Get exercise metadata
         cursor.execute('''
             SELECT exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date
-            FROM exercise_metadata 
+            FROM exercise_metadata
             WHERE user_id = 1
             ORDER BY exercise_name
         ''')
@@ -2690,7 +2693,7 @@ def extract_plan_context():
         extraction_prompt = f"""Please analyze this conversation about my workout plan and extract the following information in the exact format shown:
 
 TRAINING_PHILOSOPHY: [brief summary of the overall training approach discussed]
-WEEKLY_STRUCTURE: [reasoning behind how the week is organized]  
+WEEKLY_STRUCTURE: [reasoning behind how the week is organized]
 PROGRESSION_STRATEGY: [approach to progressive overload and advancement]
 SPECIAL_CONSIDERATIONS: [any limitations, injuries, or special notes mentioned]
 REASONING: [overall reasoning behind the plan design]
@@ -2701,6 +2704,7 @@ Here's the conversation to analyze:
 Please be concise but capture the key insights from our discussion."""
 
         # Use Grok to extract structured data from conversation
+        # response = get_grok_response_with_context(extraction_prompt) # Grok API call
         response = get_grok_response_with_context(extraction_prompt)
 
         # Parse Grok's structured response - look for fields anywhere in the response
@@ -2737,7 +2741,7 @@ Please be concise but capture the key insights from our discussion."""
 
         cursor.execute('''
             INSERT OR REPLACE INTO plan_context
-            (user_id, plan_philosophy, weekly_structure, progression_strategy, 
+            (user_id, plan_philosophy, weekly_structure, progression_strategy,
              special_considerations, created_by_ai, creation_reasoning, created_date, updated_date)
             VALUES (1, ?, ?, ?, ?, TRUE, ?, ?, ?)
         ''', (
@@ -2757,11 +2761,11 @@ Please be concise but capture the key insights from our discussion."""
         # Get ALL exercises from weekly plan in proper day/order structure
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan 
-            ORDER BY 
-                CASE day_of_week 
-                    WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
+            FROM weekly_plan
+            ORDER BY
+                CASE day_of_week
+                    WHEN 'monday' THEN 1
+                    WHEN 'tuesday' THEN 2
                     WHEN 'wednesday' THEN 3
                     WHEN 'thursday' THEN 4
                     WHEN 'friday' THEN 5
@@ -2841,7 +2845,7 @@ Please be concise but capture the key insights from our discussion."""
 
                             # Determine purpose and progression based on exercise type
                             if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
-                                purpose = "Midsection hypertrophy for loose skin tightening"
+                                purpose = "Midsection hypertrophy for muscle development"
                                 progression_logic = "aggressive"
                                 notes = "Core work treated as main lift per plan philosophy"
                             elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
@@ -2886,7 +2890,7 @@ Please be concise but capture the key insights from our discussion."""
                     else:
                         # Similar variations, create one context
                         if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
-                            purpose = "Midsection hypertrophy for loose skin tightening"
+                            purpose = "Midsection hypertrophy for muscle development"
                             progression_logic = "aggressive"
                             notes = "Core work treated as main lift per plan philosophy"
                         elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
@@ -2930,7 +2934,7 @@ Please be concise but capture the key insights from our discussion."""
             else:
                 # Single instance of the exercise
                 if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):
-                    purpose = "Midsection hypertrophy for loose skin tightening"
+                    purpose = "Midsection hypertrophy for muscle development"
                     progression_logic = "aggressive"
                     notes = "Core work treated as main lift per plan philosophy"
                 elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
@@ -2995,8 +2999,8 @@ def execute_auto_actions():
 
         # Get pending actions for this conversation
         cursor.execute('''
-            SELECT id, action_type, action_data 
-            FROM auto_actions 
+            SELECT id, action_type, action_data
+            FROM auto_actions
             WHERE conversation_id = ? AND executed = FALSE
         ''', (conversation_id,))
 
@@ -3010,15 +3014,16 @@ def execute_auto_actions():
                 if action_type == 'log_workout':
                     # Auto-log workout
                     cursor.execute('''
-                        INSERT INTO workouts (exercise_name, sets, reps, weight, date_logged, notes)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, substitution_reason)
+                        VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
                     ''', (
                         action_data['exercise'],
                         action_data['sets'],
                         action_data['reps'],
                         action_data['weight'],
+                        'Auto-logged from conversation',
                         datetime.now().strftime('%Y-%m-%d'),
-                        'Auto-logged from conversation'
+                        action_data.get('substitution_reason', '')
                     ))
 
                     results.append({
@@ -3039,7 +3044,7 @@ def execute_auto_actions():
 
                 # Mark action as executed
                 cursor.execute('''
-                    UPDATE auto_actions 
+                    UPDATE auto_actions
                     SET executed = TRUE, execution_result = ?
                     WHERE id = ?
                 ''', (json.dumps(results[-1]), action_id))
@@ -3080,8 +3085,8 @@ def add_progression_guidance():
 
         # Update progression_notes for the exercise
         cursor.execute('''
-            UPDATE weekly_plan 
-            SET progression_notes = ? 
+            UPDATE weekly_plan
+            SET progression_notes = ?
             WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
         ''', (guidance_note, exercise_name, day_of_week))
 
@@ -3123,7 +3128,7 @@ def modify_plan():
         if modification_type == 'update':
             # Update existing exercise
             cursor.execute('''
-                UPDATE weekly_plan 
+                UPDATE weekly_plan
                 SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
                 WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (sets, reps, weight, reasoning, day, exercise_name))
@@ -3136,7 +3141,7 @@ def modify_plan():
             next_order = cursor.fetchone()[0]
 
             cursor.execute('''
-                INSERT INTO weekly_plan 
+                INSERT INTO weekly_plan
                 (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
             ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
@@ -3194,7 +3199,7 @@ def propose_plan_change():
         }
 
         cursor.execute('''
-            INSERT INTO auto_actions 
+            INSERT INTO auto_actions
             (conversation_id, action_type, action_data, executed)
             VALUES (?, ?, ?, FALSE)
         ''', (conversation_id, 'plan_modification_proposal', json.dumps(proposal_data)))
@@ -3237,16 +3242,16 @@ def confirm_plan_change():
             next_order = cursor.fetchone()[0]
 
             cursor.execute('''
-                INSERT INTO weekly_plan 
+                INSERT INTO weekly_plan
                 (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
             ''', (
-                proposal_data['day'], 
-                proposal_data['exercise_name'], 
-                proposal_data['sets'], 
-                proposal_data['reps'], 
-                proposal_data['weight'], 
-                next_order, 
+                proposal_data['day'],
+                proposal_data['exercise_name'],
+                proposal_data['sets'],
+                proposal_data['reps'],
+                proposal_data['weight'],
+                next_order,
                 proposal_data['reasoning']
             ))
 
@@ -3282,7 +3287,7 @@ def add_to_plan():
         next_order = cursor.fetchone()[0]
 
         cursor.execute('''
-            INSERT INTO weekly_plan 
+            INSERT INTO weekly_plan
             (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, newly_added, date_added)
             VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)
         ''', (day, exercise, sets, reps, weight, next_order, datetime.now().strftime('%Y-%m-%d')))
@@ -3318,14 +3323,14 @@ def edit_exercise():
 
         if 'progression_notes' in columns:
             cursor.execute('''
-                UPDATE weekly_plan 
+                UPDATE weekly_plan
                 SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
                 WHERE id = ?
             ''', (sets, reps, weight, exercise_name, notes, progression_notes, exercise_id))
         else:
             # If column doesn't exist, update without progression_notes
             cursor.execute('''
-                UPDATE weekly_plan 
+                UPDATE weekly_plan
                 SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?
                 WHERE id = ?
             ''', (sets, reps, weight, exercise_name, notes, exercise_id))
@@ -3440,16 +3445,16 @@ def api_weekly_plan():
 
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan 
-            ORDER BY 
-                CASE day_of_week 
-                    WHEN 'monday' THEN 1 
-                    WHEN 'tuesday' THEN 2 
-                    WHEN 'wednesday' THEN 3 
-                    WHEN 'thursday' THEN 4 
-                    WHEN 'friday' THEN 5 
-                    WHEN 'saturday' THEN 6 
-                    WHEN 'sunday' THEN 7 
+            FROM weekly_plan
+            ORDER BY
+                CASE day_of_week
+                    WHEN 'monday' THEN 1
+                    WHEN 'tuesday' THEN 2
+                    WHEN 'wednesday' THEN 3
+                    WHEN 'thursday' THEN 4
+                    WHEN 'friday' THEN 5
+                    WHEN 'saturday' THEN 6
+                    WHEN 'sunday' THEN 7
                 END, exercise_order
         ''')
 
@@ -3606,9 +3611,9 @@ def get_exercise_performance(exercise):
 
         # More flexible exercise matching - try exact match first, then partial
         cursor.execute('''
-            SELECT date_logged, sets, reps, weight 
-            FROM workouts 
-            WHERE LOWER(exercise_name) = LOWER(?) 
+            SELECT date_logged, sets, reps, weight
+            FROM workouts
+            WHERE LOWER(exercise_name) = LOWER(?)
             ORDER BY date_logged
         ''', (exercise,))
 
@@ -3617,9 +3622,9 @@ def get_exercise_performance(exercise):
         # If no exact match, try partial matching
         if not performance_data:
             cursor.execute('''
-                SELECT date_logged, sets, reps, weight 
-                FROM workouts 
-                WHERE LOWER(exercise_name) LIKE LOWER(?) 
+                SELECT date_logged, sets, reps, weight
+                FROM workouts
+                WHERE LOWER(exercise_name) LIKE LOWER(?)
                 ORDER BY date_logged
             ''', (f'%{exercise}%',))
             performance_data = cursor.fetchall()
@@ -3677,7 +3682,7 @@ def get_exercise_performance(exercise):
         if not dates:
             cursor.execute('''
                 SELECT target_sets, target_reps, target_weight, day_of_week
-                FROM weekly_plan 
+                FROM weekly_plan
                 WHERE LOWER(exercise_name) LIKE LOWER(?)
                 LIMIT 1
             ''', (f'%{exercise}%',))
@@ -3778,7 +3783,7 @@ def edit_workout():
 
         # Update the workout entry (preserving original date_logged and id)
         cursor.execute('''
-            UPDATE workouts 
+            UPDATE workouts
             SET exercise_name = ?, sets = ?, reps = ?, weight = ?, notes = ?
             WHERE id = ?
         ''', (exercise_name, sets, reps, weight, notes, workout_id))
@@ -3837,7 +3842,7 @@ def delete_workout():
                     # Restore newly_added flag if it was created by AI (regardless of current newly_added status)
                     if created_by == 'grok_ai':
                         cursor.execute('''
-                            UPDATE weekly_plan 
+                            UPDATE weekly_plan
                             SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
                             WHERE LOWER(exercise_name) = LOWER(?)
                         ''', (exercise_name,))
@@ -3900,8 +3905,8 @@ def save_workout():
 
         # Remove newly_added flag for this exercise since it's been completed
         cursor.execute('''
-            UPDATE weekly_plan 
-            SET newly_added = FALSE 
+            UPDATE weekly_plan
+            SET newly_added = FALSE
             WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
         ''', (exercise_name,))
 
@@ -3929,7 +3934,7 @@ def save_workout():
         conn.close()
 
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'message': 'Workout logged successfully',
             'progression_analysis_available': True  # Signal that progression analysis can be triggered
         })
@@ -3949,7 +3954,7 @@ def get_conversation_context_api(days):
 
         cursor.execute('''
             SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
-                   c.exercise_mentioned, c.form_cues_given, c.coaching_context, 
+                   c.exercise_mentioned, c.form_cues_given, c.coaching_context,
                    c.plan_modifications, c.timestamp,
                    COUNT(aa.id) as auto_actions_count
             FROM conversations c
@@ -3996,8 +4001,8 @@ def debug_newly_added():
 
         # Get all exercises from weekly plan with their newly_added status
         cursor.execute('''
-            SELECT exercise_name, newly_added, date_added, created_by 
-            FROM weekly_plan 
+            SELECT exercise_name, newly_added, date_added, created_by
+            FROM weekly_plan
             ORDER BY day_of_week, exercise_order
         ''')
         plan_exercises = cursor.fetchall()
@@ -4089,7 +4094,7 @@ def restore_philosophy():
         # Get the full philosophy from the first entry
         cursor.execute('''
             SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
-            FROM plan_context 
+            FROM plan_context
             WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
         ''')
 
@@ -4100,9 +4105,9 @@ def restore_philosophy():
 
             # Update the current entry with the backup data
             cursor.execute('''
-                UPDATE plan_context 
-                SET plan_philosophy = ?, 
-                    progression_strategy = ?, 
+                UPDATE plan_context
+                SET plan_philosophy = ?,
+                    progression_strategy = ?,
                     weekly_structure = ?,
                     special_considerations = COALESCE(special_considerations, ?),
                     updated_date = ?
@@ -4113,7 +4118,7 @@ def restore_philosophy():
             conn.close()
 
             return jsonify({
-                'success': True, 
+                'success': True,
                 'message': 'Philosophy restored successfully!',
                 'restored_philosophy': philosophy[:100] + "..." if len(philosophy) > 100 else philosophy
             })
@@ -4151,7 +4156,7 @@ def clean_loose_skin_final():
                 changed = True
 
             if changed:
-                cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?', 
+                cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?',
                              (updated_purpose, updated_notes, record_id))
                 changes_made.append(f"Updated metadata for {exercise_name}")
 
@@ -4159,7 +4164,7 @@ def clean_loose_skin_final():
         conn.close()
 
         return jsonify({
-            'success': True, 
+            'success': True,
             'changes_made': changes_made,
             'message': f'Cleaned up {len(changes_made)} remaining references'
         })
@@ -4189,7 +4194,7 @@ def fix_newly_added():
             if log_count == 0:
                 # No logs - should be marked as newly_added if it was created by AI
                 cursor.execute('''
-                    UPDATE weekly_plan 
+                    UPDATE weekly_plan
                     SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
                     WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
@@ -4199,8 +4204,8 @@ def fix_newly_added():
             else:
                 # Has logs - should not be marked as newly_added
                 cursor.execute('''
-                    UPDATE weekly_plan 
-                    SET newly_added = FALSE 
+                    UPDATE weekly_plan
+                    SET newly_added = FALSE
                     WHERE LOWER(exercise_name) = LOWER(?)
                 ''', (exercise_name,))
                 details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
@@ -4209,7 +4214,7 @@ def fix_newly_added():
         conn.close()
 
         return jsonify({
-            'success': True, 
+            'success': True,
             'fixed_count': fixed_count,
             'details': details
         })
@@ -4231,7 +4236,7 @@ def mark_exercise_new():
         cursor = conn.cursor()
 
         cursor.execute('''
-            UPDATE weekly_plan 
+            UPDATE weekly_plan
             SET newly_added = TRUE, created_by = 'grok_ai', date_added = ?
             WHERE LOWER(exercise_name) = LOWER(?)
         ''', (datetime.now().strftime('%Y-%m-%d'), exercise_name))
@@ -4278,7 +4283,7 @@ def make_substitution_permanent():
 
         # Update the weekly plan
         cursor.execute('''
-            UPDATE weekly_plan 
+            UPDATE weekly_plan
             SET exercise_name = ?, target_weight = ?, notes = COALESCE(notes, '') || ' [Substituted from: ' || ? || ']'
             WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
         ''', (new_exercise, new_weight, original_exercise, day_of_week.lower(), original_exercise))
@@ -4287,7 +4292,7 @@ def make_substitution_permanent():
             conn.commit()
             conn.close()
             return jsonify({
-                'success': True, 
+                'success': True,
                 'message': f'Permanently replaced {original_exercise} with {new_exercise} on {day_of_week}'
             })
         else:
@@ -4313,8 +4318,8 @@ def get_day_progression_status(date):
 
         # Get progression notes for display
         cursor.execute('''
-            SELECT exercise_name, progression_notes 
-            FROM workouts 
+            SELECT exercise_name, progression_notes
+            FROM workouts
             WHERE date_logged = ? AND progression_notes IS NOT NULL
             ORDER BY id
         ''', (date,))
