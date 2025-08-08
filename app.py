@@ -351,16 +351,27 @@ def analyze_query_intent(prompt, conversation_context=None):
     # When someone wants to discuss past workouts, this should be historical, not plan modification
     historical_discussion_keywords = [
         'talk about', 'discuss', 'my workout', 'my recent workout', 'how did', 'what did',
-        'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous'
+        'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous', 'show me what i did'
     ]
     historical_discussion_score = sum(2 for phrase in historical_discussion_keywords if phrase in prompt_lower)
 
-    # Strong indicators for historical queries
-    if any(phrase in prompt_lower for phrase in ['talk about my', 'discuss my', 'my recent', 'my workout from', 'how was my']):
-        historical_discussion_score += 5
+    # VERY strong indicators for historical queries - these should override other intents
+    strong_historical_phrases = [
+        'talk about my', 'discuss my', 'my recent', 'my workout from', 'how was my',
+        'show me what i did', 'what did i do', 'my tuesday workout', 'my monday workout',
+        'my wednesday workout', 'my thursday workout', 'my friday workout'
+    ]
+    if any(phrase in prompt_lower for phrase in strong_historical_phrases):
+        historical_discussion_score += 10
+
+    # Check for day-specific historical queries
+    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+    for day in days:
+        if f'my {day}' in prompt_lower or f'{day} workout' in prompt_lower:
+            historical_discussion_score += 5
 
     if historical_discussion_score > 0:
-        intents['historical'] = min(historical_discussion_score * 0.2, 1.0)
+        intents['historical'] = min(historical_discussion_score * 0.1, 1.0)
 
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
@@ -410,6 +421,12 @@ def analyze_query_intent(prompt, conversation_context=None):
     if 'historical' not in intents:
         historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
         hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
+        
+        # Boost score for day-specific historical queries
+        for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+            if day in prompt_lower and any(word in prompt_lower for word in ['what', 'show', 'did']):
+                hist_score += 5
+        
         if hist_score > 0:
             intents['historical'] = min(hist_score * 0.25, 1.0)
 
