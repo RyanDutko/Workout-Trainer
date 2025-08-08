@@ -1477,10 +1477,11 @@ def build_smart_context(prompt, query_intent, user_background=None):
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
 
-    # Add conversation context for better continuity
-    conversation_context = get_conversation_context()
-    if conversation_context:
-        context_info += conversation_context
+    # SKIP conversation context for historical queries to avoid confusion with fake data
+    if query_intent != 'historical':
+        conversation_context = get_conversation_context()
+        if conversation_context:
+            context_info += conversation_context
 
     # Always include basic user info if available
     if user_background:
@@ -1778,15 +1779,18 @@ def build_smart_context(prompt, query_intent, user_background=None):
                         workouts_by_date[date] = []
                     workouts_by_date[date].append(w)
 
-                # Show recent workouts organized by date
-                context_info += "\n=== YOUR RECENT COMPLETED WORKOUTS ===\n"
+                # Show recent workouts organized by date with MAXIMUM emphasis
+                context_info += "\n" + "=" * 80 + "\n"
+                context_info += "=== YOUR ACTUAL RECENT COMPLETED WORKOUTS ===\n"
+                context_info += "=" * 80 + "\n"
+                
                 for date in sorted(workouts_by_date.keys(), reverse=True)[:10]:  # Last 10 workout days
                     day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                    context_info += f"\n=== {day_name.upper()} {date} ===\n"
+                    context_info += f"\n🗓️ {day_name.upper()} {date}:\n"
 
                     for w in workouts_by_date[date]:
                         exercise, sets, reps, weight, _, notes, sub_reason = w
-                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+                        context_info += f"   ✓ {exercise}: {sets} sets × {reps} reps @ {weight}"
                         if sub_reason:
                             context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
                         if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
@@ -1797,10 +1801,11 @@ def build_smart_context(prompt, query_intent, user_background=None):
                         context_info += "\n"
                     context_info += "\n"
 
-                context_info += f"\n✨ These are your ACTUAL logged exercises from recent workouts.\n"
-                context_info += "=" * 60 + "\n"
-                context_info += f"\nIMPORTANT: DO NOT make up or invent any exercises. Use ONLY the exercises listed above.\n"
-                context_info += "=" * 60 + "\n"
+                context_info += "=" * 80 + "\n"
+                context_info += "🚨 CRITICAL INSTRUCTION: These are the user's ACTUAL logged workouts.\n"
+                context_info += "DO NOT reference any other workout data. DO NOT make up exercises.\n"
+                context_info += "ONLY discuss the exercises listed above with their exact weights and reps.\n"
+                context_info += "=" * 80 + "\n"
 
                 print(f"✅ Successfully built context for general recent workout query")
                 conn.close()
