@@ -1754,6 +1754,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             specific_day_logs = cursor.fetchall()
             
             print(f"🔍 RAW QUERY RESULT: {len(specific_day_logs)} rows returned")
+            print(f"📄 Raw log result rows:", specific_day_logs)
             print(f"🔍 RAW DATA: {specific_day_logs}")
             
             # Print each row in detail for debugging
@@ -2075,7 +2076,6 @@ CONTEXT USAGE:
         )
         
         ai_response = response.choices[0].message.content
-        print("📄 Raw log result rows:", ai_response)
         return ai_response
     except Exception as e:
         print(f"⚠️ API error: {str(e)}")
