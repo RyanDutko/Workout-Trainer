@@ -1752,21 +1752,26 @@ def build_smart_context(prompt, query_intent, user_background=None):
     print(f"🔍 Intent: {query_intent}")
     print(f"🔍 Prompt: '{prompt}'")
     
+    # Extract the actual intent string if it's in a dict format
+    actual_intent = query_intent
+    if isinstance(query_intent, dict):
+        actual_intent = query_intent.get('intent', 'general')
+    
     # Route to focused context builders
-    if query_intent == 'historical':
+    if actual_intent == 'historical':
         return build_historical_context(prompt)
     
-    elif query_intent == 'progression':
+    elif actual_intent == 'progression':
         return build_progression_context()
     
-    elif query_intent == 'plan_modification' or any(phrase in prompt.lower() for phrase in [
+    elif actual_intent == 'plan_modification' or any(phrase in prompt.lower() for phrase in [
         'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
     ]):
         return build_plan_context()
     
-    elif query_intent == 'full_plan_review':
+    elif actual_intent == 'full_plan_review':
         # For comprehensive analysis, combine multiple contexts
         context_info = "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
         
