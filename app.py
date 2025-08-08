@@ -2148,6 +2148,160 @@ def dashboard():
     conn = get_db_connection()
     cursor = conn.cursor()
 
+    # Get today's day of week
+    today = datetime.now().strftime('%A')
+    today_lowercase = today.lower()
+    today_date = datetime.now().strftime('%Y-%m-%d')
+
+    # Get today's plan with completion status
+    plan_data = []
+    try:
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
+        plan_data = cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching plan data: {e}") # Handle potential missing columns
+
+    # Check completion status for each exercise
+    today_plan = []
+    for row in plan_data:
+        exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added, progression_notes = row
+
+        # Check if this exercise was logged today
+        logged_workout = None
+        try:
+            cursor.execute('''
+                SELECT sets, reps, weight, notes
+                FROM workouts
+                WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
+                ORDER BY id DESC LIMIT 1
+            ''', (exercise_name, today_date))
+            logged_workout = cursor.fetchone()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching workout log: {e}") # Handle potential missing columns
+
+        completion_status = {
+            'completed': False,
+            'status_text': 'Not completed',
+            'status_class': 'text-muted',
+            'logged_sets': None,
+            'logged_reps': None,
+            'logged_weight': None,
+            'notes': None
+        }
+
+        if logged_workout:
+            logged_sets, logged_reps, logged_weight, logged_notes = logged_workout
+            completion_status['completed'] = True
+            completion_status['logged_sets'] = logged_sets
+            completion_status['logged_reps'] = logged_reps
+            completion_status['logged_weight'] = logged_weight
+            completion_status['notes'] = logged_notes
+
+            # Determine completion quality
+            try:
+                target_sets_num = int(target_sets)
+                logged_sets_num = int(logged_sets)
+
+                if logged_sets_num == target_sets_num:
+                    completion_status['status_text'] = 'Completed'
+                    completion_status['status_class'] = 'text-success'
+                elif logged_sets_num > 0:
+                    completion_status['status_text'] = f'Partial ({logged_sets}/{target_sets} sets)'
+                    completion_status['status_class'] = 'text-warning'
+                else:
+                    completion_status['status_text'] = 'Skipped'
+                    completion_status['status_class'] = 'text-danger'
+            except (ValueError, TypeError): # Handle cases where sets might not be valid numbers
+                completion_status['status_text'] = 'Completed' # Default if parsing fails
+                completion_status['status_class'] = 'text-success'
+
+        # Add completion status and newly_added flag to the row data
+        today_plan.append((*row[:-2], completion_status, bool(newly_added), progression_notes))
+
+    # Calculate stats
+    from collections import namedtuple
+    Stats = namedtuple('Stats', ['week_volume', 'month_volume', 'week_workouts', 'latest_weight', 'weight_date'])
+
+    # Week volume - handle non-numeric weight values
+    week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    week_volume = 0
+    try:
+        cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (week_ago,))
+        week_workouts_data = cursor.fetchall()
+
+        for exercise, sets, reps, weight in week_workouts_data:
+            try:
+                # Extract numeric weight value
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str != 'bodyweight' and weight_str:
+                    weight_num = float(weight_str)
+                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                    week_volume += weight_num * sets * reps_num
+            except (ValueError, AttributeError):
+                continue
+    except sqlite3.OperationalError as e:
+        print(f"Error calculating week volume: {e}")
+
+    # Month volume - handle non-numeric weight values
+    month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    month_volume = 0
+    try:
+        cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (month_ago,))
+        month_workouts_data = cursor.fetchall()
+
+        for exercise, sets, reps, weight in month_workouts_data:
+            try:
+                # Extract numeric weight value
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str != 'bodyweight' and weight_str:
+                    weight_num = float(weight_str)
+                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                    month_volume += weight_num * sets * reps_num
+            except (ValueError, AttributeError):
+                continue
+    except sqlite3.OperationalError as e:
+        print(f"Error calculating month volume: {e}")
+
+    # Week workouts count
+    week_workouts = 0
+    try:
+        cursor.execute('SELECT COUNT(DISTINCT date_logged) FROM workouts WHERE date_logged >= ?', (week_ago,))
+        week_workouts = cursor.fetchone()[0] or 0
+    except sqlite3.OperationalError as e:
+        print(f"Error counting weekly workouts: {e}")
+
+
+    # Get latest weight (placeholder - you might want to add a weights table later)
+    latest_weight = None
+    weight_date = None
+
+    stats = Stats(
+        week_volume=int(week_volume),
+        month_volume=int(month_volume),
+        week_workouts=week_workouts,
+        latest_weight=latest_weight,
+        weight_date=weight_date
+    )
+
+    # Check if user needs onboarding
+    needs_onboarding = True # Default to true if no data found
+    try:
+        cursor.execute('SELECT onboarding_completed FROM user_background WHERE user_id = 1')
+        bg_result = cursor.fetchone()
+        if bg_result and bg_result[0]:
+            needs_onboarding = False
+    except sqlite3.OperationalError as e:
+        print(f"Error checking onboarding status: {e}")
+
+    conn.close()
+
+    return render_template('dashboard.html',
+                         today=today,
+                         today_date=today_date,
+                         today_plan=today_plan,
+                         stats=stats,
+                         needs_onboarding=needs_onboarding)
+
 @app.route('/debug_tuesday_data')
 def debug_tuesday_data():
     """Debug endpoint to check Tuesday workout data specifically"""
