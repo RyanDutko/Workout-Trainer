@@ -1489,8 +1489,19 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if user_background.get('fitness_level'):
             context_info += f"Fitness Level: {user_background['fitness_level']}\n"
 
-    # Check for ANY plan-related query first - before intent-specific processing
-    print(f"🔍 DEBUG: build_smart_context called with intent='{query_intent}' and prompt='{prompt[:100]}...'")
+    # COMPREHENSIVE DEBUG LOGGING
+    print(f"\n🔍 ===== DEBUG CONTEXT BUILDING =====")
+    print(f"🔍 Intent: {query_intent}")
+    print(f"🔍 Prompt: '{prompt}'")
+    
+    # Debug: Check what's actually in the database
+    cursor.execute("SELECT COUNT(*) FROM workouts")
+    total_workouts = cursor.fetchone()[0]
+    print(f"🔍 Total workouts in database: {total_workouts}")
+    
+    cursor.execute("SELECT exercise_name, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 5")
+    recent_workouts_debug = cursor.fetchall()
+    print(f"🔍 Recent 5 workouts in DB: {recent_workouts_debug}")
 
     # Check for ANY plan-related query first - before intent-specific processing
     is_plan_query = any(phrase in prompt.lower() for phrase in [
@@ -1498,6 +1509,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
     ])
+    
+    print(f"🔍 Is plan query: {is_plan_query}")
 
     if is_plan_query:
         # Always include weekly plan for plan queries regardless of detected intent
@@ -1802,35 +1815,49 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             context_info += f"\n🎯 EXACT DATA FOR {specific_day.upper()} WORKOUTS:\n"
 
-            # Simple approach: get all recent workouts and filter in Python
+            # ENHANCED DEBUG: Let's see exactly what's happening with Tuesday queries
+            print(f"\n🔍 ===== TUESDAY WORKOUT RETRIEVAL DEBUG =====")
+            print(f"🔍 Looking for specific day: '{specific_day}'")
+
+            # First, let's see ALL workouts with their day names
             cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason,
+                       strftime('%w', date_logged) as day_of_week_num,
+                       date(date_logged, 'weekday 0', '-6 days', 'weekday 1') as week_start
                 FROM workouts
                 ORDER BY date_logged DESC
-                LIMIT 100
+                LIMIT 50
             """)
 
             all_workouts = cursor.fetchall()
+            print(f"🔍 DEBUG: Retrieved {len(all_workouts)} workouts from database")
+            
+            # Log first few workouts for inspection
+            for i, workout in enumerate(all_workouts[:5]):
+                exercise, sets, reps, weight, date_str, notes, sub_reason, day_num, week_start = workout
+                day_name = datetime.strptime(date_str, '%Y-%m-%d').strftime('%A').lower()
+                print(f"🔍 Workout {i+1}: {date_str} ({day_name}) - {exercise}: {sets}x{reps}@{weight}")
+
             specific_day_workouts = []
 
-            print(f"🔍 DEBUG: Found {len(all_workouts)} total workouts in database")
-
             for workout in all_workouts:
-                exercise, sets, reps, weight, date_str, notes, sub_reason = workout
+                exercise, sets, reps, weight, date_str, notes, sub_reason, day_num, week_start = workout
                 try:
                     workout_date = datetime.strptime(date_str, '%Y-%m-%d')
                     day_name = workout_date.strftime('%A').lower()
 
-                    print(f"🔍 DEBUG: {date_str} = {day_name}, checking against '{specific_day}'")
-
                     if day_name == specific_day:
-                        specific_day_workouts.append(workout)
-                        print(f"✅ MATCH: {exercise} on {date_str}")
+                        specific_day_workouts.append((exercise, sets, reps, weight, date_str, notes, sub_reason))
+                        print(f"✅ TUESDAY MATCH FOUND: {date_str} - {exercise}: {sets}x{reps}@{weight}")
 
                 except Exception as e:
+                    print(f"❌ Date parsing error for {date_str}: {e}")
                     context_info += f"❌ Date parsing error for {date_str}: {e}\n"
 
-            print(f"🔍 DEBUG: Found {len(specific_day_workouts)} {specific_day} workouts")
+            print(f"🔍 FINAL TUESDAY COUNT: Found {len(specific_day_workouts)} Tuesday workouts")
+            
+            # Log what we're actually sending to the AI
+            context_info += f"DEBUG INFO: Found {len(specific_day_workouts)} actual {specific_day} workouts in database\n"
 
             if specific_day_workouts:
                 # Show the most recent workout data for that day
@@ -2120,6 +2147,73 @@ CONTEXT USAGE:
 def dashboard():
     conn = get_db_connection()
     cursor = conn.cursor()
+
+@app.route('/debug_tuesday_data')
+def debug_tuesday_data():
+    """Debug endpoint to check Tuesday workout data specifically"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get all workouts with day calculations
+        cursor.execute("""
+            SELECT 
+                exercise_name, 
+                sets, 
+                reps, 
+                weight, 
+                date_logged, 
+                notes,
+                strftime('%w', date_logged) as day_of_week_num,
+                strftime('%A', date_logged) as day_name
+            FROM workouts 
+            ORDER BY date_logged DESC
+            LIMIT 50
+        """)
+        
+        all_workouts = cursor.fetchall()
+        
+        # Filter for Tuesday workouts (day_of_week_num = '2')
+        tuesday_workouts = []
+        all_workouts_info = []
+        
+        for workout in all_workouts:
+            exercise, sets, reps, weight, date_str, notes, day_num, day_name = workout
+            
+            all_workouts_info.append({
+                'exercise': exercise,
+                'date': date_str,
+                'day_name': day_name,
+                'day_num': day_num,
+                'sets': sets,
+                'reps': reps,
+                'weight': weight
+            })
+            
+            if day_num == '2':  # Tuesday is day 2 in SQLite's strftime
+                tuesday_workouts.append({
+                    'exercise': exercise,
+                    'date': date_str,
+                    'sets': sets,
+                    'reps': reps,
+                    'weight': weight,
+                    'notes': notes
+                })
+        
+        conn.close()
+        
+        return jsonify({
+            'total_workouts': len(all_workouts),
+            'tuesday_workouts_found': len(tuesday_workouts),
+            'tuesday_workouts': tuesday_workouts,
+            'all_recent_workouts': all_workouts_info[:10],  # First 10 for inspection
+            'debug_message': f"Found {len(tuesday_workouts)} Tuesday workouts out of {len(all_workouts)} total workouts"
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
 
     # Get today's day of week
     today = datetime.now().strftime('%A')
@@ -3810,45 +3904,8 @@ def get_exercise_performance(exercise):
                 print(f"⚠️ Error parsing workout data: {date}, {sets}, {reps}, {weight} - {e}")
                 continue
 
-        # If no logged data, check weekly plan and create sample progression data
-        if not dates:
-            plan_data = None
-            try:
-                cursor.execute('''
-                    SELECT target_sets, target_reps, target_weight, day_of_week
-                    FROM weekly_plan
-                    WHERE LOWER(exercise_name) LIKE LOWER(?)
-                    LIMIT 1
-                ''', (f'%{exercise}%',))
-                plan_data = cursor.fetchone()
-            except sqlite3.OperationalError as e:
-                print(f"Error fetching plan data for sample progression: {e}")
-
-            if plan_data:
-                sets, reps, weight, day = plan_data
-
-                # Generate sample progression data for visualization
-                from datetime import datetime, timedelta
-
-                try:
-                    weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
-                    if weight_str and weight_str != 'bodyweight':
-                        base_weight = float(weight_str)
-                        base_reps = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
-
-                        # Create 8 weeks of sample progression data
-                        for i in range(8):
-                            sample_date = (datetime.now() - timedelta(weeks=7-i)).strftime('%Y-%m-%d')
-                            # Progressive increase in weight over time
-                            sample_weight = base_weight + (i * 2.5)  # 2.5lb progression per week
-                            sample_volume = sample_weight * sets * base_reps
-
-                            dates.append(sample_date)
-                            max_weights.append(sample_weight)
-                            volumes.append(sample_volume)
-
-                except (ValueError, AttributeError):
-                    pass
+        # No fake data generation - if no logged data exists, return empty results
+        print(f"🔍 FINAL RESULT: Found {len(dates)} actual workout entries for '{exercise}'")
 
         # Calculate stats
         best_weight = max(max_weights) if max_weights else 0
