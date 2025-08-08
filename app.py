@@ -365,7 +365,6 @@ def analyze_query_intent(prompt, conversation_context=None):
         historical_discussion_score += 20  # Much higher boost to ensure priority
 
     # Check for day-specific historical queries
-    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     for day in days:
         if f'my {day}' in prompt_lower or f'{day} workout' in prompt_lower or f'what i did on {day}' in prompt_lower:
             historical_discussion_score += 15  # Strong boost for day-specific queries
@@ -903,44 +902,29 @@ SPECIAL_CONSIDERATIONS: [updated special considerations]
 Make sure to provide complete, updated versions of all sections, not just acknowledgments."""
 
                 # Get Grok's structured rewrite
-                try:
-                    # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
-                    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-                    response = client.chat.completions.create(
-                        model="gpt-4", # Updated model name
-                        messages=[
-                            {"role": "system", "content": "You are updating a user's training philosophy. Provide complete, structured sections as requested."},
-                            {"role": "user", "content": rewrite_prompt}
-                        ],
-                        temperature=0.7
-                    )
+                # progression_analysis = get_grok_response_with_context(rewrite_prompt, user_background) # Grok API call
+                response = get_grok_response_with_context(rewrite_prompt)
 
-                    grok_rewrite = response.choices[0].message.content
+                # Parse Grok's structured response
+                lines = response.split('\n')
+                extracted_data = {}
 
-                    # Parse Grok's structured response
-                    lines = grok_rewrite.split('\n')
-                    extracted_data = {}
+                for line in lines:
+                    line = line.strip()
+                    if 'TRAINING_PHILOSOPHY:' in line:
+                        extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    elif 'WEEKLY_STRUCTURE:' in line:
+                        extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    elif 'PROGRESSION_STRATEGY:' in line:
+                        extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    elif 'SPECIAL_CONSIDERATIONS:' in line:
+                        extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
 
-                    for line in lines:
-                        line = line.strip()
-                        if 'TRAINING_PHILOSOPHY:' in line:
-                            extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'WEEKLY_STRUCTURE:' in line:
-                            extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'PROGRESSION_STRATEGY:' in line:
-                            extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                        elif 'SPECIAL_CONSIDERATIONS:' in line:
-                            extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                # Add reasoning
+                extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
 
-                    # Add reasoning
-                    extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
-
-                    print(f"🧠 Successfully rewrote philosophy with current context")
-                    return extracted_data
-
-                except Exception as e:
-                    print(f"⚠️ Failed to get Grok rewrite: {str(e)}")
-                    return None
+                print(f"🧠 Successfully rewrote philosophy with current context")
+                return extracted_data
 
             else:
                 print(f"⚠️ No existing philosophy found to rewrite")
@@ -1408,7 +1392,6 @@ REASONING: [why the substitution worked well and progression logic for the actua
 Keep suggestions practical and progressive. Base recommendations on actual performance vs. plan."""
 
         # Get Grok's analysis
-        # progression_analysis = get_grok_response_with_context(progression_prompt, user_background) # Grok API call
         progression_analysis = get_grok_response_with_context(progression_prompt, user_background)
 
         # Parse Grok's response to extract individual progression notes
@@ -1744,8 +1727,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 specific_day = days[0].lower()  # e.g., "tuesday"
                 print(f"🎯 Detected specific day from entities: '{specific_day}'")
 
+        # Enhanced day detection - check the prompt directly for day names
+        if not specific_day:
+            for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+                if day in prompt.lower():
+                    specific_day = day
+                    print(f"🎯 Detected day '{specific_day}' from direct prompt analysis")
+                    break
+
         # Check for general recent workout queries
-        general_recent_queries = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout']
+        general_recent_queries = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout', 'most recent day']
         is_general_recent = any(phrase in prompt.lower() for phrase in general_recent_queries)
 
         if is_general_recent and not specific_day:
@@ -1790,6 +1781,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 context_info += f"\n✨ These are your ACTUAL logged exercises from recent workouts.\n"
                 context_info += "=" * 60 + "\n"
                 context_info += f"\nIMPORTANT: DO NOT make up or invent any exercises. Use ONLY the exercises listed above.\n"
+                context_info += "=" * 60 + "\n"
 
                 print(f"✅ Successfully built context for general recent workout query")
                 conn.close()
