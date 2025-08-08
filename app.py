@@ -362,16 +362,16 @@ def analyze_query_intent(prompt, conversation_context=None):
         'my wednesday workout', 'my thursday workout', 'my friday workout'
     ]
     if any(phrase in prompt_lower for phrase in strong_historical_phrases):
-        historical_discussion_score += 10
+        historical_discussion_score += 20  # Much higher boost to ensure priority
 
     # Check for day-specific historical queries
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
     for day in days:
-        if f'my {day}' in prompt_lower or f'{day} workout' in prompt_lower:
-            historical_discussion_score += 5
+        if f'my {day}' in prompt_lower or f'{day} workout' in prompt_lower or f'what i did on {day}' in prompt_lower:
+            historical_discussion_score += 15  # Strong boost for day-specific queries
 
     if historical_discussion_score > 0:
-        intents['historical'] = min(historical_discussion_score * 0.1, 1.0)
+        intents['historical'] = min(historical_discussion_score * 0.05, 1.0)  # Lower multiplier but higher base scores
 
     # Live workout coaching
     live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
@@ -379,11 +379,16 @@ def analyze_query_intent(prompt, conversation_context=None):
     if live_score > 0:
         intents['live_workout'] = min(live_score * 0.4, 1.0)
 
-    # Workout logging intent
-    log_keywords = ['did', 'completed', 'finished', 'logged', 'performed', 'x', 'sets', 'reps', '@']
+    # Workout logging intent - but not for historical "what did I do" queries
+    log_keywords = ['completed', 'finished', 'logged', 'performed', 'x', 'sets', 'reps', '@']
     log_patterns = [r'\d+x\d+', r'\d+\s*sets?', r'\d+\s*reps?', r'@\s*\d+']
     log_score = sum(1 for word in log_keywords if word in prompt_lower)
     log_score += sum(1 for pattern in log_patterns if re.search(pattern, prompt_lower))
+    
+    # Reduce log score if this is clearly a historical query
+    if any(phrase in prompt_lower for phrase in ['what did i do', 'show me what i did', 'what i did on']):
+        log_score = max(0, log_score - 5)
+    
     if log_score > 0:
         intents['workout_logging'] = min(log_score * 0.3, 1.0)
 
