@@ -1771,6 +1771,9 @@ def build_smart_context(prompt, query_intent, user_background=None):
             recent_logs = cursor.fetchall()
 
             if recent_logs:
+                # CLEAR ANY EXISTING CONTEXT and start fresh with ONLY workout data
+                context_info = ""
+                
                 # Group by date for better organization
                 workouts_by_date = {}
                 for w in recent_logs:
@@ -1805,9 +1808,10 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 context_info += "🚨 CRITICAL INSTRUCTION: These are the user's ACTUAL logged workouts.\n"
                 context_info += "DO NOT reference any other workout data. DO NOT make up exercises.\n"
                 context_info += "ONLY discuss the exercises listed above with their exact weights and reps.\n"
+                context_info += "IGNORE ANY CONVERSATION HISTORY THAT CONTRADICTS THIS DATA.\n"
                 context_info += "=" * 80 + "\n"
 
-                print(f"✅ Successfully built context for general recent workout query")
+                print(f"✅ Successfully built context for general recent workout query - CLEARED conversation context")
                 conn.close()
                 return context_info
             else:
