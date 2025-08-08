@@ -638,7 +638,7 @@ def parse_plan_modification_from_ai_response(ai_response, user_request):
                     'type': 'replace',
                     'exercise_name': match.group(3) if len(match.groups()) >= 3 else 'Unknown Exercise',
                     'old_exercise': match.group(2) if len(match.groups()) >= 2 else None,
-                    'day': None,  # Will need to be inferred
+                    'day': None,  # Will be inferred
                     'sets': 3,
                     'reps': '8-12',
                     'weight': 'bodyweight',
@@ -1763,7 +1763,6 @@ def build_smart_context(prompt, query_intent, user_background=None):
             # Use SQL to directly filter by day name for better performance
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-                FROM workouts
                 WHERE LOWER(strftime('%w', date_logged)) = CASE LOWER(?)
                     WHEN 'sunday' THEN '0'
                     WHEN 'monday' THEN '1'
@@ -1847,68 +1846,74 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 else:
                     context_info += "No workouts found in database at all.\n"
 
-        # Also include general recent workout history for context
-        cursor.execute("""
-            SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-            FROM workouts
-            ORDER BY date_logged DESC, id ASC
-            LIMIT 30
-        """)
-        recent_logs = cursor.fetchall()
+                # Return immediately - don't add additional context when no specific day data found
+                conn.close()
+                return context_info
 
-        if recent_logs and not specific_day:
-            # Group by date for better organization
-            workouts_by_date = {}
-            for w in recent_logs:
-                date = w[4]
-                if date not in workouts_by_date:
-                    workouts_by_date[date] = []
-                workouts_by_date[date].append(w)
+        # Only proceed with general context if NO specific day was requested
+        if not specific_day:
+            # Also include general recent workout history for context
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+                FROM workouts
+                ORDER BY date_logged DESC, id ASC
+                LIMIT 30
+            """)
+            recent_logs = cursor.fetchall()
 
-            # Show workouts organized by date with CLEAR day identification
-            context_info += "\n=== ALL RECENT WORKOUTS ===\n"
-            for date in sorted(workouts_by_date.keys(), reverse=True)[:8]:  # Last 8 workout days
-                day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                context_info += f"\n=== {day_name.upper()} {date} ===\n"
+            if recent_logs and not specific_day:
+                # Group by date for better organization
+                workouts_by_date = {}
+                for w in recent_logs:
+                    date = w[4]
+                    if date not in workouts_by_date:
+                        workouts_by_date[date] = []
+                    workouts_by_date[date].append(w)
 
-                for w in workouts_by_date[date]:
-                    exercise, sets, reps, weight, _, notes, sub_reason = w
-                    context_info += f"• {exercise}: {sets}x{reps}@{weight}"
-                    if sub_reason:
-                        context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
-                    if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
-                        # Show notes but clean up substitution metadata
-                        clean_notes = notes.split('[SUBSTITUTED')[0].strip()
-                        if clean_notes:
-                            note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
-                            context_info += f" - {note_preview}"
+                # Show workouts organized by date with CLEAR day identification
+                context_info += "\n=== ALL RECENT WORKOUTS ===\n"
+                for date in sorted(workouts_by_date.keys(), reverse=True)[:8]:  # Last 8 workout days
+                    day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+                    context_info += f"\n=== {day_name.upper()} {date} ===\n"
+
+                    for w in workouts_by_date[date]:
+                        exercise, sets, reps, weight, _, notes, sub_reason = w
+                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+                        if sub_reason:
+                            context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
+                        if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
+                            # Show notes but clean up substitution metadata
+                            clean_notes = notes.split('[SUBSTITUTED')[0].strip()
+                            if clean_notes:
+                                note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
+                                context_info += f" - {note_preview}"
+                        context_info += "\n"
                     context_info += "\n"
-                context_info += "\n"
 
-        # Include weekly plan for reference
-        cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight
-            FROM weekly_plan
-            ORDER BY
-                CASE day_of_week
-                    WHEN 'monday' THEN 1
-                    WHEN 'tuesday' THEN 2
-                    WHEN 'wednesday' THEN 3
-                    WHEN 'thursday' THEN 4
-                    WHEN 'friday' THEN 5
-                    WHEN 'saturday' THEN 6
-                    WHEN 'sunday' THEN 7
-                END
-        ''')
-        planned_exercises = cursor.fetchall()
-        if planned_exercises:
-            context_info += "=== WEEKLY PLAN (for reference) ===\n"
-            current_day = ""
-            for day, exercise, sets, reps, weight in planned_exercises:
-                if day != current_day:
-                    context_info += f"\n{day.upper()}:\n"
-                    current_day = day
-                context_info += f"• {exercise}: {sets}x{reps}@{weight}\n"
+            # Include weekly plan for reference
+            cursor.execute('''
+                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight
+                FROM weekly_plan
+                ORDER BY
+                    CASE day_of_week
+                        WHEN 'monday' THEN 1
+                        WHEN 'tuesday' THEN 2
+                        WHEN 'wednesday' THEN 3
+                        WHEN 'thursday' THEN 4
+                        WHEN 'friday' THEN 5
+                        WHEN 'saturday' THEN 6
+                        WHEN 'sunday' THEN 7
+                    END
+            ''')
+            planned_exercises = cursor.fetchall()
+            if planned_exercises:
+                context_info += "=== WEEKLY PLAN (for reference) ===\n"
+                current_day = ""
+                for day, exercise, sets, reps, weight in planned_exercises:
+                    if day != current_day:
+                        context_info += f"\n{day.upper()}:\n"
+                        current_day = day
+                    context_info += f"• {exercise}: {sets}x{reps}@{weight}\n"
 
     elif query_intent == 'general':
         # Include weekly plan for general queries that might reference days or exercises
@@ -2291,17 +2296,17 @@ def chat_stream():
                         columns = [description[0] for description in cursor.description]
                         user_background = dict(zip(columns, user_bg))
             except sqlite3.OperationalError as e:
-                print(f"Error fetching user background: {e}") # Table might not exist
+                print(f"Error fetching user background: {e}")
 
             # Get recent workouts for context
             recent_workouts = ""
             try:
-                cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
+                cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts ORDER BY date_logged DESC LIMIT 10')
                 recent_logs = cursor.fetchall()
                 if recent_logs:
                     recent_workouts = "Recent exercises:\n"
                     for log in recent_logs[:5]:  # Limit to 5 most recent
-                        recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]} ({log[4]})\n"
+                        recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]}\n"
             except sqlite3.OperationalError as e:
                 print(f"Error fetching recent workouts: {e}")
 
@@ -3409,6 +3414,9 @@ def edit_exercise():
 
         if not exercise_id:
             return jsonify({'success': False, 'error': 'Exercise ID is required'})
+
+        if not exercise_name:
+            return jsonify({'success': False, 'error': 'Exercise name is required'})
 
         conn = get_db_connection()
         cursor = conn.cursor()
