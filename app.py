@@ -1755,6 +1755,10 @@ def build_smart_context(prompt, query_intent, user_background=None):
             
             print(f"🔍 RAW QUERY RESULT: {len(specific_day_logs)} rows returned")
             print(f"🔍 RAW DATA: {specific_day_logs}")
+            
+            # Print each row in detail for debugging
+            for i, row in enumerate(specific_day_logs):
+                print(f"  Row {i+1}: {row}")
 
             if specific_day_logs:
                 # Group by date and show the most recent one
@@ -2069,7 +2073,10 @@ CONTEXT USAGE:
             ],
             temperature=0.7
         )
-        return response.choices[0].message.content
+        
+        ai_response = response.choices[0].message.content
+        print("📄 Raw log result rows:", ai_response)
+        return ai_response
     except Exception as e:
         print(f"⚠️ API error: {str(e)}")
         return "Sorry, I encountered an error. Please try again."
