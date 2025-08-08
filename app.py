@@ -1740,39 +1740,21 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
 
-            # First, let's see ALL recent workouts with their day names
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason,
-                       strftime('%w', date_logged) as day_number,
-                       strftime('%A', date_logged) as day_name
-                FROM workouts
-                WHERE date_logged >= date('now', '-14 days')
-                ORDER BY date_logged DESC
-            """)
-
-            all_recent = cursor.fetchall()
-            print(f"🔍 DEBUG - All recent workouts ({len(all_recent)} total):")
-            if len(all_recent) == 0:
-                print("  📭 NO WORKOUTS FOUND IN DATABASE AT ALL")
-            else:
-                for i, w in enumerate(all_recent):
-                    print(f"  #{i+1}: Date={w[4]}, DayName={w[8]}, DayNum={w[7]}, Exercise={w[0]}, Sets={w[1]}x{w[2]}@{w[3]}")
-
-            print(f"🔍 Looking for workouts where day name = '{specific_day}'...")
-
-            # Use SQL to directly filter by day name for better performance
-            cursor.execute("""
+            # EXACT SQL QUERY BEING EXECUTED
+            tuesday_query = """
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts
                 WHERE LOWER(strftime('%A', date_logged)) = LOWER(?)
                 ORDER BY date_logged DESC
-            """, (specific_day,))
+            """
+            print(f"🔍 EXECUTING QUERY: {tuesday_query}")
+            print(f"🔍 WITH PARAMETER: '{specific_day}'")
 
+            cursor.execute(tuesday_query, (specific_day,))
             specific_day_logs = cursor.fetchall()
-            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts using day name method")
-
-            # Use whichever method found results
-            specific_day_logs = specific_day_logs if specific_day_logs else [] # Fallback to empty list if no logs found by either method
+            
+            print(f"🔍 RAW QUERY RESULT: {len(specific_day_logs)} rows returned")
+            print(f"🔍 RAW DATA: {specific_day_logs}")
 
             if specific_day_logs:
                 # Group by date and show the most recent one
@@ -1812,6 +1794,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 conn.close()
                 return context_info
             else:
+                print(f"❌ No {specific_day.upper()} workouts found in database")
                 context_info += f"\n❌ No {specific_day.upper()} workouts found in your logs.\n"
 
                 # Show what dates we DO have for debugging
