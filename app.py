@@ -1735,6 +1735,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
             days = entities.get('days', [])
             if days:
                 specific_day = days[0].lower()  # e.g., "tuesday"
+                print(f"🎯 Detected specific day from entities: '{specific_day}'")
 
         # If asking about a specific day, prioritize that day's data
         if specific_day:
@@ -1752,9 +1753,9 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
             cursor.execute(tuesday_query, (specific_day,))
             specific_day_logs = cursor.fetchall()
+            print(f"📄 Raw log result rows:", specific_day_logs)
             
             print(f"🔍 RAW QUERY RESULT: {len(specific_day_logs)} rows returned")
-            print(f"📄 Raw log result rows:", specific_day_logs)
             print(f"🔍 RAW DATA: {specific_day_logs}")
             
             # Print each row in detail for debugging
