@@ -1470,32 +1470,14 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
         print(f"Error in analyze_day_progression: {e}")
         return {"success": False, "error": str(e)}
 
-def build_smart_context(prompt, query_intent, user_background=None):
-    """Build context based on query intent to avoid overwhelming Grok"""
-    context_info = ""
-
+def build_historical_context(prompt):
+    """Build context for historical workout queries - ONLY real workout data"""
+    print(f"🔍 Building historical context for: '{prompt}'")
+    
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-
-    # SKIP conversation context for historical queries to avoid confusion with fake data
-    if query_intent != 'historical':
-        conversation_context = get_conversation_context()
-        if conversation_context:
-            context_info += conversation_context
-
-    # Always include basic user info if available
-    if user_background:
-        if user_background.get('primary_goal'):
-            context_info += f"User's Goal: {user_background['primary_goal']}\n"
-        if user_background.get('fitness_level'):
-            context_info += f"Fitness Level: {user_background['fitness_level']}\n"
-
-    # COMPREHENSIVE DEBUG LOGGING
-    print(f"\n🔍 ===== DEBUG CONTEXT BUILDING =====")
-    print(f"🔍 Intent: {query_intent}")
-    print(f"🔍 Prompt: '{prompt}'")
     
-    # Debug: Check what's actually in the database
+    # Check what's actually in the database
     cursor.execute("SELECT COUNT(*) FROM workouts")
     total_workouts = cursor.fetchone()[0]
     print(f"🔍 Total workouts in database: {total_workouts}")
@@ -1504,23 +1486,235 @@ def build_smart_context(prompt, query_intent, user_background=None):
     recent_workouts_debug = cursor.fetchall()
     print(f"🔍 Recent 5 workouts in DB: {recent_workouts_debug}")
 
-    # Check for ANY plan-related query first - before intent-specific processing
-    # CRITICAL: Exclude requests for logs/history even if they mention days
-    is_log_request = any(phrase in prompt.lower() for phrase in [
-        'logs', 'workout logs', 'my logs', 'recent logs', 'show me my logs',
-        'what did i do', 'my workout', 'my recent workout', 'workout from'
-    ])
-    
-    is_plan_query = any(phrase in prompt.lower() for phrase in [
-        'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
-        'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
-        'plan for', 'workout plan'
-    ]) and not is_log_request
-    
-    print(f"🔍 Is plan query: {is_plan_query}")
+    # Check for specific day requests
+    specific_day = None
+    for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+        if day in prompt.lower():
+            specific_day = day
+            print(f"🎯 Detected specific day: '{specific_day}'")
+            break
 
-    if is_plan_query:
-        # Always include weekly plan for plan queries regardless of detected intent
+    # Check for general recent workout queries
+    general_recent_queries = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout', 'show me my logs']
+    is_general_recent = any(phrase in prompt.lower() for phrase in general_recent_queries)
+
+    if is_general_recent and not specific_day:
+        print("🎯 Building context for general recent workout query")
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+            FROM workouts
+            ORDER BY date_logged DESC, id ASC
+            LIMIT 50
+        """)
+        recent_logs = cursor.fetchall()
+
+        if recent_logs:
+            # Group by date for better organization
+            workouts_by_date = {}
+            for w in recent_logs:
+                date = w[4]
+                if date not in workouts_by_date:
+                    workouts_by_date[date] = []
+                workouts_by_date[date].append(w)
+
+            context_info = "\n" + "=" * 80 + "\n"
+            context_info += "=== YOUR ACTUAL RECENT COMPLETED WORKOUTS ===\n"
+            context_info += "=" * 80 + "\n"
+            
+            for date in sorted(workouts_by_date.keys(), reverse=True)[:10]:
+                day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+                context_info += f"\n🗓️ {day_name.upper()} {date}:\n"
+
+                for w in workouts_by_date[date]:
+                    exercise, sets, reps, weight, _, notes, sub_reason = w
+                    context_info += f"   ✓ {exercise}: {sets} sets × {reps} reps @ {weight}"
+                    if sub_reason:
+                        context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
+                    if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
+                        clean_notes = notes.split('[SUBSTITUTED')[0].strip()
+                        if clean_notes:
+                            note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
+                            context_info += f" - {note_preview}"
+                    context_info += "\n"
+                context_info += "\n"
+
+            context_info += "=" * 80 + "\n"
+            context_info += "🚨 CRITICAL INSTRUCTION: These are the user's ACTUAL logged workouts.\n"
+            context_info += "DO NOT reference any other workout data. DO NOT make up exercises.\n"
+            context_info += "ONLY discuss the exercises listed above with their exact weights and reps.\n"
+            context_info += "IGNORE ANY CONVERSATION HISTORY THAT CONTRADICTS THIS DATA.\n"
+            context_info += "=" * 80 + "\n"
+
+            print(f"✅ Built historical context with {len(workouts_by_date)} workout days")
+            conn.close()
+            return context_info
+        else:
+            print("❌ No recent workouts found in database")
+            context_info = "\n" + "=" * 60 + "\n"
+            context_info += "❌ NO RECENT WORKOUTS FOUND IN DATABASE\n"
+            context_info += "=" * 60 + "\n"
+            context_info += "The user asked about recent workouts but no workouts are logged.\n"
+            context_info += "DO NOT make up or invent any workouts.\n"
+            context_info += "Tell the user truthfully that no recent workouts have been logged.\n"
+            context_info += "=" * 60 + "\n"
+            conn.close()
+            return context_info
+
+    # Handle specific day requests
+    if specific_day:
+        print(f"🎯 Building context for {specific_day} workouts")
+        cursor.execute("""
+            SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+            FROM workouts
+            ORDER BY date_logged DESC
+            LIMIT 50
+        """)
+        all_workouts = cursor.fetchall()
+        
+        specific_day_workouts = []
+        for workout in all_workouts:
+            exercise, sets, reps, weight, date_str, notes, sub_reason = workout
+            try:
+                workout_date = datetime.strptime(date_str, '%Y-%m-%d')
+                day_name = workout_date.strftime('%A').lower()
+                if day_name == specific_day:
+                    specific_day_workouts.append((exercise, sets, reps, weight, date_str, notes, sub_reason))
+            except Exception as e:
+                print(f"❌ Date parsing error for {date_str}: {e}")
+
+        context_info = f"\n🎯 EXACT DATA FOR {specific_day.upper()} WORKOUTS:\n"
+        context_info += f"Found {len(specific_day_workouts)} actual {specific_day} workouts in database\n\n"
+
+        if specific_day_workouts:
+            most_recent_date = specific_day_workouts[0][4]
+            context_info += f"Most recent {specific_day} workout was on {most_recent_date}:\n"
+            for workout in specific_day_workouts:
+                if workout[4] == most_recent_date:
+                    exercise, sets, reps, weight, date_str, notes, sub_reason = workout
+                    context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+                    if notes:
+                        context_info += f" - Notes: {notes}"
+                    if sub_reason:
+                        context_info += f" - Substituted: {sub_reason}"
+                    context_info += "\n"
+            context_info += f"\nThis is actual logged data from your {specific_day} workout.\n"
+        else:
+            context_info += f"No {specific_day} workouts found in your recent logs.\n"
+
+        print(f"✅ Built {specific_day} context with {len(specific_day_workouts)} workouts")
+        conn.close()
+        return context_info
+
+    conn.close()
+    return "\n=== NO HISTORICAL DATA CONTEXT ===\n"
+
+def build_plan_context():
+    """Build context for weekly plan queries - ONLY plan data"""
+    print("🔍 Building plan context")
+    
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
+        FROM weekly_plan
+        ORDER BY
+            CASE day_of_week
+                WHEN 'monday' THEN 1
+                WHEN 'tuesday' THEN 2
+                WHEN 'wednesday' THEN 3
+                WHEN 'thursday' THEN 4
+                WHEN 'friday' THEN 5
+                WHEN 'saturday' THEN 6
+                WHEN 'sunday' THEN 7
+            END, exercise_order
+    ''')
+    weekly_plan = cursor.fetchall()
+    
+    if weekly_plan:
+        context_info = "\n=== YOUR WEEKLY WORKOUT PLAN ===\n"
+        current_day = ""
+        for row in weekly_plan:
+            day, exercise, sets, reps, weight, order = row
+            if day != current_day:
+                if current_day:
+                    context_info += "\n"
+                context_info += f"\n{day.upper()}:\n"
+                current_day = day
+            context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
+        
+        print(f"✅ Built plan context with {len(set(row[0] for row in weekly_plan))} days")
+        conn.close()
+        return context_info
+    else:
+        print("❌ No weekly plan found")
+        conn.close()
+        return "\n=== NO WEEKLY PLAN SET ===\n"
+
+def build_progression_context():
+    """Build context for progression queries - recent performance trends"""
+    print("🔍 Building progression context")
+    
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    context_info = "\n=== PROGRESSION CONTEXT ===\n"
+    
+    # Get recent workouts for trend analysis
+    cursor.execute("""
+        SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, notes
+        FROM workouts
+        WHERE date_logged >= date('now', '-14 days')
+        ORDER BY exercise_name, date_logged DESC
+    """)
+    recent_logs = cursor.fetchall()
+
+    if recent_logs:
+        context_info += "Recent Performance (last 2 weeks):\n"
+        for log in recent_logs[:15]:
+            exercise, sets, reps, weight, date, sub_reason, notes = log
+            context_info += f"• {exercise}: {sets}x{reps}@{weight} ({date})"
+            if sub_reason:
+                context_info += f" - Substituted: {sub_reason}"
+            if notes:
+                context_info += f" - {notes[:50]}{'...' if len(notes) > 50 else ''}"
+            context_info += "\n"
+
+    # Include current weekly plan targets
+    cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY exercise_name')
+    planned_exercises = cursor.fetchall()
+    if planned_exercises:
+        context_info += "\nCurrent Weekly Plan Targets:\n"
+        for day, exercise, sets, reps, weight in planned_exercises:
+            context_info += f"• {exercise}: {sets}x{reps}@{weight} ({day})\n"
+
+    print(f"✅ Built progression context with {len(recent_logs)} recent workouts")
+    conn.close()
+    return context_info
+
+def build_general_context(prompt, user_background=None):
+    """Build minimal context for general chat"""
+    print("🔍 Building general context")
+    
+    context_info = ""
+    
+    # Basic user info
+    if user_background:
+        if user_background.get('primary_goal'):
+            context_info += f"User's Goal: {user_background['primary_goal']}\n"
+        if user_background.get('fitness_level'):
+            context_info += f"Fitness Level: {user_background['fitness_level']}\n"
+
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
+    
+    context_info += "\n=== BASIC INFO ===\n"
+    cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
+    recent_count = cursor.fetchone()[0]
+    context_info += f"Workouts this week: {recent_count}\n"
+
+    # Include weekly plan if query mentions days or exercises
+    if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
         cursor.execute('''
             SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
             FROM weekly_plan
@@ -1537,7 +1731,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         ''')
         weekly_plan = cursor.fetchall()
         if weekly_plan:
-            context_info += "\n=== YOUR WEEKLY WORKOUT PLAN ===\n"
+            context_info += "\n=== WEEKLY PLAN ===\n"
             current_day = ""
             for row in weekly_plan:
                 day, exercise, sets, reps, weight, order = row
@@ -1548,11 +1742,34 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     current_day = day
                 context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
 
-    if query_intent == 'full_plan_review':
-        # Provide EVERYTHING for comprehensive analysis
-        context_info += "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
+    print(f"✅ Built general context")
+    conn.close()
+    return context_info
 
-        # User background and goals
+def build_smart_context(prompt, query_intent, user_background=None):
+    """Route to appropriate context builder based on query intent"""
+    print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
+    print(f"🔍 Intent: {query_intent}")
+    print(f"🔍 Prompt: '{prompt}'")
+    
+    # Route to focused context builders
+    if query_intent == 'historical':
+        return build_historical_context(prompt)
+    
+    elif query_intent == 'progression':
+        return build_progression_context()
+    
+    elif any(phrase in prompt.lower() for phrase in [
+        'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
+        'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
+        'plan for', 'workout plan'
+    ]):
+        return build_plan_context()
+    
+    elif query_intent == 'full_plan_review':
+        # For comprehensive analysis, combine multiple contexts
+        context_info = "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
+        
         if user_background:
             context_info += "USER PROFILE:\n"
             if user_background.get('primary_goal'):
@@ -1561,445 +1778,19 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 context_info += f"Fitness Level: {user_background['fitness_level']}\n"
             if user_background.get('years_training'):
                 context_info += f"Training Experience: {user_background['years_training']} years\n"
-            if user_background.get('injuries_history'):
-                context_info += f"Injury History: {user_background['injuries_history']}\n"
-            if user_background.get('training_frequency'):
-                context_info += f"Training Frequency: {user_background['training_frequency']}\n"
 
-        # Current weekly plan with full structure
-        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order FROM weekly_plan ORDER BY day_of_week, exercise_order')
-        planned_exercises = cursor.fetchall()
-        if planned_exercises:
-            context_info += "\nCURRENT WEEKLY PLAN:\n"
-            current_day = ""
-            for day, exercise, sets, reps, weight, order in planned_exercises:
-                if day != current_day:
-                    context_info += f"\n{day.upper()}:\n"
-                    current_day = day
-                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
-
-        # Plan philosophy and context
-        cursor.execute('SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations, creation_reasoning FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-        plan_context_result = cursor.fetchone()
-        if plan_context_result:
-            philosophy, weekly_structure, progression_strategy, special_considerations, reasoning = plan_context_result
-            context_info += "\nPLAN PHILOSOPHY & CONTEXT:\n"
-            if philosophy:
-                context_info += f"Training Philosophy: {philosophy}\n"
-            if weekly_structure:
-                context_info += f"Weekly Structure Reasoning: {weekly_structure}\n"
-            if progression_strategy:
-                context_info += f"Progression Strategy: {progression_strategy}\n"
-            if special_considerations:
-                context_info += f"Special Considerations: {special_considerations}\n"
-            if reasoning:
-                context_info += f"Original Plan Reasoning: {reasoning[:300]}...\n"
-
-        # Exercise-specific context
-        cursor.execute('SELECT exercise_name, primary_purpose, progression_logic, ai_notes FROM exercise_metadata WHERE user_id = 1 ORDER BY exercise_name')
-        exercise_metadata = cursor.fetchall()
-        if exercise_metadata:
-            context_info += "\nEXERCISE-SPECIFIC CONTEXT:\n"
-            for exercise, purpose, progression, notes in exercise_metadata:
-                context_info += f"• {exercise}: {purpose} (progression: {progression})"
-                if notes:
-                    context_info += f" - {notes}"
-                context_info += "\n"
-
-        # Recent performance history (last 3 weeks)
-        cursor.execute("""
-            SELECT
-                exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-            FROM workouts
-            WHERE date_logged >= date('now', '-21 days')
-            ORDER BY date_logged DESC
-        """)
-        recent_logs = cursor.fetchall()
-        if recent_logs:
-            context_info += "\nRECENT PERFORMANCE HISTORY (Last 3 weeks):\n"
-            for log in recent_logs:
-                exercise, sets, reps, weight, date, notes, sub_reason = log
-                context_info += f"• {date}: {exercise} {sets}x{reps}@{weight}"
-                if sub_reason:
-                    context_info += f" [SUBSTITUTED from {sub_reason}]"
-                if notes:
-                    context_info += f" - {notes}"
-                context_info += "\n"
-
-        # Add complete weekly plan for context with proper formatting
-        cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan
-            ORDER BY
-                CASE day_of_week
-                    WHEN 'monday' THEN 1
-                    WHEN 'tuesday' THEN 2
-                    WHEN 'wednesday' THEN 3
-                    WHEN 'thursday' THEN 4
-                    WHEN 'friday' THEN 5
-                    WHEN 'saturday' THEN 6
-                    WHEN 'sunday' THEN 7
-                END, exercise_order
-        ''')
-        weekly_plan = cursor.fetchall()
-        if weekly_plan:
-            context_info += "\n\n=== CURRENT WEEKLY PLAN (ACCURATE DATA) ===\n"
-            current_day = ""
-            for row in weekly_plan:
-                day, exercise, sets, reps, weight, order = row
-                if day != current_day:
-                    if current_day:  # Add newline after previous day
-                        context_info += "\n"
-                    context_info += f"\n{day.upper()}:\n"
-                    current_day = day
-                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
-            context_info += "\nIMPORTANT: Use ONLY the exercises listed above. Do not invent or add exercises that are not in this plan.\n"
-
-        # Strip the trigger phrase from the actual prompt
+        # Add plan context
+        context_info += build_plan_context()
+        
+        # Add recent performance
+        context_info += build_progression_context()
+        
+        # Strip the trigger phrase
         prompt = prompt.replace('FULL_PLAN_REVIEW_REQUEST:', '').strip()
-
-    elif query_intent == 'progression':
-        # Include recent performance and related exercises
-        context_info += "\n=== PROGRESSION CONTEXT ===\n"
-
-        # Get recent workouts for trend analysis
-        cursor.execute("""
-            SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
-            FROM workouts
-            WHERE date_logged >= date('now', '-14 days')
-            ORDER BY exercise_name, date_logged DESC
-        """)
-        recent_logs = cursor.fetchall()
-
-        if recent_logs:
-            context_info += "Recent Performance (last 2 weeks):\n"
-            for log in recent_logs[:15]:  # Limit to most relevant
-                exercise, sets, reps, weight, date, sub_reason, perf_context = log
-                context_info += f"• {exercise}: {sets}x{reps}@{weight} ({date})"
-                if sub_reason:
-                    context_info += f" - Substituted: {sub_reason}"
-                if perf_context:
-                    context_info += f" - {perf_context}"
-                context_info += "\n"
-
-        # Include current weekly plan with context
-        cursor.execute('SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight FROM weekly_plan ORDER BY exercise_name')
-        planned_exercises = cursor.fetchall()
-        if planned_exercises:
-            context_info += "\nCurrent Weekly Plan:\n"
-            for day, exercise, sets, reps, weight in planned_exercises:
-                context_info += f"• {exercise}: {sets}x{reps}@{weight} ({day})\n"
-
-        # Include plan philosophy and reasoning
-        cursor.execute('SELECT plan_philosophy, progression_strategy FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-        plan_context_result = cursor.fetchone()
-        if plan_context_result:
-            philosophy, progression_strategy = plan_context_result
-            if philosophy:
-                context_info += f"\nPlan Philosophy: {philosophy}\n"
-            if progression_strategy:
-                context_info += f"Progression Strategy: {progression_strategy}\n"
-
-    elif query_intent == 'exercise_specific':
-        # Find the specific exercise mentioned and get its history
-        context_info += "\n=== EXERCISE-SPECIFIC CONTEXT ===\n"
-
-        # Extract exercise name from prompt (simple approach)
-        exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull']
-        mentioned_exercise = None
-        for keyword in exercise_keywords:
-            if keyword in prompt.lower():
-                mentioned_exercise = keyword
-                break
-
-        if mentioned_exercise:
-            # Get history for this exercise and related ones
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, substitution_reason, performance_context
-                FROM workouts
-                WHERE LOWER(exercise_name) LIKE ?
-                ORDER BY date_logged DESC
-                LIMIT 10
-            """, (f'%{mentioned_exercise}%',))
-
-            exercise_history = cursor.fetchall()
-            if exercise_history:
-                context_info += f"Recent {mentioned_exercise} history:\n"
-                for log in exercise_history:
-                    exercise, sets, reps, weight, date, sub_reason, perf_context = log
-                    context_info += f"• {date}: {sets}x{reps}@{weight}"
-                    if sub_reason:
-                        context_info += f" (sub: {sub_reason})"
-                    if perf_context:
-                        context_info += f" - {perf_context}"
-                    context_info += "\n"
-
-    elif query_intent == 'historical':
-        # Include recent workout summary organized by date
-        context_info += "\n=== YOUR RECENT WORKOUT HISTORY ===\n"
-
-        # Check if user is asking about a specific day (use entities instead of raw prompt)
-        specific_day = None
-        if query_intent and isinstance(query_intent, dict):
-            entities = query_intent.get('entities', {})
-            days = entities.get('days', [])
-            if days:
-                specific_day = days[0].lower()  # e.g., "tuesday"
-                print(f"🎯 Detected specific day from entities: '{specific_day}'")
-
-        # Enhanced day detection - check the prompt directly for day names
-        if not specific_day:
-            for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                if day in prompt.lower():
-                    specific_day = day
-                    print(f"🎯 Detected day '{specific_day}' from direct prompt analysis")
-                    break
-
-        # Check for general recent workout queries
-        general_recent_queries = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout', 'most recent day']
-        is_general_recent = any(phrase in prompt.lower() for phrase in general_recent_queries)
-
-        if is_general_recent and not specific_day:
-            print("🎯 Detected general recent workout query")
-            # Get recent workouts without day filtering
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-                FROM workouts
-                ORDER BY date_logged DESC, id ASC
-                LIMIT 50
-            """)
-            recent_logs = cursor.fetchall()
-
-            if recent_logs:
-                # CLEAR ANY EXISTING CONTEXT and start fresh with ONLY workout data
-                context_info = ""
-                
-                # Group by date for better organization
-                workouts_by_date = {}
-                for w in recent_logs:
-                    date = w[4]
-                    if date not in workouts_by_date:
-                        workouts_by_date[date] = []
-                    workouts_by_date[date].append(w)
-
-                # Show recent workouts organized by date with MAXIMUM emphasis
-                context_info += "\n" + "=" * 80 + "\n"
-                context_info += "=== YOUR ACTUAL RECENT COMPLETED WORKOUTS ===\n"
-                context_info += "=" * 80 + "\n"
-                
-                for date in sorted(workouts_by_date.keys(), reverse=True)[:10]:  # Last 10 workout days
-                    day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                    context_info += f"\n🗓️ {day_name.upper()} {date}:\n"
-
-                    for w in workouts_by_date[date]:
-                        exercise, sets, reps, weight, _, notes, sub_reason = w
-                        context_info += f"   ✓ {exercise}: {sets} sets × {reps} reps @ {weight}"
-                        if sub_reason:
-                            context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
-                        if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
-                            clean_notes = notes.split('[SUBSTITUTED')[0].strip()
-                            if clean_notes:
-                                note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
-                                context_info += f" - {note_preview}"
-                        context_info += "\n"
-                    context_info += "\n"
-
-                context_info += "=" * 80 + "\n"
-                context_info += "🚨 CRITICAL INSTRUCTION: These are the user's ACTUAL logged workouts.\n"
-                context_info += "DO NOT reference any other workout data. DO NOT make up exercises.\n"
-                context_info += "ONLY discuss the exercises listed above with their exact weights and reps.\n"
-                context_info += "IGNORE ANY CONVERSATION HISTORY THAT CONTRADICTS THIS DATA.\n"
-                context_info += "=" * 80 + "\n"
-
-                print(f"✅ Successfully built context for general recent workout query - CLEARED conversation context")
-                conn.close()
-                return context_info
-            else:
-                print("❌ No recent workouts found in database")
-                context_info += f"\n❌ CRITICAL: NO RECENT WORKOUTS FOUND IN DATABASE\n"
-                context_info += "=" * 60 + "\n"
-                context_info += f"The user asked about recent workouts but no workouts are logged.\n"
-                context_info += f"DO NOT make up or invent any workouts.\n"
-                context_info += f"Tell the user truthfully that no recent workouts have been logged.\n"
-                context_info += "=" * 60 + "\n"
-
-                conn.close()
-                return context_info
-
-        # If asking about a specific day, prioritize that day's data
-        if specific_day:
-            context_info += f"\n🎯 EXACT DATA FOR {specific_day.upper()} WORKOUTS:\n"
-
-            # ENHANCED DEBUG: Let's see exactly what's happening with Tuesday queries
-            print(f"\n🔍 ===== TUESDAY WORKOUT RETRIEVAL DEBUG =====")
-            print(f"🔍 Looking for specific day: '{specific_day}'")
-
-            # First, let's see ALL workouts with their day names
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason,
-                       strftime('%w', date_logged) as day_of_week_num,
-                       date(date_logged, 'weekday 0', '-6 days', 'weekday 1') as week_start
-                FROM workouts
-                ORDER BY date_logged DESC
-                LIMIT 50
-            """)
-
-            all_workouts = cursor.fetchall()
-            print(f"🔍 DEBUG: Retrieved {len(all_workouts)} workouts from database")
-            
-            # Log first few workouts for inspection
-            for i, workout in enumerate(all_workouts[:5]):
-                exercise, sets, reps, weight, date_str, notes, sub_reason, day_num, week_start = workout
-                day_name = datetime.strptime(date_str, '%Y-%m-%d').strftime('%A').lower()
-                print(f"🔍 Workout {i+1}: {date_str} ({day_name}) - {exercise}: {sets}x{reps}@{weight}")
-
-            specific_day_workouts = []
-
-            for workout in all_workouts:
-                exercise, sets, reps, weight, date_str, notes, sub_reason, day_num, week_start = workout
-                try:
-                    workout_date = datetime.strptime(date_str, '%Y-%m-%d')
-                    day_name = workout_date.strftime('%A').lower()
-
-                    if day_name == specific_day:
-                        specific_day_workouts.append((exercise, sets, reps, weight, date_str, notes, sub_reason))
-                        print(f"✅ TUESDAY MATCH FOUND: {date_str} - {exercise}: {sets}x{reps}@{weight}")
-
-                except Exception as e:
-                    print(f"❌ Date parsing error for {date_str}: {e}")
-                    context_info += f"❌ Date parsing error for {date_str}: {e}\n"
-
-            print(f"🔍 FINAL TUESDAY COUNT: Found {len(specific_day_workouts)} Tuesday workouts")
-            
-            # Log what we're actually sending to the AI
-            context_info += f"DEBUG INFO: Found {len(specific_day_workouts)} actual {specific_day} workouts in database\n"
-
-            if specific_day_workouts:
-                # Show the most recent workout data for that day
-                most_recent_date = specific_day_workouts[0][4]  # Get the date
-                context_info += f"Most recent {specific_day} workout was on {most_recent_date}:\n"
-
-                for workout in specific_day_workouts:
-                    if workout[4] == most_recent_date:  # Same date
-                        exercise, sets, reps, weight, date_str, notes, sub_reason = workout
-                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
-                        if notes:
-                            context_info += f" - Notes: {notes}"
-                        if sub_reason:
-                            context_info += f" - Substituted: {sub_reason}"
-                        context_info += "\n"
-
-                context_info += f"\nThis is actual logged data from your {specific_day} workout.\n"
-                conn.close()
-                return context_info  # Return early with just the specific day data
-            else:
-                context_info += f"No {specific_day} workouts found in your recent logs.\n"
-                conn.close()
-                return context_info
-
-        # Only proceed with general context if NO specific day was requested
-        if not specific_day:
-            # Also include general recent workout history for context
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-                FROM workouts
-                ORDER BY date_logged DESC, id ASC
-                LIMIT 30
-            """)
-            recent_logs = cursor.fetchall()
-
-            if recent_logs and not specific_day:
-                # Group by date for better organization
-                workouts_by_date = {}
-                for w in recent_logs:
-                    date = w[4]
-                    if date not in workouts_by_date:
-                        workouts_by_date[date] = []
-                    workouts_by_date[date].append(w)
-
-                # Show workouts organized by date with CLEAR day identification
-                context_info += "\n=== ALL RECENT WORKOUTS ===\n"
-                for date in sorted(workouts_by_date.keys(), reverse=True)[:8]:  # Last 8 workout days
-                    day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                    context_info += f"\n=== {day_name.upper()} {date} ===\n"
-
-                    for w in workouts_by_date[date]:
-                        exercise, sets, reps, weight, _, notes, sub_reason = w
-                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
-                        if sub_reason:
-                            context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
-                        if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
-                            # Show notes but clean up substitution metadata
-                            clean_notes = notes.split('[SUBSTITUTED')[0].strip()
-                            if clean_notes:
-                                note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
-                                context_info += f" - {note_preview}"
-                        context_info += "\n"
-                    context_info += "\n"
-
-            # Include weekly plan for reference
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight
-                FROM weekly_plan
-                ORDER BY
-                    CASE day_of_week
-                        WHEN 'monday' THEN 1
-                        WHEN 'tuesday' THEN 2
-                        WHEN 'wednesday' THEN 3
-                        WHEN 'thursday' THEN 4
-                        WHEN 'friday' THEN 5
-                        WHEN 'saturday' THEN 6
-                        WHEN 'sunday' THEN 7
-                    END
-            ''')
-            planned_exercises = cursor.fetchall()
-            if planned_exercises:
-                context_info += "=== WEEKLY PLAN (for reference) ===\n"
-                current_day = ""
-                for day, exercise, sets, reps, weight in planned_exercises:
-                    if day != current_day:
-                        context_info += f"\n{day.upper()}:\n"
-                        current_day = day
-                    context_info += f"• {exercise}: {sets}x{reps}@{weight}\n"
-
-    elif query_intent == 'general':
-        # Include weekly plan for general queries that might reference days or exercises
-        context_info += "\n=== BASIC INFO ===\n"
-        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
-        recent_count = cursor.fetchone()[0]
-        context_info += f"Workouts this week: {recent_count}\n"
-
-        # Always include weekly plan for any query that might reference days or exercises
-        if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-                FROM weekly_plan
-                ORDER BY
-                    CASE day_of_week
-                        WHEN 'monday' THEN 1
-                        WHEN 'tuesday' THEN 2
-                        WHEN 'wednesday' THEN 3
-                        WHEN 'thursday' THEN 4
-                        WHEN 'friday' THEN 5
-                        WHEN 'saturday' THEN 6
-                        WHEN 'sunday' THEN 7
-                    END, exercise_order
-            ''')
-            weekly_plan = cursor.fetchall()
-            if weekly_plan:
-                context_info += "\n=== WEEKLY PLAN ===\n"
-                current_day = ""
-                for row in weekly_plan:
-                    day, exercise, sets, reps, weight, order = row
-                    if day != current_day:
-                        if current_day:
-                            context_info += "\n"
-                        context_info += f"\n{day.upper()}:\n"
-                        current_day = day
-                    context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
-
-    conn.close()
-    return context_info
+        return context_info
+    
+    else:
+        return build_general_context(prompt, user_background)
 
 def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
     """Context-aware Grok response with smart context selection"""
