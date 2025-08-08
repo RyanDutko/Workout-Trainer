@@ -164,7 +164,7 @@ def init_db():
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS auto_actions (
-        id INTEGER PRIMARYK AUTOINCREMENT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id INTEGER NOT NULL,
         action_type TEXT NOT NULL,
         action_data TEXT,
@@ -1748,10 +1748,10 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 WHERE strftime('%w', date_logged) = '2'
                 ORDER BY date_logged DESC
             """)
-
+            
             specific_day_logs = cursor.fetchall()
             print(f"📄 Found {len(specific_day_logs)} Tuesday workout entries")
-
+            
             if specific_day_logs:
                 # Just show the most recent Tuesday
                 most_recent_date = specific_day_logs[0][4]  # First row is most recent due to ORDER BY DESC
@@ -1762,7 +1762,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
                 # Group workouts by date and show most recent Tuesday
                 workouts_on_date = [w for w in specific_day_logs if w[4] == most_recent_date]
-
+                
                 for w in workouts_on_date:
                     exercise, sets, reps, weight, _, notes, sub_reason = w
                     context_info += f"• {exercise}: {sets}x{reps} @ {weight}"
@@ -1780,7 +1780,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
                 print(f"✅ Successfully built context for Tuesday workout from {most_recent_date}")
 
-                # Return immediately
+                # Return immediately 
                 conn.close()
                 return context_info
             else:
@@ -1925,6 +1925,8 @@ def get_grok_response_with_context(prompt, user_background=None, recent_workouts
             system_prompt = """You are Grok, an experienced personal trainer with deep understanding of program design. You're analyzing a user's request to modify their training priorities.
 
 TRAINER MINDSET - CRITICAL:
+You are acting as an experienced personal trainer, not just an AI assistant. This means:
+
 - ALWAYS consider the user's current weekly training volume before suggesting changes
 - Understand that more isn't always better - recovery and balance matter
 - When asked to add exercises, first evaluate if the body part/day already has sufficient volume
@@ -2052,7 +2054,7 @@ CONTEXT USAGE:
             ],
             temperature=0.7
         )
-
+        
         ai_response = response.choices[0].message.content
         return ai_response
     except Exception as e:
