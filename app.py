@@ -1504,11 +1504,17 @@ def build_smart_context(prompt, query_intent, user_background=None):
     print(f"🔍 Recent 5 workouts in DB: {recent_workouts_debug}")
 
     # Check for ANY plan-related query first - before intent-specific processing
+    # CRITICAL: Exclude requests for logs/history even if they mention days
+    is_log_request = any(phrase in prompt.lower() for phrase in [
+        'logs', 'workout logs', 'my logs', 'recent logs', 'show me my logs',
+        'what did i do', 'my workout', 'my recent workout', 'workout from'
+    ])
+    
     is_plan_query = any(phrase in prompt.lower() for phrase in [
         'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
-    ])
+    ]) and not is_log_request
     
     print(f"🔍 Is plan query: {is_plan_query}")
 
