@@ -1741,26 +1741,35 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
 
-            # Simple, direct query - find workouts on any Tuesday
+            # Map day names to SQLite day numbers (0=Sunday, 1=Monday, 2=Tuesday, etc.)
+            day_to_number = {
+                'sunday': '0', 'monday': '1', 'tuesday': '2', 'wednesday': '3', 
+                'thursday': '4', 'friday': '5', 'saturday': '6'
+            }
+            
+            day_number = day_to_number.get(specific_day, '2')  # Default to Tuesday for now
+            
+            # Direct query with explicit day matching
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts
-                WHERE strftime('%w', date_logged) = '2'
+                WHERE strftime('%w', date_logged) = ?
                 ORDER BY date_logged DESC
-            """)
+            """, (day_number,))
             
             specific_day_logs = cursor.fetchall()
-            print(f"📄 Found {len(specific_day_logs)} Tuesday workout entries")
+            print(f"📄 Raw log result rows:", specific_day_logs)
+            print(f"🔍 RAW QUERY RESULT: {len(specific_day_logs)} rows returned")
             
             if specific_day_logs:
-                # Just show the most recent Tuesday
+                # Just show the most recent occurrence of that day
                 most_recent_date = specific_day_logs[0][4]  # First row is most recent due to ORDER BY DESC
-                day_name = "Tuesday"
+                day_name = specific_day.title()
 
-                context_info += f"\n🎯 YOUR MOST RECENT TUESDAY WORKOUT ({most_recent_date}):\n"
+                context_info += f"\n🎯 YOUR MOST RECENT {day_name.upper()} WORKOUT ({most_recent_date}):\n"
                 context_info += "=" * 60 + "\n"
 
-                # Group workouts by date and show most recent Tuesday
+                # Group workouts by date and show most recent
                 workouts_on_date = [w for w in specific_day_logs if w[4] == most_recent_date]
                 
                 for w in workouts_on_date:
@@ -1777,21 +1786,27 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
                 context_info += f"\n✨ These are your ACTUAL logged exercises from {most_recent_date}.\n"
                 context_info += "=" * 60 + "\n"
+                context_info += f"\nIMPORTANT: DO NOT make up or invent any exercises. Use ONLY the exercises listed above.\n"
 
-                print(f"✅ Successfully built context for Tuesday workout from {most_recent_date}")
+                print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
 
                 # Return immediately 
                 conn.close()
                 return context_info
             else:
-                print(f"❌ No Tuesday workouts found in database")
-                context_info += f"\n❌ No Tuesday workouts found in your logs.\n"
+                print(f"❌ No {specific_day} workouts found in database")
+                context_info += f"\n❌ CRITICAL: NO {specific_day.upper()} WORKOUTS FOUND IN DATABASE\n"
+                context_info += "=" * 60 + "\n"
+                context_info += f"The user asked about {specific_day} workouts but there are ZERO {specific_day} workouts logged.\n"
+                context_info += f"DO NOT make up or invent any workouts for {specific_day}.\n"
+                context_info += f"Tell the user truthfully that no {specific_day} workouts have been logged.\n"
+                context_info += "=" * 60 + "\n"
 
-                # Show what we DO have
+                # Show what we DO have for debugging
                 cursor.execute("SELECT DISTINCT date_logged, strftime('%A', date_logged) as day_name FROM workouts ORDER BY date_logged DESC LIMIT 10")
                 available_dates = cursor.fetchall()
                 if available_dates:
-                    context_info += "Available workout dates:\n"
+                    context_info += "\nActual workout dates in database:\n"
                     for date, day_name in available_dates:
                         context_info += f"  • {date} ({day_name})\n"
                 else:
