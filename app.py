@@ -384,11 +384,11 @@ def analyze_query_intent(prompt, conversation_context=None):
     log_patterns = [r'\d+x\d+', r'\d+\s*sets?', r'\d+\s*reps?', r'@\s*\d+']
     log_score = sum(1 for word in log_keywords if word in prompt_lower)
     log_score += sum(1 for pattern in log_patterns if re.search(pattern, prompt_lower))
-    
+
     # Reduce log score if this is clearly a historical query
     if any(phrase in prompt_lower for phrase in ['what did i do', 'show me what i did', 'what i did on']):
         log_score = max(0, log_score - 5)
-    
+
     if log_score > 0:
         intents['workout_logging'] = min(log_score * 0.3, 1.0)
 
@@ -422,16 +422,16 @@ def analyze_query_intent(prompt, conversation_context=None):
     if exercise_score > 0:
         intents['exercise_specific'] = min(exercise_score * 0.2, 1.0)
 
-    # Enhanced Historical queries - don't duplicate if already scored above
+    # Enhanced historical queries - don't duplicate if already scored above
     if 'historical' not in intents:
         historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
         hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
-        
+
         # Boost score for day-specific historical queries
         for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
             if day in prompt_lower and any(word in prompt_lower for word in ['what', 'show', 'did']):
                 hist_score += 5
-        
+
         if hist_score > 0:
             intents['historical'] = min(hist_score * 0.25, 1.0)
 
@@ -1749,7 +1749,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 WHERE date_logged >= date('now', '-14 days')
                 ORDER BY date_logged DESC
             """)
-            
+
             all_recent = cursor.fetchall()
             print(f"🔍 DEBUG - All recent workouts ({len(all_recent)} total):")
             if len(all_recent) == 0:
@@ -1757,10 +1757,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
             else:
                 for i, w in enumerate(all_recent):
                     print(f"  #{i+1}: Date={w[4]}, DayName={w[8]}, DayNum={w[7]}, Exercise={w[0]}, Sets={w[1]}x{w[2]}@{w[3]}")
-                    
-            print(f"🔍 Looking for workouts where day name = 'tuesday'...")
-            print(f"🔍 strftime method found: {len(specific_day_logs)} workouts")
-            print(f"🔍 day name method found: {len(alt_day_logs)} workouts")
+
+            print(f"🔍 Looking for workouts where day name = '{specific_day}'...")
 
             # Use SQL to directly filter by day name for better performance
             cursor.execute("""
@@ -1768,7 +1766,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 FROM workouts
                 WHERE LOWER(strftime('%w', date_logged)) = CASE LOWER(?)
                     WHEN 'sunday' THEN '0'
-                    WHEN 'monday' THEN '1' 
+                    WHEN 'monday' THEN '1'
                     WHEN 'tuesday' THEN '2'
                     WHEN 'wednesday' THEN '3'
                     WHEN 'thursday' THEN '4'
@@ -1780,7 +1778,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
             specific_day_logs = cursor.fetchall()
             print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts using strftime method")
-            
+
             # Try alternative approach - direct day name matching
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
@@ -1788,10 +1786,10 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 WHERE LOWER(strftime('%A', date_logged)) = LOWER(?)
                 ORDER BY date_logged DESC
             """, (specific_day,))
-            
+
             alt_day_logs = cursor.fetchall()
             print(f"🔍 Found {len(alt_day_logs)} {specific_day} workouts using day name method")
-            
+
             # Use whichever method found results
             specific_day_logs = specific_day_logs if specific_day_logs else alt_day_logs
 
@@ -1815,8 +1813,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     exercise, sets, reps, weight, _, notes, sub_reason = w
                     context_info += f"• {exercise}: {sets}x{reps} @ {weight}"
                     if sub_reason:
-                        context_info += f" [SUBSTITUTED from {sub_reason}]"
-                    if notes and not notes.startswith('[SUBSTITUTED'):
+                        context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
+                    if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
                         clean_notes = notes.split('[SUBSTITUTED')[0].strip()
                         if clean_notes:
                             note_preview = clean_notes[:50] + "..." if len(clean_notes) > 50 else clean_notes
@@ -1829,8 +1827,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
                 print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
 
-                # CRITICAL: Skip all the other context building and return immediately
-                # This ensures the AI ONLY sees the actual workout data, not sample/plan data
+                # CRITICAL: Return immediately - no additional context needed
                 conn.close()
                 return context_info
             else:
@@ -1914,7 +1911,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 context_info += f"• {exercise}: {sets}x{reps}@{weight}\n"
 
     elif query_intent == 'general':
-        # Include weekly plan for general queries that might reference plan
+        # Include weekly plan for general queries that might reference days or exercises
         context_info += "\n=== BASIC INFO ===\n"
         cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
         recent_count = cursor.fetchone()[0]
@@ -2118,8 +2115,12 @@ def dashboard():
     today_date = datetime.now().strftime('%Y-%m-%d')
 
     # Get today's plan with completion status
-    cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
-    plan_data = cursor.fetchall()
+    plan_data = []
+    try:
+        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan WHERE day_of_week = ? ORDER BY exercise_order', (today_lowercase,))
+        plan_data = cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching plan data: {e}") # Handle potential missing columns
 
     # Check completion status for each exercise
     today_plan = []
@@ -2127,14 +2128,17 @@ def dashboard():
         exercise_id, day, exercise_name, target_sets, target_reps, target_weight, order, notes, newly_added, progression_notes = row
 
         # Check if this exercise was logged today
-        cursor.execute('''
-            SELECT sets, reps, weight, notes
-            FROM workouts
-            WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
-            ORDER BY id DESC LIMIT 1
-        ''', (exercise_name, today_date))
-
-        logged_workout = cursor.fetchone()
+        logged_workout = None
+        try:
+            cursor.execute('''
+                SELECT sets, reps, weight, notes
+                FROM workouts
+                WHERE LOWER(exercise_name) = LOWER(?) AND date_logged = ?
+                ORDER BY id DESC LIMIT 1
+            ''', (exercise_name, today_date))
+            logged_workout = cursor.fetchone()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching workout log: {e}") # Handle potential missing columns
 
         completion_status = {
             'completed': False,
@@ -2168,8 +2172,8 @@ def dashboard():
                 else:
                     completion_status['status_text'] = 'Skipped'
                     completion_status['status_class'] = 'text-danger'
-            except:
-                completion_status['status_text'] = 'Completed'
+            except (ValueError, TypeError): # Handle cases where sets might not be valid numbers
+                completion_status['status_text'] = 'Completed' # Default if parsing fails
                 completion_status['status_class'] = 'text-success'
 
         # Add completion status and newly_added flag to the row data
@@ -2181,41 +2185,52 @@ def dashboard():
 
     # Week volume - handle non-numeric weight values
     week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-    cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (week_ago,))
-    week_workouts_data = cursor.fetchall()
-
     week_volume = 0
-    for exercise, sets, reps, weight in week_workouts_data:
-        try:
-            # Extract numeric weight value
-            weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
-            if weight_str != 'bodyweight' and weight_str:
-                weight_num = float(weight_str)
-                reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
-                week_volume += weight_num * sets * reps_num
-        except (ValueError, AttributeError):
-            continue
+    try:
+        cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (week_ago,))
+        week_workouts_data = cursor.fetchall()
+
+        for exercise, sets, reps, weight in week_workouts_data:
+            try:
+                # Extract numeric weight value
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str != 'bodyweight' and weight_str:
+                    weight_num = float(weight_str)
+                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                    week_volume += weight_num * sets * reps_num
+            except (ValueError, AttributeError):
+                continue
+    except sqlite3.OperationalError as e:
+        print(f"Error calculating week volume: {e}")
 
     # Month volume - handle non-numeric weight values
     month_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-    cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (month_ago,))
-    month_workouts_data = cursor.fetchall()
-
     month_volume = 0
-    for exercise, sets, reps, weight in month_workouts_data:
-        try:
-            # Extract numeric weight value
-            weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
-            if weight_str != 'bodyweight' and weight_str:
-                weight_num = float(weight_str)
-                reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
-                month_volume += weight_num * sets * reps_num
-        except (ValueError, AttributeError):
-            continue
+    try:
+        cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts WHERE date_logged >= ?', (month_ago,))
+        month_workouts_data = cursor.fetchall()
+
+        for exercise, sets, reps, weight in month_workouts_data:
+            try:
+                # Extract numeric weight value
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
+                if weight_str != 'bodyweight' and weight_str:
+                    weight_num = float(weight_str)
+                    reps_num = int(str(reps).split('-')[0]) if '-' in str(reps) else int(reps)
+                    month_volume += weight_num * sets * reps_num
+            except (ValueError, AttributeError):
+                continue
+    except sqlite3.OperationalError as e:
+        print(f"Error calculating month volume: {e}")
 
     # Week workouts count
-    cursor.execute('SELECT COUNT(DISTINCT date_logged) FROM workouts WHERE date_logged >= ?', (week_ago,))
-    week_workouts = cursor.fetchone()[0] or 0
+    week_workouts = 0
+    try:
+        cursor.execute('SELECT COUNT(DISTINCT date_logged) FROM workouts WHERE date_logged >= ?', (week_ago,))
+        week_workouts = cursor.fetchone()[0] or 0
+    except sqlite3.OperationalError as e:
+        print(f"Error counting weekly workouts: {e}")
+
 
     # Get latest weight (placeholder - you might want to add a weights table later)
     latest_weight = None
@@ -2230,9 +2245,14 @@ def dashboard():
     )
 
     # Check if user needs onboarding
-    cursor.execute('SELECT onboarding_completed FROM user_background WHERE user_id = 1')
-    bg_result = cursor.fetchone()
-    needs_onboarding = not bg_result or not bg_result[0]
+    needs_onboarding = True # Default to true if no data found
+    try:
+        cursor.execute('SELECT onboarding_completed FROM user_background WHERE user_id = 1')
+        bg_result = cursor.fetchone()
+        if bg_result and bg_result[0]:
+            needs_onboarding = False
+    except sqlite3.OperationalError as e:
+        print(f"Error checking onboarding status: {e}") # Table might not exist yet
 
     conn.close()
 
@@ -2261,26 +2281,29 @@ def chat_stream():
             cursor = conn.cursor()
 
             # Check if user_background table has data
-            cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
-            if cursor.fetchone()[0] > 0:
-                cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
-                user_bg = cursor.fetchone()
-                if user_bg:
-                    columns = [description[0] for description in cursor.description]
-                    user_background = dict(zip(columns, user_bg))
-                else:
-                    user_background = None
-            else:
-                user_background = None
+            user_background = None
+            try:
+                cursor.execute('SELECT COUNT(*) FROM user_background WHERE user_id = 1')
+                if cursor.fetchone()[0] > 0:
+                    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY id DESC LIMIT 1')
+                    user_bg = cursor.fetchone()
+                    if user_bg:
+                        columns = [description[0] for description in cursor.description]
+                        user_background = dict(zip(columns, user_bg))
+            except sqlite3.OperationalError as e:
+                print(f"Error fetching user background: {e}") # Table might not exist
 
             # Get recent workouts for context
-            cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
-            recent_logs = cursor.fetchall()
             recent_workouts = ""
-            if recent_logs:
-                recent_workouts = "Recent exercises:\n"
-                for log in recent_logs[:5]:  # Limit to 5 most recent
-                    recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]} ({log[4]})\n"
+            try:
+                cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10')
+                recent_logs = cursor.fetchall()
+                if recent_logs:
+                    recent_workouts = "Recent exercises:\n"
+                    for log in recent_logs[:5]:  # Limit to 5 most recent
+                        recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]} ({log[4]})\n"
+            except sqlite3.OperationalError as e:
+                print(f"Error fetching recent workouts: {e}")
 
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
@@ -2408,8 +2431,11 @@ def chat_stream():
                                 regenerate_exercise_metadata_from_plan()
                                 print(f"🔄 Regenerated exercise metadata for plan changes")
 
+                        except sqlite3.OperationalError as e:
+                            print(f"⚠️ Failed to auto-update philosophy: {e}") # Handle potential missing columns
                         except Exception as e:
                             print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
+
 
                 # Parse potential AI preference updates from conversation
                 preference_updates = parse_preference_updates_from_conversation(response, current_message)
@@ -2419,35 +2445,43 @@ def chat_stream():
                         for field, value in preference_updates.items():
                             cursor.execute(f'UPDATE users SET {field} = ? WHERE id = 1', (value,))
                         print(f"🤖 Auto-updated AI preferences: {list(preference_updates.keys())}")
+                    except sqlite3.OperationalError as e:
+                        print(f"⚠️ Failed to auto-update preferences: {e}") # Handle potential missing columns
                     except Exception as e:
                         print(f"⚠️ Failed to auto-update preferences: {str(e)}")
 
-                # Get or create conversation thread
-                cursor.execute('''
-                    SELECT id FROM conversation_threads
-                    WHERE user_id = 1 AND is_active = TRUE
-                    ORDER BY updated_timestamp DESC
-                    LIMIT 1
-                ''')
-                thread_result = cursor.fetchone()
 
-                if not thread_result:
-                    # Create new thread
+                # Get or create conversation thread
+                thread_id = None
+                try:
                     cursor.execute('''
-                        INSERT INTO conversation_threads
-                        (user_id, thread_type, thread_subject, current_context, last_intent)
-                        VALUES (1, 'chat', ?, ?, ?)
-                    ''', (current_message[:50] + "..." if len(current_message) > 50 else current_message,
-                          detected_intent, detected_intent))
-                    thread_id = cursor.lastrowid
-                else:
-                    thread_id = thread_result[0]
-                    # Update thread context
-                    cursor.execute('''
-                        UPDATE conversation_threads
-                        SET current_context = ?, last_intent = ?, updated_timestamp = datetime('now', 'localtime')
-                        WHERE id = ?
-                    ''', (detected_intent, detected_intent, thread_id))
+                        SELECT id FROM conversation_threads
+                        WHERE user_id = 1 AND is_active = TRUE
+                        ORDER BY updated_timestamp DESC
+                        LIMIT 1
+                    ''')
+                    thread_result = cursor.fetchone()
+
+                    if not thread_result:
+                        # Create new thread
+                        cursor.execute('''
+                            INSERT INTO conversation_threads
+                            (user_id, thread_type, thread_subject, current_context, last_intent)
+                            VALUES (1, ?, ?, ?, ?)
+                        ''', ('chat', current_message[:50] + "..." if len(current_message) > 50 else current_message,
+                              detected_intent, detected_intent))
+                        thread_id = cursor.lastrowid
+                    else:
+                        thread_id = thread_result[0]
+                        # Update thread context
+                        cursor.execute('''
+                            UPDATE conversation_threads
+                            SET current_context = ?, last_intent = ?, updated_timestamp = datetime('now', 'localtime')
+                            WHERE id = ?
+                        ''', (detected_intent, detected_intent, thread_id))
+                except sqlite3.OperationalError as e:
+                    print(f"Error managing conversation threads: {e}")
+
 
                 # Store enhanced conversation
                 cursor.execute('''
@@ -2464,11 +2498,15 @@ def chat_stream():
 
                 # Store potential auto-actions for future execution
                 for action in potential_actions:
-                    cursor.execute('''
-                        INSERT INTO auto_actions
-                        (conversation_id, action_type, action_data)
-                        VALUES (?, ?, ?)
-                    ''', (conversation_id, action['type'], json.dumps(action['data'])))
+                    try:
+                        cursor.execute('''
+                            INSERT INTO auto_actions
+                            (conversation_id, action_type, action_data)
+                            VALUES (?, ?, ?)
+                        ''', (conversation_id, action['type'], json.dumps(action['data'])))
+                    except sqlite3.OperationalError as e:
+                        print(f"Error storing auto action: {e}")
+
 
                 conn.commit()
                 conn.close()
@@ -2495,8 +2533,12 @@ def log_workout():
 def history():
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged, notes, id FROM workouts ORDER BY date_logged DESC')
-    workouts = cursor.fetchall()
+    try:
+        cursor.execute('SELECT exercise_name, sets, reps, weight, date_logged, notes, id FROM workouts ORDER BY date_logged DESC')
+        workouts = cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching workout history: {e}")
+        workouts = []
     conn.close()
     return render_template('history.html', workouts=workouts)
 
@@ -2506,16 +2548,24 @@ def weekly_plan():
     cursor = conn.cursor()
 
     # Check what columns actually exist
-    cursor.execute("PRAGMA table_info(weekly_plan)")
-    columns = [col[1] for col in cursor.fetchall()]
+    columns = []
+    try:
+        cursor.execute("PRAGMA table_info(weekly_plan)")
+        columns = [col[1] for col in cursor.fetchall()]
+    except sqlite3.OperationalError as e:
+        print(f"Error getting table info for weekly_plan: {e}")
 
     # Use the correct column names based on what exists
-    if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
-    else:
-        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
+    plan_data = []
+    try:
+        if 'target_sets' in columns:
+            cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
+        else:
+            cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
+        plan_data = cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching weekly plan data: {e}")
 
-    plan_data = cursor.fetchall()
     conn.close()
 
     # Organize plan by day
@@ -2611,26 +2661,40 @@ def profile():
     cursor = conn.cursor()
 
     # Get user background
-    cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-    bg_result = cursor.fetchone()
     background = None
+    try:
+        cursor.execute('SELECT * FROM user_background WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+        bg_result = cursor.fetchone()
 
-    if bg_result:
-        columns = [description[0] for description in cursor.description]
-        background = dict(zip(columns, bg_result))
+        if bg_result:
+            columns = [description[0] for description in cursor.description]
+            background = dict(zip(columns, bg_result))
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching user background: {e}")
 
     # Get user preferences
-    cursor.execute('SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level FROM users WHERE id = 1')
-    pref_result = cursor.fetchone()
-
     preferences = {
-        'tone': pref_result[0] if pref_result else 'motivational',
-        'detail_level': pref_result[1] if pref_result else 'concise',
-        'format': pref_result[2] if pref_result else 'bullet_points',
-        'units': pref_result[3] if pref_result else 'lbs',
-        'communication_style': pref_result[4] if pref_result else 'encouraging',
-        'technical_level': pref_result[5] if pref_result else 'beginner'
+        'tone': 'motivational',
+        'detail_level': 'concise',
+        'format': 'bullet_points',
+        'units': 'lbs',
+        'communication_style': 'encouraging',
+        'technical_level': 'beginner'
     }
+    try:
+        cursor.execute('SELECT grok_tone, grok_detail_level, grok_format, preferred_units, communication_style, technical_level FROM users WHERE id = 1')
+        pref_result = cursor.fetchone()
+        if pref_result:
+            preferences = {
+                'tone': pref_result[0] or 'motivational',
+                'detail_level': pref_result[1] or 'concise',
+                'format': pref_result[2] or 'bullet_points',
+                'units': pref_result[3] or 'lbs',
+                'communication_style': pref_result[4] or 'encouraging',
+                'technical_level': pref_result[5] or 'beginner'
+            }
+    except sqlite3.OperationalError as e:
+        print(f"Error fetching user preferences: {e}")
 
     conn.close()
     return render_template('profile.html', background=background, preferences=preferences)
@@ -2655,57 +2719,49 @@ def get_stored_context():
         cursor = conn.cursor()
 
         # Get plan context
-        cursor.execute('''
-            SELECT plan_philosophy, training_style, weekly_structure, progression_strategy,
-                   special_considerations, created_by_ai, creation_reasoning, created_date, updated_date
-            FROM plan_context
-            WHERE user_id = 1
-            ORDER BY created_date DESC
-            LIMIT 1
-        ''')
-
-        plan_result = cursor.fetchone()
         plan_context = None
+        try:
+            cursor.execute('''
+                SELECT plan_philosophy, training_style, weekly_structure, progression_strategy,
+                       special_considerations, created_by_ai, creation_reasoning, created_date, updated_date
+                FROM plan_context
+                WHERE user_id = 1
+                ORDER BY created_date DESC
+                LIMIT 1
+            ''')
 
-        if plan_result:
-            plan_context = {
-                'plan_philosophy': plan_result[0],
-                'training_style': plan_result[1],
-                'weekly_structure': plan_result[2],
-                'progression_strategy': plan_result[3],
-                'special_considerations': plan_result[4],
-                'created_by_ai': bool(plan_result[5]),
-                'creation_reasoning': plan_result[6],
-                'created_date': plan_result[7],
-                'updated_date': plan_result[8]
-            }
+            plan_result = cursor.fetchone()
+            if plan_result:
+                columns = [description[0] for description in cursor.description]
+                plan_context = dict(zip(columns, plan_result))
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching plan context: {e}")
 
         # Get exercise metadata
-        cursor.execute('''
-            SELECT exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date
-            FROM exercise_metadata
-            WHERE user_id = 1
-            ORDER BY exercise_name
-        ''')
-
-        exercise_results = cursor.fetchall()
         exercise_metadata = []
+        try:
+            cursor.execute('''
+                SELECT exercise_name, exercise_type, primary_purpose, progression_logic, ai_notes, created_date
+                FROM exercise_metadata
+                WHERE user_id = 1
+                ORDER BY exercise_name
+            ''')
 
-        for row in exercise_results:
-            exercise_metadata.append({
-                'exercise_name': row[0],
-                'exercise_type': row[1],
-                'primary_purpose': row[2],
-                'progression_logic': row[3],
-                'ai_notes': row[4],
-                'created_date': row[5]
-            })
+            exercise_results = cursor.fetchall()
+            metadata_columns = [description[0] for description in cursor.description]
+
+            for row in exercise_results:
+                exercise_metadata.append(dict(zip(metadata_columns, row)))
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching exercise metadata: {e}")
 
         conn.close()
 
         return jsonify({
             'plan_context': plan_context,
-            'exercise_metadata': exercise_metadata
+            'exercise_metadata': exercise_metadata,
+            'context_count': len(plan_context) if plan_context else 0,
+            'metadata_count': len(exercise_metadata)
         })
 
     except Exception as e:
@@ -3027,13 +3083,17 @@ def execute_auto_actions():
         cursor = conn.cursor()
 
         # Get pending actions for this conversation
-        cursor.execute('''
-            SELECT id, action_type, action_data
-            FROM auto_actions
-            WHERE conversation_id = ? AND executed = FALSE
-        ''', (conversation_id,))
+        pending_actions = []
+        try:
+            cursor.execute('''
+                SELECT id, action_type, action_data
+                FROM auto_actions
+                WHERE conversation_id = ? AND executed = FALSE
+            ''', (conversation_id,))
+            pending_actions = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching pending actions: {e}")
 
-        pending_actions = cursor.fetchall()
         results = []
 
         for action_id, action_type, action_data_json in pending_actions:
@@ -3257,8 +3317,12 @@ def confirm_plan_change():
         cursor = conn.cursor()
 
         # Get the proposal
-        cursor.execute('SELECT action_data FROM auto_actions WHERE id = ? AND executed = FALSE', (proposal_id,))
-        result = cursor.fetchone()
+        result = None
+        try:
+            cursor.execute('SELECT action_data FROM auto_actions WHERE id = ? AND executed = FALSE', (proposal_id,))
+            result = cursor.fetchone()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching proposal: {e}")
 
         if not result:
             return jsonify({'success': False, 'error': 'Proposal not found or already executed'})
@@ -3343,14 +3407,23 @@ def edit_exercise():
         notes = data.get('notes', '')
         progression_notes = data.get('progression_notes', '')
 
+        if not exercise_id:
+            return jsonify({'success': False, 'error': 'Exercise ID is required'})
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
         # First check if progression_notes column exists
-        cursor.execute("PRAGMA table_info(weekly_plan)")
-        columns = [col[1] for col in cursor.fetchall()]
+        progression_notes_col_exists = False
+        try:
+            cursor.execute("PRAGMA table_info(weekly_plan)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if 'progression_notes' in columns:
+                progression_notes_col_exists = True
+        except sqlite3.OperationalError as e:
+            print(f"Error checking column existence: {e}")
 
-        if 'progression_notes' in columns:
+        if progression_notes_col_exists:
             cursor.execute('''
                 UPDATE weekly_plan
                 SET target_sets = ?, target_reps = ?, target_weight = ?, exercise_name = ?, notes = ?, progression_notes = ?
@@ -3364,11 +3437,14 @@ def edit_exercise():
                 WHERE id = ?
             ''', (sets, reps, weight, exercise_name, notes, exercise_id))
 
-        conn.commit()
-        conn.close()
-
-        print(f"✅ Updated exercise {exercise_name}: progression_notes = '{progression_notes}'")
-        return jsonify({'success': True})
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            print(f"✅ Updated exercise {exercise_name}: progression_notes = '{progression_notes}'")
+            return jsonify({'success': True})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found'})
 
     except Exception as e:
         print(f"❌ Error updating exercise: {e}")
@@ -3409,7 +3485,12 @@ def reorder_exercise():
 
         # Get current order
         cursor.execute('SELECT exercise_order FROM weekly_plan WHERE day_of_week = ? AND exercise_name = ?', (day, exercise))
-        current_order = cursor.fetchone()[0]
+        current_order_result = cursor.fetchone()
+
+        if not current_order_result:
+            return jsonify({'success': False, 'error': 'Exercise not found'})
+
+        current_order = current_order_result[0]
 
         if direction == 'up' and current_order > 1:
             new_order = current_order - 1
@@ -3424,7 +3505,7 @@ def reorder_exercise():
             return jsonify({'success': False, 'error': 'Cannot move further'})
 
         # Swap orders
-        cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (999, day, new_order))
+        cursor.execute('UPDATE weekly_plan SET exercise_order = 999 WHERE day_of_week = ? AND exercise_order = ?', (day, new_order))
         cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_name = ?', (new_order, day, exercise))
         cursor.execute('UPDATE weekly_plan SET exercise_order = ? WHERE day_of_week = ? AND exercise_order = ?', (current_order, day, 999))
 
@@ -3442,6 +3523,9 @@ def update_profile():
     try:
         field_name = request.form.get('field_name')
         value = request.form.get('value')
+
+        if not field_name:
+            return jsonify({'success': False, 'error': 'Field name is required'})
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -3639,24 +3723,27 @@ def get_exercise_performance(exercise):
         cursor = conn.cursor()
 
         # More flexible exercise matching - try exact match first, then partial
-        cursor.execute('''
-            SELECT date_logged, sets, reps, weight
-            FROM workouts
-            WHERE LOWER(exercise_name) = LOWER(?)
-            ORDER BY date_logged
-        ''', (exercise,))
-
-        performance_data = cursor.fetchall()
-
-        # If no exact match, try partial matching
-        if not performance_data:
+        performance_data = []
+        try:
             cursor.execute('''
                 SELECT date_logged, sets, reps, weight
                 FROM workouts
-                WHERE LOWER(exercise_name) LIKE LOWER(?)
+                WHERE LOWER(exercise_name) = LOWER(?)
                 ORDER BY date_logged
-            ''', (f'%{exercise}%',))
+            ''', (exercise,))
             performance_data = cursor.fetchall()
+
+            # If no exact match, try partial matching
+            if not performance_data:
+                cursor.execute('''
+                    SELECT date_logged, sets, reps, weight
+                    FROM workouts
+                    WHERE LOWER(exercise_name) LIKE LOWER(?)
+                    ORDER BY date_logged
+                ''', (f'%{exercise}%',))
+                performance_data = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching exercise performance: {e}")
 
         dates = []
         max_weights = []
@@ -3709,14 +3796,17 @@ def get_exercise_performance(exercise):
 
         # If no logged data, check weekly plan and create sample progression data
         if not dates:
-            cursor.execute('''
-                SELECT target_sets, target_reps, target_weight, day_of_week
-                FROM weekly_plan
-                WHERE LOWER(exercise_name) LIKE LOWER(?)
-                LIMIT 1
-            ''', (f'%{exercise}%',))
-
-            plan_data = cursor.fetchone()
+            plan_data = None
+            try:
+                cursor.execute('''
+                    SELECT target_sets, target_reps, target_weight, day_of_week
+                    FROM weekly_plan
+                    WHERE LOWER(exercise_name) LIKE LOWER(?)
+                    LIMIT 1
+                ''', (f'%{exercise}%',))
+                plan_data = cursor.fetchone()
+            except sqlite3.OperationalError as e:
+                print(f"Error fetching plan data for sample progression: {e}")
 
             if plan_data:
                 sets, reps, weight, day = plan_data
@@ -3747,10 +3837,11 @@ def get_exercise_performance(exercise):
         # Calculate stats
         best_weight = max(max_weights) if max_weights else 0
         best_date = dates[max_weights.index(best_weight)] if max_weights else 'N/A'
-        recent_avg = sum(max_weights[-3:]) / len(max_weights[-3:]) if max_weights else 0
+        recent_avg = sum(max_weights[-3:]) / len(max_weights[-3:]) if len(max_weights) >= 3 else (sum(max_weights) / len(max_weights) if max_weights else 0)
         total_sessions = len(dates)
 
         # Calculate progress (recent vs older)
+        progress = 0
         if len(max_weights) >= 4:
             recent_weights = max_weights[-2:]
             older_weights = max_weights[:2]
@@ -3758,8 +3849,14 @@ def get_exercise_performance(exercise):
             recent_avg_calc = sum(recent_weights) / len(recent_weights)
             older_avg = sum(older_weights) / len(older_weights)
             progress = ((recent_avg_calc - older_avg) / older_avg * 100) if older_avg > 0 else 0
-        else:
-            progress = 0
+        elif len(max_weights) >= 2: # Fallback if not enough data for the above calculation
+            recent_weights = max_weights[-1:]
+            older_weights = max_weights[:-1]
+            if older_weights:
+                recent_avg_calc = sum(recent_weights) / len(recent_weights)
+                older_avg = sum(older_weights) / len(older_weights)
+                progress = ((recent_avg_calc - older_avg) / older_avg * 100) if older_avg > 0 else 0
+
 
         conn.close()
 
@@ -3844,25 +3941,38 @@ def delete_workout():
         cursor = conn.cursor()
 
         # Get exercise name before deleting to potentially restore newly_added flag
-        cursor.execute('SELECT exercise_name FROM workouts WHERE id = ?', (workout_id,))
-        result = cursor.fetchone()
+        exercise_name = None
+        try:
+            cursor.execute('SELECT exercise_name FROM workouts WHERE id = ?', (workout_id,))
+            result = cursor.fetchone()
+            if result:
+                exercise_name = result[0]
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching exercise name for deletion: {e}")
 
-        if result:
-            exercise_name = result[0]
 
+        if exercise_name:
             # Delete the workout
             cursor.execute('DELETE FROM workouts WHERE id = ?', (workout_id,))
 
             # Check if this was the only log for this exercise
-            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-            remaining_logs = cursor.fetchone()[0]
+            remaining_logs = 0
+            try:
+                cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                remaining_logs = cursor.fetchone()[0]
+            except sqlite3.OperationalError as e:
+                print(f"Error counting remaining logs: {e}")
 
             print(f"🗑️ Deleted workout for {exercise_name}, remaining logs: {remaining_logs}")
 
             if remaining_logs == 0:
                 # Check what's in the weekly plan for this exercise
-                cursor.execute('SELECT exercise_name, created_by, newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-                plan_result = cursor.fetchone()
+                plan_result = None
+                try:
+                    cursor.execute('SELECT exercise_name, created_by, newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                    plan_result = cursor.fetchone()
+                except sqlite3.OperationalError as e:
+                    print(f"Error checking weekly plan for '{exercise_name}': {e}")
 
                 if plan_result:
                     plan_exercise_name, created_by, currently_newly_added = plan_result
@@ -3870,20 +3980,23 @@ def delete_workout():
 
                     # Restore newly_added flag if it was created by AI (regardless of current newly_added status)
                     if created_by == 'grok_ai':
-                        cursor.execute('''
-                            UPDATE weekly_plan
-                            SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
-                            WHERE LOWER(exercise_name) = LOWER(?)
-                        ''', (exercise_name,))
+                        try:
+                            cursor.execute('''
+                                UPDATE weekly_plan
+                                SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                                WHERE LOWER(exercise_name) = LOWER(?)
+                            ''', (exercise_name,))
 
-                        if cursor.rowcount > 0:
-                            print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
-                        else:
-                            print(f"⚠️ Failed to update newly_added flag for {exercise_name}")
+                            if cursor.rowcount > 0:
+                                print(f"🔄 Restored 'newly_added' flag for {exercise_name} - no remaining logs, created by AI")
+                            else:
+                                print(f"⚠️ Failed to update newly_added flag for {exercise_name}")
+                        except sqlite3.OperationalError as e:
+                            print(f"Error updating newly_added flag: {e}")
                     else:
                         print(f"ℹ️ {exercise_name} exists in plan but created by '{created_by}', not restoring NEW flag")
                 else:
-                    print(f"⚠️ {exercise_name} not found in weekly plan at all")
+                    print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
 
             conn.commit()
             conn.close()
@@ -3933,31 +4046,41 @@ def save_workout():
         ''', (exercise_name, sets, reps, weight, notes, date, substitution_reason))
 
         # Remove newly_added flag for this exercise since it's been completed
-        cursor.execute('''
-            UPDATE weekly_plan
-            SET newly_added = FALSE
-            WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
-        ''', (exercise_name,))
+        # Check if exercise name is valid before proceeding
+        if exercise_name:
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET newly_added = FALSE
+                WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
+            ''', (exercise_name,))
+
+            # Check if we actually updated any rows (meaning it was newly added)
+            if cursor.rowcount > 0:
+                print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
+            else:
+                # Check if exercise exists in plan
+                plan_result = None
+                try:
+                    cursor.execute('SELECT newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                    plan_result = cursor.fetchone()
+                except sqlite3.OperationalError as e:
+                    print(f"Error checking plan for {exercise_name}: {e}")
+
+                if plan_result:
+                    if plan_result[0]:
+                        print(f"⚠️ {exercise_name} still shows as newly_added despite logging")
+                    else:
+                        print(f"ℹ️ {exercise_name} was already marked as completed")
+                else:
+                    print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
 
         # Update progression notes if there are performance notes
         if notes:
-            today_name = datetime.now().strftime('%A').lower()
-            update_progression_notes_from_performance(exercise_name, today_name, notes)
-
-        # Check if we actually updated any rows (meaning it was newly added)
-        if cursor.rowcount > 0:
-            print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
-        else:
-            # Check if exercise exists in plan
-            cursor.execute('SELECT newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-            plan_result = cursor.fetchone()
-            if plan_result:
-                if plan_result[0]:
-                    print(f"⚠️ {exercise_name} still shows as newly_added despite logging")
-                else:
-                    print(f"ℹ️ {exercise_name} was already marked as completed")
-            else:
-                print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
+            try:
+                today_name = datetime.now().strftime('%A').lower()
+                update_progression_notes_from_performance(exercise_name, today_name, notes)
+            except Exception as e:
+                print(f"Failed to update progression notes for {exercise_name}: {e}")
 
         conn.commit()
         conn.close()
@@ -3981,20 +4104,24 @@ def get_conversation_context_api(days):
 
         cutoff_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-        cursor.execute('''
-            SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
-                   c.exercise_mentioned, c.form_cues_given, c.coaching_context,
-                   c.plan_modifications, c.timestamp,
-                   COUNT(aa.id) as auto_actions_count
-            FROM conversations c
-            LEFT JOIN auto_actions aa ON c.id = aa.conversation_id
-            WHERE c.timestamp >= ?
-            GROUP BY c.id
-            ORDER BY c.timestamp DESC
-            LIMIT 20
-        ''', (cutoff_date,))
+        conversations = []
+        try:
+            cursor.execute('''
+                SELECT c.user_message, c.ai_response, c.detected_intent, c.confidence_score,
+                       c.exercise_mentioned, c.form_cues_given, c.coaching_context,
+                       c.plan_modifications, c.timestamp,
+                       COUNT(aa.id) as auto_actions_count
+                FROM conversations c
+                LEFT JOIN auto_actions aa ON c.id = aa.conversation_id
+                WHERE c.timestamp >= ?
+                GROUP BY c.id
+                ORDER BY c.timestamp DESC
+                LIMIT 20
+            ''', (cutoff_date,))
+            conversations = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching conversation context: {e}")
 
-        conversations = cursor.fetchall()
         conn.close()
 
         context_data = []
@@ -4028,19 +4155,24 @@ def debug_newly_added():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Get all exercises from weekly plan with their newly_added status
-        cursor.execute('''
-            SELECT exercise_name, newly_added, date_added, created_by
-            FROM weekly_plan
-            ORDER BY day_of_week, exercise_order
-        ''')
-        plan_exercises = cursor.fetchall()
+        # Get all exercises from weekly plan
+        plan_exercises = []
+        try:
+            cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan ORDER BY day_of_week, exercise_order')
+            plan_exercises = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching plan exercises: {e}")
 
         # For each exercise, check if it has any logs
         results = []
         for exercise_name, newly_added, date_added, created_by in plan_exercises:
-            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-            log_count = cursor.fetchone()[0]
+            log_count = 0
+            try:
+                cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                log_count = cursor.fetchone()[0]
+            except sqlite3.OperationalError as e:
+                print(f"Error counting logs for {exercise_name}: {e}")
+
 
             results.append({
                 'exercise': exercise_name,
@@ -4065,21 +4197,33 @@ def debug_plan_context():
         cursor = conn.cursor()
 
         # Check plan_context table
-        cursor.execute('SELECT * FROM plan_context ORDER BY created_date DESC')
-        plan_contexts = cursor.fetchall()
+        plan_contexts = []
+        try:
+            cursor.execute('SELECT * FROM plan_context ORDER BY created_date DESC')
+            plan_contexts = cursor.fetchall()
 
-        # Get column names
-        cursor.execute("PRAGMA table_info(plan_context)")
-        columns = [col[1] for col in cursor.fetchall()]
+            # Get column names
+            cursor.execute("PRAGMA table_info(plan_context)")
+            columns = [col[1] for col in cursor.fetchall()]
 
-        context_data = []
-        for row in plan_contexts:
-            context_data.append(dict(zip(columns, row)))
+            context_data = []
+            for row in plan_contexts:
+                context_data.append(dict(zip(columns, row)))
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching plan_context: {e}")
+
 
         # Get what the app actually uses (latest entry)
-        cursor.execute('SELECT * FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
-        active_context = cursor.fetchone()
-        active_data = dict(zip(columns, active_context)) if active_context else None
+        active_context = None
+        active_data = None
+        try:
+            cursor.execute('SELECT * FROM plan_context WHERE user_id = 1 ORDER BY created_date DESC LIMIT 1')
+            active_context = cursor.fetchone()
+            if active_context:
+                columns = [description[0] for description in cursor.description]
+                active_data = dict(zip(columns, active_context))
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching active plan context: {e}")
 
         # Count non-empty fields in active context
         active_field_count = 0
@@ -4089,15 +4233,19 @@ def debug_plan_context():
                     active_field_count += 1
 
         # Check exercise_metadata table
-        cursor.execute('SELECT * FROM exercise_metadata ORDER BY created_date DESC')
-        exercise_metadata = cursor.fetchall()
+        exercise_metadata = []
+        try:
+            cursor.execute('SELECT * FROM exercise_metadata ORDER BY created_date DESC')
+            exercise_metadata = cursor.fetchall()
 
-        cursor.execute("PRAGMA table_info(exercise_metadata)")
-        metadata_columns = [col[1] for col in cursor.fetchall()]
+            metadata_columns = [description[0] for description in cursor.description]
 
-        metadata_data = []
-        for row in exercise_metadata:
-            metadata_data.append(dict(zip(metadata_columns, row)))
+            metadata_data = []
+            for row in exercise_metadata:
+                metadata_data.append(dict(zip(metadata_columns, row)))
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching exercise_metadata: {e}")
+
 
         conn.close()
 
@@ -4121,36 +4269,44 @@ def restore_philosophy():
         cursor = conn.cursor()
 
         # Get the full philosophy from the first entry
-        cursor.execute('''
-            SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
-            FROM plan_context
-            WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
-        ''')
+        backup_data = None
+        try:
+            cursor.execute('''
+                SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
+                FROM plan_context
+                WHERE id = 1 AND plan_philosophy IS NOT NULL AND plan_philosophy != ""
+            ''')
+            backup_data = cursor.fetchone()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching backup philosophy: {e}")
 
-        backup_data = cursor.fetchone()
 
         if backup_data:
             philosophy, progression, weekly, considerations = backup_data
 
             # Update the current entry with the backup data
-            cursor.execute('''
-                UPDATE plan_context
-                SET plan_philosophy = ?,
-                    progression_strategy = ?,
-                    weekly_structure = ?,
-                    special_considerations = COALESCE(special_considerations, ?),
-                    updated_date = ?
-                WHERE id = (SELECT MAX(id) FROM plan_context WHERE user_id = 1)
-            ''', (philosophy, progression, weekly, considerations, datetime.now().strftime('%Y-%m-%d')))
+            try:
+                cursor.execute('''
+                    UPDATE plan_context
+                    SET plan_philosophy = ?,
+                        progression_strategy = ?,
+                        weekly_structure = ?,
+                        special_considerations = COALESCE(special_considerations, ?),
+                        updated_date = ?
+                    WHERE id = (SELECT MAX(id) FROM plan_context WHERE user_id = 1)
+                ''', (philosophy, progression, weekly, considerations, datetime.now().strftime('%Y-%m-%d')))
 
-            conn.commit()
-            conn.close()
+                conn.commit()
+                conn.close()
 
-            return jsonify({
-                'success': True,
-                'message': 'Philosophy restored successfully!',
-                'restored_philosophy': philosophy[:100] + "..." if len(philosophy) > 100 else philosophy
-            })
+                return jsonify({
+                    'success': True,
+                    'message': 'Philosophy restored successfully!',
+                    'restored_philosophy': philosophy[:100] + "..." if len(philosophy) > 100 else philosophy
+                })
+            except sqlite3.OperationalError as e:
+                conn.close()
+                return jsonify({'success': False, 'error': f'Failed to update plan context: {e}'})
         else:
             conn.close()
             return jsonify({'success': False, 'error': 'No backup philosophy found'})
@@ -4168,8 +4324,13 @@ def clean_loose_skin_final():
         changes_made = []
 
         # Clean exercise metadata specifically
-        cursor.execute('SELECT id, exercise_name, primary_purpose, ai_notes FROM exercise_metadata')
-        metadata_records = cursor.fetchall()
+        metadata_records = []
+        try:
+            cursor.execute('SELECT id, exercise_name, primary_purpose, ai_notes FROM exercise_metadata')
+            metadata_records = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching metadata for cleanup: {e}")
+
 
         for record_id, exercise_name, purpose, notes in metadata_records:
             updated_purpose = purpose
@@ -4185,9 +4346,13 @@ def clean_loose_skin_final():
                 changed = True
 
             if changed:
-                cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?',
-                             (updated_purpose, updated_notes, record_id))
-                changes_made.append(f"Updated metadata for {exercise_name}")
+                try:
+                    cursor.execute('UPDATE exercise_metadata SET primary_purpose = ?, ai_notes = ? WHERE id = ?',
+                                 (updated_purpose, updated_notes, record_id))
+                    changes_made.append(f"Updated metadata for {exercise_name}")
+                except sqlite3.OperationalError as e:
+                    print(f"Error updating metadata for {exercise_name}: {e}")
+
 
         conn.commit()
         conn.close()
@@ -4209,35 +4374,53 @@ def fix_newly_added():
         cursor = conn.cursor()
 
         # Get all exercises from weekly plan
-        cursor.execute('SELECT exercise_name, created_by FROM weekly_plan')
-        exercises = cursor.fetchall()
+        exercises = []
+        try:
+            cursor.execute('SELECT exercise_name, created_by FROM weekly_plan')
+            exercises = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching exercises for fix_newly_added: {e}")
+
 
         fixed_count = 0
         details = []
 
         for exercise_name, created_by in exercises:
             # Check if this exercise has any logs
-            cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-            log_count = cursor.fetchone()[0]
+            log_count = 0
+            try:
+                cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
+                log_count = cursor.fetchone()[0]
+            except sqlite3.OperationalError as e:
+                print(f"Error counting logs for {exercise_name}: {e}")
+
 
             if log_count == 0:
                 # No logs - should be marked as newly_added if it was created by AI
-                cursor.execute('''
-                    UPDATE weekly_plan
-                    SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
-                    WHERE LOWER(exercise_name) = LOWER(?)
-                ''', (exercise_name,))
-                if cursor.rowcount > 0:
-                    fixed_count += 1
-                    details.append(f"✅ Set {exercise_name} as NEW (no logs)")
+                try:
+                    cursor.execute('''
+                        UPDATE weekly_plan
+                        SET newly_added = TRUE, created_by = COALESCE(created_by, 'grok_ai')
+                        WHERE LOWER(exercise_name) = LOWER(?)
+                    ''', (exercise_name,))
+                    if cursor.rowcount > 0:
+                        fixed_count += 1
+                        details.append(f"✅ Set {exercise_name} as NEW (no logs)")
+                except sqlite3.OperationalError as e:
+                    print(f"Error setting newly_added=TRUE for {exercise_name}: {e}")
+
             else:
                 # Has logs - should not be marked as newly_added
-                cursor.execute('''
-                    UPDATE weekly_plan
-                    SET newly_added = FALSE
-                    WHERE LOWER(exercise_name) = LOWER(?)
-                ''', (exercise_name,))
-                details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
+                try:
+                    cursor.execute('''
+                        UPDATE weekly_plan
+                        SET newly_added = FALSE
+                        WHERE LOWER(exercise_name) = LOWER(?)
+                    ''', (exercise_name,))
+                    details.append(f"🔄 Cleared NEW flag for {exercise_name} ({log_count} logs)")
+                except sqlite3.OperationalError as e:
+                    print(f"Error clearing newly_added flag for {exercise_name}: {e}")
+
 
         conn.commit()
         conn.close()
@@ -4339,20 +4522,31 @@ def get_day_progression_status(date):
         cursor = conn.cursor()
 
         # Count total workouts and completed progression analysis for the date
-        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ?', (date,))
-        total_workouts = cursor.fetchone()[0]
+        total_workouts = 0
+        completed_analysis = 0
+        try:
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ?', (date,))
+            total_workouts = cursor.fetchone()[0]
 
-        cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND progression_notes IS NOT NULL AND progression_notes != ""', (date,))
-        completed_analysis = cursor.fetchone()[0]
+            cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged = ? AND progression_notes IS NOT NULL AND progression_notes != ""', (date,))
+            completed_analysis = cursor.fetchone()[0]
+        except sqlite3.OperationalError as e:
+            print(f"Error getting day progression status: {e}")
+
 
         # Get progression notes for display
-        cursor.execute('''
-            SELECT exercise_name, progression_notes
-            FROM workouts
-            WHERE date_logged = ? AND progression_notes IS NOT NULL
-            ORDER BY id
-        ''', (date,))
-        progression_notes = cursor.fetchall()
+        progression_notes = []
+        try:
+            cursor.execute('''
+                SELECT exercise_name, progression_notes
+                FROM workouts
+                WHERE date_logged = ? AND progression_notes IS NOT NULL
+                ORDER BY id
+            ''', (date,))
+            progression_notes = cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"Error fetching progression notes: {e}")
+
 
         conn.close()
 
