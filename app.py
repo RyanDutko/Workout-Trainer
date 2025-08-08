@@ -1728,13 +1728,13 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Include recent workout summary organized by date
         context_info += "\n=== YOUR RECENT WORKOUT HISTORY ===\n"
 
-        # Check if user is asking about a specific day
+        # Check if user is asking about a specific day (use entities instead of raw prompt)
         specific_day = None
-        day_names = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        for day in day_names:
-            if day in prompt.lower():
-                specific_day = day
-                break
+        if query_intent and isinstance(query_intent, dict):
+            entities = query_intent.get('entities', {})
+            days = entities.get('days', [])
+            if days:
+                specific_day = days[0].lower()  # e.g., "tuesday"
 
         # If asking about a specific day, prioritize that day's data
         if specific_day:
