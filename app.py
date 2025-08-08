@@ -1763,34 +1763,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
             # Use SQL to directly filter by day name for better performance
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
-                WHERE LOWER(strftime('%w', date_logged)) = CASE LOWER(?)
-                    WHEN 'sunday' THEN '0'
-                    WHEN 'monday' THEN '1'
-                    WHEN 'tuesday' THEN '2'
-                    WHEN 'wednesday' THEN '3'
-                    WHEN 'thursday' THEN '4'
-                    WHEN 'friday' THEN '5'
-                    WHEN 'saturday' THEN '6'
-                END
-                ORDER BY date_logged DESC
-            """, (specific_day,))
-
-            specific_day_logs = cursor.fetchall()
-            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts using strftime method")
-
-            # Try alternative approach - direct day name matching
-            cursor.execute("""
-                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts
                 WHERE LOWER(strftime('%A', date_logged)) = LOWER(?)
                 ORDER BY date_logged DESC
             """, (specific_day,))
 
-            alt_day_logs = cursor.fetchall()
-            print(f"🔍 Found {len(alt_day_logs)} {specific_day} workouts using day name method")
+            specific_day_logs = cursor.fetchall()
+            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts using day name method")
 
             # Use whichever method found results
-            specific_day_logs = specific_day_logs if specific_day_logs else alt_day_logs
+            specific_day_logs = specific_day_logs if specific_day_logs else [] # Fallback to empty list if no logs found by either method
 
             if specific_day_logs:
                 # Group by date and show the most recent one
@@ -1821,7 +1803,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                     context_info += "\n"
 
                 context_info += f"\n✨ IMPORTANT: These are your ACTUAL logged exercises from {most_recent_date}. "
-                context_info += f"Use ONLY this data when discussing this workout. Do NOT make up or invent different exercises.\n"
+                context_info += f"Use ONLY this data when discussing this workout. Do NOT make up or invent exercises.\n"
                 context_info += "=" * 60 + "\n"
 
                 print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
@@ -2257,7 +2239,7 @@ def dashboard():
         if bg_result and bg_result[0]:
             needs_onboarding = False
     except sqlite3.OperationalError as e:
-        print(f"Error checking onboarding status: {e}") # Table might not exist yet
+        print(f"Error checking onboarding status: {e}")
 
     conn.close()
 
@@ -2760,6 +2742,7 @@ def get_stored_context():
         except sqlite3.OperationalError as e:
             print(f"Error fetching exercise metadata: {e}")
 
+
         conn.close()
 
         return jsonify({
@@ -3227,7 +3210,7 @@ def modify_plan():
                 WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (sets, reps, weight, reasoning, day, exercise_name))
 
-            message = f"Updated {exercise_name} on {day.title()}: {sets}x{reps}@{weight}"
+            message = f"Updated {exercise_name} on {day}: {sets}x{reps}@{weight}"
 
         elif modification_type == 'add':
             # Get next order for the day
@@ -3240,11 +3223,11 @@ def modify_plan():
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
             ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
 
-            message = f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}"
+            message = f"Added {exercise_name} to {day}: {sets}x{reps}@{weight}"
 
         elif modification_type == 'remove':
             cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
-            message = f"Removed {exercise_name} from {day.title()}"
+            message = f"Removed {exercise_name} from {day}"
 
         conn.commit()
         conn.close()
