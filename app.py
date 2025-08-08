@@ -1718,51 +1718,24 @@ def build_smart_context(prompt, query_intent, user_background=None):
         if specific_day:
             print(f"🎯 Looking for {specific_day} workouts...")
 
-            # Get all workouts and filter by day name
+            # Use SQL to directly filter by day name for better performance
             cursor.execute("""
                 SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
                 FROM workouts
+                WHERE LOWER(strftime('%w', date_logged)) = CASE LOWER(?)
+                    WHEN 'sunday' THEN '0'
+                    WHEN 'monday' THEN '1' 
+                    WHEN 'tuesday' THEN '2'
+                    WHEN 'wednesday' THEN '3'
+                    WHEN 'thursday' THEN '4'
+                    WHEN 'friday' THEN '5'
+                    WHEN 'saturday' THEN '6'
+                END
                 ORDER BY date_logged DESC
-            """)
+            """, (specific_day,))
 
-            all_workouts = cursor.fetchall()
-            print(f"📊 Total workouts in database: {len(all_workouts)}")
-
-            specific_day_logs = []
-
-            # Filter workouts by day name
-            for workout in all_workouts:
-                workout_date = workout[4]  # date_logged is at index 4
-                try:
-                    # Parse the date and get the day name
-                    date_obj = datetime.strptime(workout_date, '%Y-%m-%d')
-                    workout_day = date_obj.strftime('%A').lower()
-
-                    print(f"🗓️ Checking workout from {workout_date} ({workout_day}) - Exercise: {workout[0]}")
-                    print(f"   📅 Date object: {date_obj}, Day calculation: {date_obj.weekday()} (0=Monday, 1=Tuesday...)")
-                    print(f"   🎯 Looking for: '{specific_day}', Found: '{workout_day}', Match: {workout_day == specific_day}")
-
-                    if workout_day == specific_day:
-                        specific_day_logs.append(workout)
-                        print(f"✅ MATCH: {workout[0]} on {workout_date} is a {workout_day}")
-                    else:
-                        print(f"❌ NO MATCH: {workout[0]} on {workout_date} is a {workout_day}, not {specific_day}")
-
-                except ValueError as e:
-                    print(f"⚠️ Invalid date format: {workout_date} - Error: {e}")
-                    continue
-
-            # Manual verification for debugging
-            print(f"\n🔍 MANUAL DATE VERIFICATION:")
-            try:
-                aug_5_2025 = datetime(2025, 8, 5)
-                aug_5_day = aug_5_2025.strftime('%A').lower()
-                print(f"   August 5, 2025 is a: {aug_5_day}")
-                print(f"   Weekday number: {aug_5_2025.weekday()} (0=Monday, 1=Tuesday, 2=Wednesday...)")
-            except Exception as e:
-                print(f"   Error in manual verification: {e}")
-
-            print(f"\n🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
+            specific_day_logs = cursor.fetchall()
+            print(f"🔍 Found {len(specific_day_logs)} {specific_day} workouts total")
 
             if specific_day_logs:
                 # Group by date and show the most recent one
@@ -1773,7 +1746,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
                         workouts_by_date[date] = []
                     workouts_by_date[date].append(w)
 
-                # Show the most recent Tuesday workout
+                # Show the most recent workout for that day
                 most_recent_date = sorted(workouts_by_date.keys(), reverse=True)[0]
                 day_name = datetime.strptime(most_recent_date, '%Y-%m-%d').strftime('%A')
 
@@ -1799,25 +1772,23 @@ def build_smart_context(prompt, query_intent, user_background=None):
                 print(f"✅ Successfully built context for {specific_day} workout from {most_recent_date}")
 
                 # CRITICAL: Skip all the other context building and return immediately
-                # This ensures Grok ONLY sees the actual workout data, not sample/plan data
+                # This ensures the AI ONLY sees the actual workout data, not sample/plan data
                 conn.close()
                 return context_info
             else:
                 context_info += f"\n❌ No {specific_day.upper()} workouts found in your logs.\n"
 
                 # Show what dates we DO have for debugging
-                if all_workouts:
+                cursor.execute("SELECT DISTINCT date_logged FROM workouts ORDER BY date_logged DESC LIMIT 10")
+                available_dates = cursor.fetchall()
+                if available_dates:
                     context_info += "Available workout dates:\n"
-                    dates_shown = set()
-                    for workout in all_workouts[:10]:
-                        date = workout[4]
-                        if date not in dates_shown:
-                            try:
-                                day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-                                context_info += f"  • {date} ({day_name})\n"
-                                dates_shown.add(date)
-                            except ValueError:
-                                continue
+                    for (date,) in available_dates:
+                        try:
+                            day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+                            context_info += f"  • {date} ({day_name})\n"
+                        except ValueError:
+                            continue
                 else:
                     context_info += "No workouts found in database at all.\n"
 
