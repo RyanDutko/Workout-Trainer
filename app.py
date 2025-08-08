@@ -424,13 +424,19 @@ def analyze_query_intent(prompt, conversation_context=None):
 
     # Enhanced historical queries - don't duplicate if already scored above
     if 'historical' not in intents:
-        historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week']
+        historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week', 'recent', 'latest']
         hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
 
         # Boost score for day-specific historical queries
         for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
             if day in prompt_lower and any(word in prompt_lower for word in ['what', 'show', 'did']):
                 hist_score += 5
+
+        # Boost score for general recent workout queries
+        general_recent_phrases = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout', 'most recent day']
+        for phrase in general_recent_phrases:
+            if phrase in prompt_lower:
+                hist_score += 8  # High boost for clear recent workout requests
 
         if hist_score > 0:
             intents['historical'] = min(hist_score * 0.25, 1.0)
@@ -1736,6 +1742,68 @@ def build_smart_context(prompt, query_intent, user_background=None):
             if days:
                 specific_day = days[0].lower()  # e.g., "tuesday"
                 print(f"🎯 Detected specific day from entities: '{specific_day}'")
+        
+        # Check for general recent workout queries
+        general_recent_queries = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout']
+        is_general_recent = any(phrase in prompt.lower() for phrase in general_recent_queries)
+        
+        if is_general_recent and not specific_day:
+            print("🎯 Detected general recent workout query")
+            # Get recent workouts without day filtering
+            cursor.execute("""
+                SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+                FROM workouts
+                ORDER BY date_logged DESC, id ASC
+                LIMIT 50
+            """)
+            recent_logs = cursor.fetchall()
+
+            if recent_logs:
+                # Group by date for better organization
+                workouts_by_date = {}
+                for w in recent_logs:
+                    date = w[4]
+                    if date not in workouts_by_date:
+                        workouts_by_date[date] = []
+                    workouts_by_date[date].append(w)
+
+                # Show recent workouts organized by date
+                context_info += "\n=== YOUR RECENT COMPLETED WORKOUTS ===\n"
+                for date in sorted(workouts_by_date.keys(), reverse=True)[:10]:  # Last 10 workout days
+                    day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+                    context_info += f"\n=== {day_name.upper()} {date} ===\n"
+
+                    for w in workouts_by_date[date]:
+                        exercise, sets, reps, weight, _, notes, sub_reason = w
+                        context_info += f"• {exercise}: {sets}x{reps}@{weight}"
+                        if sub_reason:
+                            context_info += f" [SUBSTITUTED FROM: {sub_reason}]"
+                        if notes and len(notes) > 0 and not notes.startswith('[SUBSTITUTED'):
+                            clean_notes = notes.split('[SUBSTITUTED')[0].strip()
+                            if clean_notes:
+                                note_preview = clean_notes[:80] + "..." if len(clean_notes) > 80 else clean_notes
+                                context_info += f" - {note_preview}"
+                        context_info += "\n"
+                    context_info += "\n"
+
+                context_info += f"\n✨ These are your ACTUAL logged exercises from recent workouts.\n"
+                context_info += "=" * 60 + "\n"
+                context_info += f"\nIMPORTANT: DO NOT make up or invent any exercises. Use ONLY the exercises listed above.\n"
+
+                print(f"✅ Successfully built context for general recent workout query")
+                conn.close()
+                return context_info
+            else:
+                print("❌ No recent workouts found in database")
+                context_info += f"\n❌ CRITICAL: NO RECENT WORKOUTS FOUND IN DATABASE\n"
+                context_info += "=" * 60 + "\n"
+                context_info += f"The user asked about recent workouts but no workouts are logged.\n"
+                context_info += f"DO NOT make up or invent any workouts.\n"
+                context_info += f"Tell the user truthfully that no recent workouts have been logged.\n"
+                context_info += "=" * 60 + "\n"
+
+                conn.close()
+                return context_info
 
         # If asking about a specific day, prioritize that day's data
         if specific_day:
