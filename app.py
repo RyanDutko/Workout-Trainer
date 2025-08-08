@@ -1729,9 +1729,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
             """)
             
             all_recent = cursor.fetchall()
-            print(f"🔍 DEBUG - All recent workouts:")
-            for w in all_recent:
-                print(f"  {w[4]} ({w[8]}, day #{w[7]}): {w[0]} - {w[1]}x{w[2]}@{w[3]}")
+            print(f"🔍 DEBUG - All recent workouts ({len(all_recent)} total):")
+            if len(all_recent) == 0:
+                print("  📭 NO WORKOUTS FOUND IN DATABASE AT ALL")
+            else:
+                for i, w in enumerate(all_recent):
+                    print(f"  #{i+1}: Date={w[4]}, DayName={w[8]}, DayNum={w[7]}, Exercise={w[0]}, Sets={w[1]}x{w[2]}@{w[3]}")
+                    
+            print(f"🔍 Looking for workouts where day name = 'tuesday'...")
+            print(f"🔍 strftime method found: {len(specific_day_logs)} workouts")
+            print(f"🔍 day name method found: {len(alt_day_logs)} workouts")
 
             # Use SQL to directly filter by day name for better performance
             cursor.execute("""
