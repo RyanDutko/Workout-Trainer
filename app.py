@@ -546,6 +546,43 @@ def extract_potential_actions(prompt, intent):
 
     return actions
 
+def extract_actual_performed_weight(exercise_name, recent_conversations):
+    """Extract the actual weight performed from recent conversations and workout logs"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Look for the most recent log of this exercise with weight details
+        cursor.execute('''
+            SELECT weight, notes FROM workouts 
+            WHERE LOWER(exercise_name) = LOWER(?) 
+            ORDER BY date_logged DESC, id DESC 
+            LIMIT 1
+        ''', (exercise_name,))
+        
+        recent_log = cursor.fetchone()
+        if recent_log:
+            weight, notes = recent_log
+            
+            # If notes mention specific weights (like "110 lbs for set 2 and 3"), extract the higher weight
+            if notes:
+                import re
+                weight_mentions = re.findall(r'(\d+)\s*(?:lbs?|pounds?)', notes)
+                if weight_mentions:
+                    # Return the highest weight mentioned in notes
+                    highest_weight = max(int(w) for w in weight_mentions)
+                    return f"{highest_weight}lbs"
+            
+            # Otherwise return the logged weight
+            return weight
+            
+        conn.close()
+        return None
+        
+    except Exception as e:
+        print(f"Error extracting performed weight: {e}")
+        return None
+
 def parse_plan_modification_from_ai_response(ai_response, user_request):
     """Parse Grok's response to extract specific plan modifications vs progression guidance"""
     try:
@@ -1692,7 +1729,8 @@ CONVERSATION FLOW:
 PLAN MODIFICATION CAPABILITIES:
 - When user asks for plan changes, be enthusiastic: "I can update your plan right now"
 - For progression tips: "For [exercise]: Try bumping up to [specific weight] next week"
-- Always end plan suggestions with: "Should I make this change to your plan? Say 'yes' to confirm."
+- Always end plan suggestions with: "Would you like me to update your plan with this change?"
+- NEVER ask users to type "yes" - the app will handle confirmations automatically
 
 NATURAL CONVERSATION STYLE:
 - Match their energy and tone completely
@@ -2284,10 +2322,18 @@ def chat_stream():
                                 print("🎯 User confirmed weight change - executing Friday glute drive weight increase")
                                 
                                 try:
-                                    # Extract new weight from AI response or use sensible default
-                                    import re
-                                    weight_match = re.search(r'(\d+)\s*(?:lbs?|pounds?)', prev_response[0])
-                                    new_weight = f"{weight_match.group(1)}lbs" if weight_match else "100lbs"
+                                    # Extract the actual weight performed from workout logs
+                                    actual_weight = extract_actual_performed_weight('glute drive', [])
+                                    
+                                    if actual_weight:
+                                        new_weight = actual_weight
+                                        print(f"🔍 Found actual performed weight: {new_weight}")
+                                    else:
+                                        # Fallback: look for weight mentions in recent conversation
+                                        import re
+                                        weight_match = re.search(r'110\s*(?:lbs?|pounds?)', prev_response[0])
+                                        new_weight = "110lbs" if weight_match else "100lbs"
+                                        print(f"🔍 Using fallback weight: {new_weight}")
                                     
                                     cursor.execute('''
                                         UPDATE weekly_plan
