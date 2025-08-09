@@ -847,22 +847,31 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                             'success_message': f"No mentions of '{target_text}' were found in your plan"
                         }
 
-        # Look for user requests that are asking for changes (but not just asking questions)
+        # Look for EXPLICIT user requests that are asking for changes (NOT just asking questions)
         user_change_requests = [
-            'update my philosophy',
-            'change my approach',
-            'modify my philosophy',
-            'tweak my philosophy',
-            'revise my approach',
-            'adjust my philosophy',
-            'new philosophy',
-            'different approach',
+            'update my philosophy with',
+            'change my approach to',
+            'modify my philosophy to',
+            'rewrite my philosophy to',
+            'set my philosophy to',
+            'replace my philosophy with',
             'remove any mention of',
-            'remove from my philosophy',
-            'rewrite my philosophy'
+            'remove from my philosophy'
         ]
 
         user_wants_change = any(request in user_request_lower for request in user_change_requests)
+        
+        # CRITICAL: Exclude discussion-only requests
+        discussion_only_requests = [
+            'talk about my philosophy',
+            'discuss my philosophy', 
+            'what is my philosophy',
+            'show me my philosophy',
+            'tell me about my approach'
+        ]
+        
+        if any(discussion in user_request_lower for discussion in discussion_only_requests):
+            user_wants_change = False
 
         # If user wants a philosophy change, we need to help Grok by providing current context
         if user_wants_change:
