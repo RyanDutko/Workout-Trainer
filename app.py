@@ -20,6 +20,36 @@ def get_db_connection():
     conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
     return conn
 
+def get_user_ai_preferences():
+    """Get user's AI preferences for personalized responses"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT grok_tone, grok_detail_level, grok_format, communication_style, technical_level
+            FROM users
+            WHERE id = 1
+        ''')
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'tone': result[0] or 'motivational',
+                'detail_level': result[1] or 'concise', 
+                'format': result[2] or 'bullet_points',
+                'communication_style': result[3] or 'encouraging',
+                'technical_level': result[4] or 'beginner'
+            }
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error getting AI preferences: {e}")
+        return None
+
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1615,6 +1645,9 @@ def get_grok_response_with_context(prompt, user_background=None):
         # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+        # Get user AI preferences for personalized responses
+        ai_preferences = get_user_ai_preferences()
+
         # Check for comprehensive plan modification requests
         is_comprehensive_modification = 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt
 
@@ -1624,6 +1657,16 @@ def get_grok_response_with_context(prompt, user_background=None):
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
+
+        # Add AI preferences to context
+        if ai_preferences:
+            context_info += f"\n=== AI RESPONSE PREFERENCES ===\n"
+            context_info += f"Tone: {ai_preferences.get('tone', 'motivational')}\n"
+            context_info += f"Detail Level: {ai_preferences.get('detail_level', 'concise')}\n"
+            context_info += f"Format: {ai_preferences.get('format', 'bullet_points')}\n"
+            context_info += f"Communication Style: {ai_preferences.get('communication_style', 'encouraging')}\n"
+            context_info += f"Technical Level: {ai_preferences.get('technical_level', 'beginner')}\n"
+            context_info += f"IMPORTANT: Adapt your response tone, detail level, and format to match these preferences.\n"
 
         # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
@@ -1724,10 +1767,15 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
         else:
             system_prompt = """You are the AI training assistant built into this fitness app. You have direct access to the user's workout data, weekly plan, and training history through the app's database.
 
-CRITICAL TONE INSTRUCTION:
-The structured data above is app context - ignore its formal tone completely.
-Your response tone should ONLY match this user message: "{user_input}"
-Respond as if they said this in a normal ChatGPT conversation.
+CRITICAL AI PREFERENCES:
+Check the "=== AI RESPONSE PREFERENCES ===" section in the context for the user's preferred:
+- Tone (motivational, casual, professional, analytical)
+- Detail Level (brief, concise, detailed)  
+- Format (bullet_points, paragraphs, numbered_lists)
+- Communication Style (direct, friendly, encouraging)
+- Technical Level (beginner, intermediate, advanced)
+
+ALWAYS adapt your response to match these preferences exactly. This overrides any other tone considerations.
 
 SEAMLESS APP INTEGRATION:
 - You're embedded in their fitness app, not a separate chatbot
