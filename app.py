@@ -1764,36 +1764,7 @@ ANALYSIS APPROACH:
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
-            # Build directive system prompt based on user's AI preferences
-            preference_directives = ""
-            if ai_preferences:
-                detail_level = ai_preferences.get('detail_level', 'concise')
-                tone = ai_preferences.get('tone', 'motivational')
-                format_pref = ai_preferences.get('format', 'bullet_points')
-                
-                # Create specific directives based on preferences
-                if detail_level == 'brief':
-                    preference_directives += "Keep responses SHORT and to the point. Aim for 1-2 sentences maximum unless specifically asked for more detail. "
-                elif detail_level == 'detailed':
-                    preference_directives += "Provide comprehensive, detailed explanations with examples and context. "
-                else:  # concise
-                    preference_directives += "Be concise but complete in your responses. "
-                
-                if format_pref == 'bullet_points':
-                    preference_directives += "Use bullet points when listing multiple items. "
-                elif format_pref == 'numbered_lists':
-                    preference_directives += "Use numbered lists when presenting sequential information. "
-                
-                if tone == 'motivational':
-                    preference_directives += "Be encouraging and energetic. "
-                elif tone == 'analytical':
-                    preference_directives += "Be data-focused and technical. "
-                elif tone == 'casual':
-                    preference_directives += "Use casual, friendly language. "
-
-            system_prompt = f"""You are the AI training assistant built into this fitness app. 
-
-RESPONSE STYLE REQUIREMENTS: {preference_directives}
+            system_prompt = """You are the AI training assistant built into this fitness app. 
 
 IMPORTANT: The AI preferences shown in the context data below are the user's actual settings that should shape how you respond. Pay attention to their chosen detail level, tone, and format preferences and adapt your response style accordingly. These preferences override any default behavior.
 
