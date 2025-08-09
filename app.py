@@ -990,19 +990,6 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                         current_section = 'reasoning'
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
                         
-                    # Legacy compatibility
-                    elif 'TRAINING_PHILOSOPHY:' in line.upper() and not extracted_data.get('plan_philosophy'):
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-                        current_section = 'plan_philosophy'
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
-                    elif 'PROGRESSION_STRATEGY:' in line.upper() and not extracted_data.get('progression_strategy'):
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-                        current_section = 'progression_strategy' 
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
                     else:
                         # Add to current section if we're in one
                         if current_section and line:
@@ -2428,8 +2415,14 @@ def chat_stream():
                     else:
                         # Auto-update philosophy in database for regular updates using new 2-field structure
                         try:
+                            # Get current max ID and create new entry (INSERT OR REPLACE might not work as expected)
+                            cursor.execute('SELECT MAX(id) FROM plan_context WHERE user_id = 1')
+                            max_id_result = cursor.fetchone()
+                            max_id = max_id_result[0] if max_id_result and max_id_result[0] else 0
+                            
+                            # Insert new philosophy entry
                             cursor.execute('''
-                                INSERT OR REPLACE INTO plan_context
+                                INSERT INTO plan_context
                                 (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
                                  created_by_ai, creation_reasoning, created_date, updated_date)
                                 VALUES (1, ?, ?, '', '', TRUE, ?, ?, ?)
@@ -2440,10 +2433,16 @@ def chat_stream():
                                 datetime.now().strftime('%Y-%m-%d'),
                                 datetime.now().strftime('%Y-%m-%d')
                             ))
-                            print(f"🧠 Auto-updated training philosophy based on conversation using new 2-field structure")
+                            
+                            print(f"🧠 Auto-updated training philosophy in database using new 2-field structure")
+                            print(f"📄 Core Philosophy: {philosophy_update.get('plan_philosophy', '')[:100]}...")
+                            print(f"🎯 Current Priorities: {philosophy_update.get('progression_strategy', '')[:100]}...")
                             
                             # Add confirmation message to response
-                            response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {philosophy_update.get('plan_philosophy', '')[:100]}...\n• **Current Priorities:** {philosophy_update.get('progression_strategy', '')[:100]}...\n\nCheck your Plan Philosophy page to see the full update!"
+                            core_preview = philosophy_update.get('plan_philosophy', '')[:100] + "..." if len(philosophy_update.get('plan_philosophy', '')) > 100 else philosophy_update.get('plan_philosophy', '')
+                            priorities_preview = philosophy_update.get('progression_strategy', '')[:100] + "..." if len(philosophy_update.get('progression_strategy', '')) > 100 else philosophy_update.get('progression_strategy', '')
+                            
+                            response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {core_preview}\n• **Current Priorities:** {priorities_preview}\n\nCheck your Plan Philosophy page to see the full update!"
 
                             # If this was a comprehensive plan change, regenerate exercise metadata
                             if any(keyword in message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
@@ -2451,7 +2450,7 @@ def chat_stream():
                                 print(f"🔄 Regenerated exercise metadata for plan changes")
 
                         except sqlite3.OperationalError as e:
-                            print(f"⚠️ Failed to auto-update philosophy: {e}") # Handle potential missing columns
+                            print(f"⚠️ Failed to auto-update philosophy (DB error): {e}")
                         except Exception as e:
                             print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
