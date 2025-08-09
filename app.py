@@ -1496,6 +1496,12 @@ def build_smart_context(prompt, query_intent, user_background=None):
         historical_context = build_historical_context(prompt)
         return plan_context + "\n\n" + historical_context
 
+    # PHILOSOPHY UPDATES - Special handling for "update my philosophy" requests (HIGHEST PRIORITY)
+    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to']
+    if any(phrase in prompt.lower() for phrase in philosophy_update_phrases):
+        print(f"🎯 Override: Detected philosophy UPDATE request - building philosophy context")
+        return build_philosophy_update_context(prompt)
+
     # Route plan discussions to plan context (including specific plan requests)
     if is_plan_discussion or is_specific_plan_request:
         print(f"🎯 Override: Detected plan discussion/request - routing to plan context")
@@ -1505,12 +1511,6 @@ def build_smart_context(prompt, query_intent, user_background=None):
     if is_philosophy_discussion:
         print(f"🎯 Override: Detected philosophy discussion - routing to general context with philosophy")
         return build_general_context(prompt, user_background)
-    
-    # PHILOSOPHY UPDATES - Special handling for "update my philosophy" requests
-    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to']
-    if any(phrase in prompt.lower() for phrase in philosophy_update_phrases):
-        print(f"🎯 Override: Detected philosophy UPDATE request - building philosophy context")
-        return build_philosophy_update_context(prompt)
 
     # If historical intent exists AND contains day references, use historical
     if all_intents.get('historical', 0) > 0 and contains_day:
