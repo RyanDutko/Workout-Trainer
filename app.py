@@ -4285,30 +4285,62 @@ def rename_exercise():
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Debug: Check what exercises exist for this day
+        cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ?', (day,))
+        existing_exercises = [row[0] for row in cursor.fetchall()]
+        print(f"🔍 Debug: Existing exercises on {day}: {existing_exercises}")
+        print(f"🔍 Debug: Looking for '{current_name}' to rename to '{new_name}'")
+
         if day:
-            # Rename specific day
+            # Try exact match first
             cursor.execute('''
                 UPDATE weekly_plan
                 SET exercise_name = ?
-                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+                WHERE day_of_week = ? AND exercise_name = ?
             ''', (new_name, day, current_name))
+            
+            # If no exact match, try case-insensitive
+            if cursor.rowcount == 0:
+                cursor.execute('''
+                    UPDATE weekly_plan
+                    SET exercise_name = ?
+                    WHERE day_of_week = ? AND LOWER(TRIM(exercise_name)) = LOWER(TRIM(?))
+                ''', (new_name, day, current_name))
+            
+            # If still no match, try partial matching
+            if cursor.rowcount == 0:
+                cursor.execute('''
+                    UPDATE weekly_plan
+                    SET exercise_name = ?
+                    WHERE day_of_week = ? AND LOWER(exercise_name) LIKE LOWER(?)
+                ''', (new_name, day, f'%{current_name}%'))
         else:
-            # Rename across all days
+            # Rename across all days with similar matching logic
             cursor.execute('''
                 UPDATE weekly_plan
                 SET exercise_name = ?
-                WHERE LOWER(exercise_name) = LOWER(?)
+                WHERE exercise_name = ?
             ''', (new_name, current_name))
+            
+            if cursor.rowcount == 0:
+                cursor.execute('''
+                    UPDATE weekly_plan
+                    SET exercise_name = ?
+                    WHERE LOWER(TRIM(exercise_name)) = LOWER(TRIM(?))
+                ''', (new_name, current_name))
 
         if cursor.rowcount > 0:
             conn.commit()
             conn.close()
+            print(f"✅ Successfully renamed exercise: {current_name} → {new_name}")
             return jsonify({'success': True, 'message': f'Renamed "{current_name}" to "{new_name}"'})
         else:
             conn.close()
-            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
+            print(f"❌ Exercise not found: '{current_name}' on day '{day}'")
+            return jsonify({'success': False, 'error': f'Exercise "{current_name}" not found on {day}. Available exercises: {", ".join(existing_exercises)}'})
 
     except Exception as e:
+        print(f"❌ Error in rename_exercise: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/mark_exercise_new', methods=['POST'])
