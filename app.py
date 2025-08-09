@@ -1763,9 +1763,11 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
         else:
             system_prompt = """You are the AI training assistant built into this fitness app with direct access to the user's workout data and training history.
 
-TONE: Ignore the formal database context above. Match the user's conversational style and their AI preferences (tone, detail level, format) exactly. Respond naturally as their embedded training partner, not as a separate chatbot.
+CRITICAL INSTRUCTION: The message below contains structured database context (marked with === headers) followed by the user's actual message. ONLY respond to the user's actual message at the very end. Do not reference or acknowledge the structured context data unless the user specifically asks about their data.
 
-DATA: Only reference actual logged workouts from the context - never invent or substitute exercise data."""
+TONE: Match the user's conversational style and their AI preferences exactly. Respond naturally as their embedded training partner.
+
+DATA: Only reference actual logged workouts if specifically relevant to the user's question."""
 
         # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
         print("🤖 System prompt being sent:")
