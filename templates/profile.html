@@ -72,22 +72,22 @@
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <strong>Tone:</strong> {{ preferences.tone }}
+                        <strong>Tone:</strong> <span data-preference="tone">{{ preferences.tone }}</span>
                     </div>
                     <div class="col-md-6">
-                        <strong>Detail Level:</strong> {{ preferences.detail_level }}
+                        <strong>Detail Level:</strong> <span data-preference="detail_level">{{ preferences.detail_level }}</span>
                     </div>
                     <div class="col-md-6">
-                        <strong>Format:</strong> {{ preferences.format }}
+                        <strong>Format:</strong> <span data-preference="format">{{ preferences.format }}</span>
                     </div>
                     <div class="col-md-6">
-                        <strong>Units:</strong> {{ preferences.units }}
+                        <strong>Units:</strong> <span data-preference="units">{{ preferences.units }}</span>
                     </div>
                     <div class="col-md-6">
-                        <strong>Communication:</strong> {{ preferences.communication_style }}
+                        <strong>Communication:</strong> <span data-preference="communication_style">{{ preferences.communication_style }}</span>
                     </div>
                     <div class="col-md-6">
-                        <strong>Technical Level:</strong> {{ preferences.technical_level }}
+                        <strong>Technical Level:</strong> <span data-preference="technical_level">{{ preferences.technical_level }}</span>
                     </div>
                 </div>
             </div>
@@ -95,10 +95,77 @@
         
         <div class="card mt-4">
             <div class="card-header">
-                <h6><i class="fas fa-edit me-2"></i>Quick Update</h6>
+                <h6><i class="fas fa-robot me-2"></i>Edit AI Preferences</h6>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('update_profile') }}"
+                <form id="aiPreferencesForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="tone" class="form-label">Tone</label>
+                            <select class="form-select" id="tone" name="tone">
+                                <option value="motivational" {{ 'selected' if preferences.tone == 'motivational' else '' }}>Motivational</option>
+                                <option value="casual" {{ 'selected' if preferences.tone == 'casual' else '' }}>Casual</option>
+                                <option value="professional" {{ 'selected' if preferences.tone == 'professional' else '' }}>Professional</option>
+                                <option value="analytical" {{ 'selected' if preferences.tone == 'analytical' else '' }}>Analytical</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="detail_level" class="form-label">Detail Level</label>
+                            <select class="form-select" id="detail_level" name="detail_level">
+                                <option value="brief" {{ 'selected' if preferences.detail_level == 'brief' else '' }}>Brief</option>
+                                <option value="concise" {{ 'selected' if preferences.detail_level == 'concise' else '' }}>Concise</option>
+                                <option value="detailed" {{ 'selected' if preferences.detail_level == 'detailed' else '' }}>Detailed</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="format" class="form-label">Response Format</label>
+                            <select class="form-select" id="format" name="format">
+                                <option value="bullet_points" {{ 'selected' if preferences.format == 'bullet_points' else '' }}>Bullet Points</option>
+                                <option value="paragraphs" {{ 'selected' if preferences.format == 'paragraphs' else '' }}>Paragraphs</option>
+                                <option value="numbered_lists" {{ 'selected' if preferences.format == 'numbered_lists' else '' }}>Numbered Lists</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="communication_style" class="form-label">Communication Style</label>
+                            <select class="form-select" id="communication_style" name="communication_style">
+                                <option value="encouraging" {{ 'selected' if preferences.communication_style == 'encouraging' else '' }}>Encouraging</option>
+                                <option value="direct" {{ 'selected' if preferences.communication_style == 'direct' else '' }}>Direct</option>
+                                <option value="friendly" {{ 'selected' if preferences.communication_style == 'friendly' else '' }}>Friendly</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="technical_level" class="form-label">Technical Level</label>
+                            <select class="form-select" id="technical_level" name="technical_level">
+                                <option value="beginner" {{ 'selected' if preferences.technical_level == 'beginner' else '' }}>Beginner</option>
+                                <option value="intermediate" {{ 'selected' if preferences.technical_level == 'intermediate' else '' }}>Intermediate</option>
+                                <option value="advanced" {{ 'selected' if preferences.technical_level == 'advanced' else '' }}>Advanced</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="units" class="form-label">Preferred Units</label>
+                            <select class="form-select" id="units" name="units">
+                                <option value="lbs" {{ 'selected' if preferences.units == 'lbs' else '' }}>Pounds (lbs)</option>
+                                <option value="kg" {{ 'selected' if preferences.units == 'kg' else '' }}>Kilograms (kg)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Update AI Preferences
+                        </button>
+                        <div id="updateStatus" class="mt-2"></div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6><i class="fas fa-edit me-2"></i>Quick Profile Update</h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('update_profile') }}">
                     <div class="mb-3">
                         <label for="field_name" class="form-label">Field to Update</label>
                         <select class="form-select" id="field_name" name="field_name" required>
@@ -118,12 +185,65 @@
                                placeholder="Enter new value..." required>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save me-2"></i>Update
+                    <button type="submit" class="btn btn-secondary">
+                        <i class="fas fa-save me-2"></i>Update Profile
                     </button>
                 </form>
             </div>
         </div>
+
+<script>
+document.getElementById('aiPreferencesForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const preferences = {};
+    
+    for (let [key, value] of formData.entries()) {
+        preferences[key] = value;
+    }
+    
+    const statusDiv = document.getElementById('updateStatus');
+    statusDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Updating...';
+    statusDiv.className = 'mt-2 text-info';
+    
+    try {
+        const response = await fetch('/update_ai_preferences', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(preferences)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            statusDiv.innerHTML = '<i class="fas fa-check me-2"></i>AI preferences updated successfully!';
+            statusDiv.className = 'mt-2 text-success';
+            
+            // Update the current preferences display
+            Object.keys(preferences).forEach(key => {
+                const displayElement = document.querySelector(`[data-preference="${key}"]`);
+                if (displayElement) {
+                    displayElement.textContent = preferences[key];
+                }
+            });
+        } else {
+            statusDiv.innerHTML = '<i class="fas fa-times me-2"></i>Error: ' + result.error;
+            statusDiv.className = 'mt-2 text-danger';
+        }
+    } catch (error) {
+        statusDiv.innerHTML = '<i class="fas fa-times me-2"></i>Network error occurred';
+        statusDiv.className = 'mt-2 text-danger';
+    }
+    
+    // Clear status after 5 seconds
+    setTimeout(() => {
+        statusDiv.innerHTML = '';
+    }, 5000);
+});
+</script>
     </div>
 </div>
 {% endblock %}

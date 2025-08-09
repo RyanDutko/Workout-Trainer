@@ -3540,6 +3540,38 @@ def reorder_exercise():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/update_ai_preferences', methods=['POST'])
+def update_ai_preferences():
+    """Update user AI preferences"""
+    try:
+        data = request.json
+        tone = data.get('tone')
+        detail_level = data.get('detail_level')
+        format_pref = data.get('format')
+        communication_style = data.get('communication_style')
+        technical_level = data.get('technical_level')
+        units = data.get('units')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Update AI preferences in users table
+        cursor.execute('''
+            UPDATE users 
+            SET grok_tone = ?, grok_detail_level = ?, grok_format = ?, 
+                communication_style = ?, technical_level = ?, preferred_units = ?
+            WHERE id = 1
+        ''', (tone, detail_level, format_pref, communication_style, technical_level, units))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({'success': True, 'message': 'AI preferences updated successfully'})
+
+    except Exception as e:
+        print(f"Error updating AI preferences: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/update_profile', methods=['POST'])
 def update_profile():
     """Update user profile field"""
