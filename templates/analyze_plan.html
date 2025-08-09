@@ -1243,7 +1243,7 @@ async function savePhilosophy() {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ philosophy: philosophyText })
+            body: JSON.stringify({ core_philosophy: philosophyText })
         });
 
         const result = await response.json();

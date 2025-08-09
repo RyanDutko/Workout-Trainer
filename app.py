@@ -4540,7 +4540,8 @@ def update_philosophy():
     """Update core training philosophy manually"""
     try:
         data = request.json
-        core_philosophy = data.get('core_philosophy', '').strip()
+        # Accept both field names for compatibility
+        core_philosophy = data.get('core_philosophy', data.get('philosophy', '')).strip()
 
         if not core_philosophy:
             return jsonify({'success': False, 'error': 'Philosophy text is required'})
