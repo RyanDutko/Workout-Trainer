@@ -2,4 +2,3 @@ python-dateutil
 requests
 openai
 flask
-psycopg2-binary

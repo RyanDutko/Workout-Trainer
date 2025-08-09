@@ -13,15 +13,11 @@ app = Flask(__name__)
 
 # Database initialization
 def get_db_connection():
-    """Get a PostgreSQL database connection with connection pooling"""
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    
-    database_url = os.environ['DATABASE_URL']
-    # Use connection pooling for better performance
-    database_url = database_url.replace('.us-east-2', '-pooler.us-east-2')
-    
-    conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+    """Get a database connection with proper timeout and thread safety"""
+    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
+    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
+    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
     return conn
 
 def get_user_ai_preferences():
@@ -301,7 +297,7 @@ def init_db():
         except sqlite3.OperationalError:
             pass  # Column already exists
 
-    cursor.execute('INSERT INTO users (id, goal, weekly_split, preferences) VALUES (1, %s, %s, %s) ON CONFLICT (id) DO NOTHING', ("", "", ""))
+    cursor.execute('INSERT OR IGNORE INTO users (id, goal, weekly_split, preferences) VALUES (1, "", "", "")')
 
     # Seed exercise relationships if empty
     cursor.execute('SELECT COUNT(*) FROM exercise_relationships')
