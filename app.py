@@ -1540,29 +1540,6 @@ ANALYSIS APPROACH:
 4. End with "What would you like me to elaborate on?" to encourage follow-up
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
-        elif 'plan' in prompt.lower() and any(word in prompt.lower() for word in ['rename', 'update', 'change', 'modify']):
-            system_prompt = """You are the AI training assistant built into this fitness app. 
-
-CRITICAL: When the user asks to modify their plan (rename exercises, change weights, etc.), you MUST:
-
-1. Respond naturally and enthusiastically about the change
-2. Include a JSON command at the end for the system to parse
-
-PLAN MODIFICATION JSON FORMAT:
-When user wants to rename an exercise, include this exact format at the end of your response:
-
-PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}
-
-For other modifications:
-- Add exercise: {"action": "add", "day": "monday", "exercise": "new exercise", "sets": 3, "reps": "12", "weight": "90lbs"}
-- Update weight: {"action": "update", "day": "friday", "exercise": "glute drive", "weight": "110lbs"}
-
-EXAMPLE RESPONSE:
-"Absolutely! That's perfect logic - having a lighter load on Monday makes total sense since it's the new addition. I'll rename Monday's glute drive to 'glute drive (light load)' to differentiate it from Friday's heavier version.
-
-PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}"
-
-Always respond naturally first, then include the JSON command."""
         else:
             system_prompt = """You are the AI training assistant built into this fitness app. You have direct access to the user's workout data, weekly plan, and training history through the app's database.
 
@@ -4308,62 +4285,30 @@ def rename_exercise():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Debug: Check what exercises exist for this day
-        cursor.execute('SELECT exercise_name FROM weekly_plan WHERE day_of_week = ?', (day,))
-        existing_exercises = [row[0] for row in cursor.fetchall()]
-        print(f"🔍 Debug: Existing exercises on {day}: {existing_exercises}")
-        print(f"🔍 Debug: Looking for '{current_name}' to rename to '{new_name}'")
-
         if day:
-            # Try exact match first
+            # Rename specific day
             cursor.execute('''
                 UPDATE weekly_plan
                 SET exercise_name = ?
-                WHERE day_of_week = ? AND exercise_name = ?
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (new_name, day, current_name))
-            
-            # If no exact match, try case-insensitive
-            if cursor.rowcount == 0:
-                cursor.execute('''
-                    UPDATE weekly_plan
-                    SET exercise_name = ?
-                    WHERE day_of_week = ? AND LOWER(TRIM(exercise_name)) = LOWER(TRIM(?))
-                ''', (new_name, day, current_name))
-            
-            # If still no match, try partial matching
-            if cursor.rowcount == 0:
-                cursor.execute('''
-                    UPDATE weekly_plan
-                    SET exercise_name = ?
-                    WHERE day_of_week = ? AND LOWER(exercise_name) LIKE LOWER(?)
-                ''', (new_name, day, f'%{current_name}%'))
         else:
-            # Rename across all days with similar matching logic
+            # Rename across all days
             cursor.execute('''
                 UPDATE weekly_plan
                 SET exercise_name = ?
-                WHERE exercise_name = ?
+                WHERE LOWER(exercise_name) = LOWER(?)
             ''', (new_name, current_name))
-            
-            if cursor.rowcount == 0:
-                cursor.execute('''
-                    UPDATE weekly_plan
-                    SET exercise_name = ?
-                    WHERE LOWER(TRIM(exercise_name)) = LOWER(TRIM(?))
-                ''', (new_name, current_name))
 
         if cursor.rowcount > 0:
             conn.commit()
             conn.close()
-            print(f"✅ Successfully renamed exercise: {current_name} → {new_name}")
             return jsonify({'success': True, 'message': f'Renamed "{current_name}" to "{new_name}"'})
         else:
             conn.close()
-            print(f"❌ Exercise not found: '{current_name}' on day '{day}'")
-            return jsonify({'success': False, 'error': f'Exercise "{current_name}" not found on {day}. Available exercises: {", ".join(existing_exercises)}'})
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
 
     except Exception as e:
-        print(f"❌ Error in rename_exercise: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/mark_exercise_new', methods=['POST'])
