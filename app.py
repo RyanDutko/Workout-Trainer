@@ -4563,9 +4563,12 @@ def update_philosophy():
         weekly_structure = current_data[1] if current_data else ''
         special_considerations = current_data[2] if current_data else ''
 
-        # Update or insert the philosophy
+        # Delete existing entries and insert fresh one to ensure clean update
+        cursor.execute('DELETE FROM plan_context WHERE user_id = 1')
+        
+        # Insert the updated philosophy
         cursor.execute('''
-            INSERT OR REPLACE INTO plan_context
+            INSERT INTO plan_context
             (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
              created_by_ai, creation_reasoning, created_date, updated_date)
             VALUES (1, ?, ?, ?, ?, FALSE, 'Manually updated by user', ?, ?)
@@ -4579,6 +4582,7 @@ def update_philosophy():
         ))
 
         conn.commit()
+        print(f"✅ Philosophy manually updated: {core_philosophy[:50]}...")
         conn.close()
 
         return jsonify({
@@ -4588,6 +4592,7 @@ def update_philosophy():
         })
 
     except Exception as e:
+        print(f"❌ Error updating philosophy: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/make_substitution_permanent', methods=['POST'])

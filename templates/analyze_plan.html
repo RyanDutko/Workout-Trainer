@@ -1251,7 +1251,11 @@ async function savePhilosophy() {
         if (result.success) {
             alert('✅ Core training philosophy updated successfully!');
             bootstrap.Modal.getInstance(document.getElementById('philosophyEditorModal')).hide();
-            loadPhilosophyAndPriorities(); // Refresh the displayed philosophy
+            
+            // Force refresh the philosophy display by clearing cache and reloading
+            setTimeout(() => {
+                location.reload(); // Force a complete page refresh to ensure update is visible
+            }, 500);
         } else {
             alert('❌ Error updating philosophy: ' + result.error);
         }
