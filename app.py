@@ -1381,6 +1381,55 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
 
 # Context builders have been moved to separate modules in context_builders/
 
+def build_philosophy_update_context(prompt):
+    """Build context specifically for philosophy update requests"""
+    try:
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+        
+        # Get current philosophy from database
+        cursor.execute('''
+            SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
+            FROM plan_context
+            WHERE user_id = 1
+            ORDER BY created_date DESC
+            LIMIT 1
+        ''')
+        
+        current_context = cursor.fetchone()
+        conn.close()
+        
+        if current_context:
+            current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
+            
+            context_info = "=== PHILOSOPHY UPDATE REQUEST ===\n"
+            context_info += f"CURRENT PHILOSOPHY:\n"
+            context_info += f"Training Philosophy: {current_philosophy or 'Not set'}\n"
+            context_info += f"Weekly Structure: {weekly_structure or 'Not set'}\n"
+            context_info += f"Progression Strategy: {progression_strategy or 'Not set'}\n"
+            context_info += f"Special Considerations: {special_considerations or 'Not set'}\n\n"
+            
+            context_info += f"USER REQUEST: {prompt}\n\n"
+            context_info += """Please parse the new philosophy from the user request and provide a structured response with these exact sections:
+
+TRAINING_PHILOSOPHY: [updated philosophy text]
+WEEKLY_STRUCTURE: [updated weekly structure reasoning]
+PROGRESSION_STRATEGY: [updated progression approach]
+SPECIAL_CONSIDERATIONS: [updated special considerations]
+REASONING: [brief explanation of changes made]
+
+Extract the philosophy content after the colon (:) in the user's message and structure it appropriately."""
+            
+            print(f"🧠 Built philosophy update context with current stored philosophy")
+            return context_info
+        else:
+            print(f"⚠️ No existing philosophy found for update")
+            return "=== NO EXISTING PHILOSOPHY FOUND ===\nPlease provide the philosophy content and I'll help structure it.\n\n" + prompt
+            
+    except Exception as e:
+        print(f"Error building philosophy update context: {e}")
+        return prompt
+
 def build_smart_context(prompt, query_intent, user_background=None):
     """Route to appropriate context builder based on query intent"""
     from context_builders.historical import build_historical_context
@@ -1456,6 +1505,12 @@ def build_smart_context(prompt, query_intent, user_background=None):
     if is_philosophy_discussion:
         print(f"🎯 Override: Detected philosophy discussion - routing to general context with philosophy")
         return build_general_context(prompt, user_background)
+    
+    # PHILOSOPHY UPDATES - Special handling for "update my philosophy" requests
+    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to']
+    if any(phrase in prompt.lower() for phrase in philosophy_update_phrases):
+        print(f"🎯 Override: Detected philosophy UPDATE request - building philosophy context")
+        return build_philosophy_update_context(prompt)
 
     # If historical intent exists AND contains day references, use historical
     if all_intents.get('historical', 0) > 0 and contains_day:
@@ -1511,6 +1566,9 @@ def get_grok_response_with_context(prompt, user_background=None):
         # Check for comprehensive plan modification requests
         is_comprehensive_modification = 'COMPREHENSIVE_PLAN_MODIFICATION_REQUEST:' in prompt
 
+        # Check for philosophy update before general intent analysis
+        is_philosophy_update = any(phrase in prompt.lower() for phrase in ['update my philosophy to', 'update my philosophy with', 'update my philisophy to'])
+        
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
@@ -1523,7 +1581,29 @@ def get_grok_response_with_context(prompt, user_background=None):
         print("=" * 80)
 
         # Adjust system prompt based on query type
-        if is_comprehensive_modification:
+        if is_philosophy_update:
+            system_prompt = """You are an AI training assistant helping to update the user's training philosophy.
+
+PHILOSOPHY UPDATE TASK:
+The user is providing a new training philosophy to replace their current one. Your job is to:
+
+1. Extract the new philosophy content from their request (everything after the colon :)
+2. Parse it into structured sections
+3. Respond naturally to acknowledge the update
+4. Provide the structured data in the exact format shown below
+
+REQUIRED OUTPUT FORMAT:
+After your natural response, include this structured data:
+
+TRAINING_PHILOSOPHY: [the main philosophy text]
+WEEKLY_STRUCTURE: [reasoning about how the week is organized]
+PROGRESSION_STRATEGY: [approach to progressive overload]
+SPECIAL_CONSIDERATIONS: [any special notes, safety considerations, etc.]
+REASONING: [brief note about the update]
+
+TONE: Respond naturally and conversationally, then provide the structured sections for database parsing."""
+
+        elif is_comprehensive_modification:
             system_prompt = """You are Grok, an experienced personal trainer with deep understanding of program design. You're analyzing a user's request to modify their training priorities.
 
 TRAINER MINDSET - CRITICAL:
