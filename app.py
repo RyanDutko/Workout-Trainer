@@ -143,7 +143,7 @@ def init_db():
         conversation_thread_id TEXT,
         parent_conversation_id INTEGER,
         FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
+        FOREIGN FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
     )
     ''')
 
@@ -551,19 +551,19 @@ def extract_actual_performed_weight(exercise_name, recent_conversations):
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Look for the most recent log of this exercise with weight details
         cursor.execute('''
-            SELECT weight, notes FROM workouts 
-            WHERE LOWER(exercise_name) = LOWER(?) 
-            ORDER BY date_logged DESC, id DESC 
+            SELECT weight, notes FROM workouts
+            WHERE LOWER(exercise_name) = LOWER(?)
+            ORDER BY date_logged DESC, id DESC
             LIMIT 1
         ''', (exercise_name,))
-        
+
         recent_log = cursor.fetchone()
         if recent_log:
             weight, notes = recent_log
-            
+
             # If notes mention specific weights (like "110 lbs for set 2 and 3"), extract the higher weight
             if notes:
                 import re
@@ -572,13 +572,13 @@ def extract_actual_performed_weight(exercise_name, recent_conversations):
                     # Return the highest weight mentioned in notes
                     highest_weight = max(int(w) for w in weight_mentions)
                     return f"{highest_weight}lbs"
-            
+
             # Otherwise return the logged weight
             return weight
-            
+
         conn.close()
         return None
-        
+
     except Exception as e:
         print(f"Error extracting performed weight: {e}")
         return None
@@ -1135,12 +1135,6 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
 
     return None
 
-# Conversation context functions removed for testing simplification
-
-# Contextual reference resolution removed for testing simplification
-
-# Conversation state tracking removed for testing simplification
-
 def analyze_day_progression(date_str):
     """Analyze progression for all exercises completed on a specific day"""
     try:
@@ -1341,21 +1335,21 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
 def build_smart_context(prompt, query_intent, user_background=None):
     """Route to appropriate context builder based on query intent"""
     from context_builders.historical import build_historical_context
-    from context_builders.plan import build_plan_context  
+    from context_builders.plan import build_plan_context
     from context_builders.progression import build_progression_context
     from context_builders.general import build_general_context
-    
+
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
     print(f"🔍 Intent: {query_intent}")
     print(f"🔍 Prompt: '{prompt}'")
-    
+
     # Extract the actual intent string if it's in a dict format
     actual_intent = query_intent
     all_intents = {}
     if isinstance(query_intent, dict):
         actual_intent = query_intent.get('intent', 'general')
         all_intents = query_intent.get('all_intents', {})
-    
+
     # SPECIAL CASE: If this involves workout history even with negation/correction
     # Check if this is really about showing workout data despite other intents
     is_workout_history_request = any(phrase in prompt.lower() for phrase in [
@@ -1364,79 +1358,79 @@ def build_smart_context(prompt, query_intent, user_background=None):
         'tuesday instead', 'wednesday instead', 'monday instead', 'what i did on wednesday',
         'my wednesday', 'workouts i did', 'what workouts'
     ])
-    
+
     # CRITICAL FIX: Also check for follow-up historical requests
     # If prompt contains day names AND historical intent exists, it's likely historical
     contains_day = any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
-    
+
     # HISTORICAL WORKOUT REQUESTS - check for these FIRST before plan keywords
     historical_workout_phrases = ['what i did on', 'show me what i did', 'my workout on', 'my recent logs',
                                   'recent workout', 'what did i do on', 'my tuesday workout', 'my friday workout',
                                   'my monday workout', 'my wednesday workout', 'my thursday workout',
                                   'show me my logs', 'recent friday logs', 'recent monday logs']
     is_historical_workout_request = any(phrase in prompt.lower() for phrase in historical_workout_phrases)
-    
+
     # PLAN DISCUSSION OVERRIDE - check for plan-related keywords (but not if it's clearly historical)
     plan_keywords = ['weekly plan', 'my plan', 'plan changes', 'modify plan', 'update plan', 'change plan',
                      'philosophy', 'training philosophy', 'approach', 'progression strategy']
     is_plan_discussion = any(keyword in prompt.lower() for keyword in plan_keywords) and not is_historical_workout_request
-    
+
     # PHILOSOPHY DISCUSSION - check for philosophy keywords
-    philosophy_keywords = ['philosophy', 'training philosophy', 'approach', 'training approach', 
+    philosophy_keywords = ['philosophy', 'training philosophy', 'approach', 'training approach',
                           'my philosophy', 'plan philosophy', 'training strategy']
     is_philosophy_discussion = any(keyword in prompt.lower() for keyword in philosophy_keywords) and not is_historical_workout_request
-    
+
     # SPECIFIC PLAN VIEW REQUESTS - these should use plan context even if they mention days
     specific_plan_requests = ['show me my monday plan', 'show me my tuesday plan', 'show me my wednesday plan',
                              'show me my thursday plan', 'show me my friday plan', 'what is my monday plan',
                              'what is my tuesday plan', 'monday plan', 'tuesday plan', 'wednesday plan']
     is_specific_plan_request = any(request in prompt.lower() for request in specific_plan_requests)
-    
+
     # PRIORITY 1: Historical workout requests (highest priority)
     if is_historical_workout_request or is_workout_history_request:
         print(f"🎯 Override: Detected historical workout request - routing to historical context")
         return build_historical_context(prompt)
-    
+
     # COMBINED CONTEXT: If user mentions BOTH plan AND recent logs, provide both contexts
     if (is_plan_discussion or is_specific_plan_request) and (is_workout_history_request or is_historical_workout_request):
         print(f"🎯 Override: Detected COMBINED plan + history request - providing both contexts")
         plan_context = build_plan_context()
         historical_context = build_historical_context(prompt)
         return plan_context + "\n\n" + historical_context
-    
+
     # Route plan discussions to plan context (including specific plan requests)
     if is_plan_discussion or is_specific_plan_request:
         print(f"🎯 Override: Detected plan discussion/request - routing to plan context")
         return build_plan_context()
-    
+
     # Route philosophy discussions to general context with philosophy data
     if is_philosophy_discussion:
         print(f"🎯 Override: Detected philosophy discussion - routing to general context with philosophy")
         return build_general_context(prompt, user_background)
-    
+
     # If historical intent exists AND contains day references, use historical
     if all_intents.get('historical', 0) > 0 and contains_day:
         print(f"🎯 Override: Detected workout history request with day reference - historical score: {all_intents.get('historical', 0)}")
         return build_historical_context(prompt)
-    
+
     # Route to focused context builders
     if actual_intent == 'historical':
         return build_historical_context(prompt)
-    
+
     elif actual_intent == 'progression':
         return build_progression_context()
-    
+
     elif actual_intent == 'plan_modification' or any(phrase in prompt.lower() for phrase in [
         'my plan', 'thursday plan', 'monday plan', 'tuesday plan', 'wednesday plan',
         'friday plan', 'saturday plan', 'sunday plan', 'show plan', 'what\'s my plan',
         'plan for', 'workout plan'
     ]):
         return build_plan_context()
-    
+
     elif actual_intent == 'full_plan_review':
         # For comprehensive analysis, combine multiple contexts
         context_info = "\n=== COMPLETE PLAN ANALYSIS CONTEXT ===\n"
-        
+
         if user_background:
             context_info += "USER PROFILE:\n"
             if user_background.get('primary_goal'):
@@ -1448,14 +1442,14 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
         # Add plan context
         context_info += build_plan_context()
-        
+
         # Add recent performance
         context_info += build_progression_context()
-        
+
         # Strip the trigger phrase
         prompt = prompt.replace('FULL_PLAN_REVIEW_REQUEST:', '').strip()
         return context_info
-    
+
     else:
         return build_general_context(prompt, user_background)
 
@@ -1787,32 +1781,32 @@ def debug_tuesday_data():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Get all workouts with day calculations
         cursor.execute("""
-            SELECT 
-                exercise_name, 
-                sets, 
-                reps, 
-                weight, 
-                date_logged, 
+            SELECT
+                exercise_name,
+                sets,
+                reps,
+                weight,
+                date_logged,
                 notes,
                 strftime('%w', date_logged) as day_of_week_num,
                 strftime('%A', date_logged) as day_name
-            FROM workouts 
+            FROM workouts
             ORDER BY date_logged DESC
             LIMIT 50
         """)
-        
+
         all_workouts = cursor.fetchall()
-        
+
         # Filter for Tuesday workouts (day_of_week_num = '2')
         tuesday_workouts = []
         all_workouts_info = []
-        
+
         for workout in all_workouts:
             exercise, sets, reps, weight, date_str, notes, day_num, day_name = workout
-            
+
             all_workouts_info.append({
                 'exercise': exercise,
                 'date': date_str,
@@ -1822,7 +1816,7 @@ def debug_tuesday_data():
                 'reps': reps,
                 'weight': weight
             })
-            
+
             if day_num == '2':  # Tuesday is day 2 in SQLite's strftime
                 tuesday_workouts.append({
                     'exercise': exercise,
@@ -1832,9 +1826,9 @@ def debug_tuesday_data():
                     'weight': weight,
                     'notes': notes
                 })
-        
+
         conn.close()
-        
+
         return jsonify({
             'total_workouts': len(all_workouts),
             'tuesday_workouts_found': len(tuesday_workouts),
@@ -1842,7 +1836,7 @@ def debug_tuesday_data():
             'all_recent_workouts': all_workouts_info[:10],  # First 10 for inspection
             'debug_message': f"Found {len(tuesday_workouts)} Tuesday workouts out of {len(all_workouts)} total workouts"
         })
-        
+
     except Exception as e:
         return jsonify({'error': str(e)})
 
@@ -2065,7 +2059,7 @@ def chat_stream():
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
                 exercise_mentioned = None
                 for keyword in exercise_keywords:
-                    if keyword in current_message.lower():
+                    if keyword in message.lower():
                         exercise_mentioned = keyword
                         break
 
@@ -2091,7 +2085,7 @@ def chat_stream():
                     plan_modifications = response[:300] + "..." if len(response) > 300 else response
 
                 # Parse potential plan modification from Grok's response
-                plan_mod_data = parse_plan_modification_from_ai_response(response, current_message)
+                plan_mod_data = parse_plan_modification_from_ai_response(response, message)
                 if plan_mod_data and detected_intent == 'plan_modification':
                     # Store as potential auto-action for user confirmation
                     potential_actions.append({
@@ -2105,55 +2099,88 @@ def chat_stream():
                         response += confirmation_text
 
                 # ENHANCED: Check if user is confirming a plan change from previous conversation
-                if current_message.lower().strip() in ['yes', 'confirm', 'do it', 'go ahead', 'make the change']:
+                if message.lower().strip() in ['yes', 'confirm', 'do it', 'go ahead', 'make the change']:
                     # Check if previous conversation contained a plan suggestion
                     cursor.execute('''
-                        SELECT ai_response FROM conversations 
+                        SELECT ai_response FROM conversations
                         WHERE user_id = 1 AND timestamp >= date('now', '-1 hour')
-                        ORDER BY timestamp DESC 
+                        ORDER BY timestamp DESC
                         LIMIT 3
                     ''')
                     recent_responses = cursor.fetchall()
-                    
+
                     plan_change_executed = False
                     for prev_response in recent_responses:
                         if prev_response[0]:
                             prev_ai_text = prev_response[0].lower()
-                            
-                            # Look for various plan modification patterns
-                            if 'glute drive' in prev_ai_text and 'monday' in prev_ai_text and 'add' in prev_ai_text:
+
+                            # Look for ChatGPT's structured JSON modification commands
+                            import re
+                            json_pattern = r'PLAN_MODIFICATION:\s*({[^}]+})'
+                            json_match = re.search(json_pattern, prev_response[0])
+
+                            if json_match:
+                                try:
+                                    import json
+                                    modification_data = json.loads(json_match.group(1))
+
+                                    action = modification_data.get('action')
+                                    day = modification_data.get('day', '').lower()
+                                    old_name = modification_data.get('old_name', '')
+                                    new_name = modification_data.get('new_name', '')
+
+                                    if action == 'rename' and day and old_name and new_name:
+                                        print(f"🎯 User confirmed renaming via JSON - executing {old_name} -> {new_name} on {day}")
+
+                                        cursor.execute('''
+                                            UPDATE weekly_plan
+                                            SET exercise_name = ?
+                                            WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+                                        ''', (new_name, day, old_name))
+
+                                        if cursor.rowcount > 0:
+                                            plan_modifications = f"✅ EXECUTED: Renamed {day}'s {old_name} to '{new_name}'"
+                                            plan_change_executed = True
+                                            print(f"✅ Successfully renamed {day} {old_name} to '{new_name}'")
+                                        break
+
+                                except (json.JSONDecodeError, KeyError) as e:
+                                    print(f"❌ Error parsing JSON modification: {e}")
+
+                            # Fallback to legacy pattern matching
+                            elif 'glute drive' in prev_ai_text and 'monday' in prev_ai_text and 'add' in prev_ai_text:
                                 print("🎯 User confirmed plan change - executing glute drive addition to Monday")
-                                
+
                                 try:
                                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', ('monday',))
                                     next_order = cursor.fetchone()[0]
-                                    
+
                                     cursor.execute('''
                                         INSERT INTO weekly_plan
-                                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, 
+                                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
                                          notes, created_by, newly_added, date_added)
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order, 
+                                    ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order,
                                           'Added per user request for extra glute volume', 'grok_ai', True, datetime.now().strftime('%Y-%m-%d')))
-                                    
+
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
                                     plan_change_executed = True
                                     print("✅ Successfully added glute drive to Monday plan")
                                     break
-                                    
+
                                 except Exception as e:
                                     print(f"❌ Error executing plan change: {e}")
                                     response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
-                            
+
                             # Look for weight update patterns (for your Friday glute drive test)
-                            elif ('friday' in prev_ai_text and 'glute drive' in prev_ai_text and 
+                            elif ('friday' in prev_ai_text and 'glute drive' in prev_ai_text and
                                   any(word in prev_ai_text for word in ['increase', 'heavier', 'bump up', 'raise'])):
                                 print("🎯 User confirmed weight change - executing Friday glute drive weight increase")
-                                
+
                                 try:
                                     # Extract the actual weight performed from workout logs
                                     actual_weight = extract_actual_performed_weight('glute drive', [])
-                                    
+
                                     if actual_weight:
                                         new_weight = actual_weight
                                         print(f"🔍 Found actual performed weight: {new_weight}")
@@ -2163,24 +2190,24 @@ def chat_stream():
                                         weight_match = re.search(r'110\s*(?:lbs?|pounds?)', prev_response[0])
                                         new_weight = "110lbs" if weight_match else "100lbs"
                                         print(f"🔍 Using fallback weight: {new_weight}")
-                                    
+
                                     cursor.execute('''
                                         UPDATE weekly_plan
                                         SET target_weight = ?, notes = COALESCE(notes, '') || ' [Weight increased per user request]'
                                         WHERE day_of_week = 'friday' AND LOWER(exercise_name) = 'glute drive'
                                     ''', (new_weight,))
-                                    
+
                                     if cursor.rowcount > 0:
                                         plan_modifications = f"✅ EXECUTED: Updated Friday glute drive weight to {new_weight}"
                                         plan_change_executed = True
                                         print(f"✅ Successfully updated Friday glute drive to {new_weight}")
                                     break
-                                    
+
                                 except Exception as e:
                                     print(f"❌ Error executing weight change: {e}")
                                     response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
                             break
-                    
+
                     # If we executed a plan change, return a simple confirmation without calling AI
                     if plan_change_executed:
                         if 'friday' in plan_modifications.lower():
@@ -2189,7 +2216,7 @@ def chat_stream():
                             response = "✅ **DONE!** Added glute drive (3x12@90lbs) to your Monday workout. Check your Weekly Plan tab to see the update!"
 
                 # Parse potential philosophy updates from conversation
-                philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
+                philosophy_update = parse_philosophy_update_from_conversation(response, message)
                 if philosophy_update:
                     # Check if this was a comprehensive removal
                     if philosophy_update.get('comprehensive_removal'):
@@ -2216,7 +2243,7 @@ def chat_stream():
                             print(f"🧠 Auto-updated training philosophy based on conversation")
 
                             # If this was a comprehensive plan change, regenerate exercise metadata
-                            if any(keyword in current_message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
+                            if any(keyword in message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
                                 regenerate_exercise_metadata_from_plan()
                                 print(f"🔄 Regenerated exercise metadata for plan changes")
 
@@ -2227,7 +2254,7 @@ def chat_stream():
 
 
                 # Parse potential AI preference updates from conversation
-                preference_updates = parse_preference_updates_from_conversation(response, current_message)
+                preference_updates = parse_preference_updates_from_conversation(response, message)
                 if preference_updates:
                     # Auto-update AI preferences in database
                     try:
@@ -2257,7 +2284,7 @@ def chat_stream():
                             INSERT INTO conversation_threads
                             (user_id, thread_type, thread_subject, current_context, last_intent)
                             VALUES (1, ?, ?, ?, ?)
-                        ''', ('chat', current_message[:50] + "..." if len(current_message) > 50 else current_message,
+                        ''', ('chat', message[:50] + "..." if len(message) > 50 else message,
                               detected_intent, detected_intent))
                         thread_id = cursor.lastrowid
                     else:
@@ -2415,6 +2442,14 @@ def get_plan(date):
 
     except Exception as e:
         return jsonify({'exercises': [], 'error': str(e)})
+
+    # Check what columns actually exist
+    columns = []
+    try:
+        cursor.execute("PRAGMA table_info(weekly_plan)")
+        columns = [col[1] for col in cursor.fetchall()]
+    except sqlite3.OperationalError as e:
+        print(f"Error checking column existence: {e}")
 
     if 'target_sets' in columns:
         cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
@@ -3834,7 +3869,7 @@ def save_workout():
         if notes:
             try:
                 today_name = datetime.now().strftime('%A').lower()
-                
+
                 # Analyze performance and generate progression note within the same transaction
                 if any(phrase in notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
                     progression_note = "Focus on completing all reps this week"
@@ -3856,7 +3891,7 @@ def save_workout():
                         print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
                     else:
                         print(f"⚠️ Exercise {exercise_name} not found in weekly plan for {today_name}")
-                        
+
             except Exception as e:
                 print(f"Failed to update progression notes for {exercise_name}: {e}")
 
@@ -4233,8 +4268,8 @@ def rename_exercise():
             cursor.execute('''
                 UPDATE weekly_plan
                 SET exercise_name = ?
-                WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
-            ''', (new_name, current_name, day))
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (new_name, day, current_name))
         else:
             # Rename across all days
             cursor.execute('''
