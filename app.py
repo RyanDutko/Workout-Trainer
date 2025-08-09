@@ -917,7 +917,47 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                 # progression_analysis = get_grok_response_with_context(rewrite_prompt, user_background) # Grok API call
                 response = get_grok_response_with_context(rewrite_prompt)
 
-                # Parse Grok's structured response
+                # For natural language philosophy (like from ChatGPT), use intelligent parsing
+                if 'update my philosophy with' in user_request_lower:
+                    # Extract the actual philosophy content after "with:"
+                    philosophy_content = user_request.split(':', 1)[1].strip() if ':' in user_request else response
+                    
+                    # Parse the natural language philosophy into structured sections
+                    extracted_data = {}
+                    
+                    # Use the full philosophy content as the main philosophy
+                    extracted_data['plan_philosophy'] = philosophy_content
+                    
+                    # Extract key sections from the natural language
+                    if '5-day split' in philosophy_content.lower():
+                        # Extract weekly structure
+                        structure_match = re.search(r'5-day split:([^.]+\.)', philosophy_content, re.IGNORECASE)
+                        if structure_match:
+                            extracted_data['weekly_structure'] = structure_match.group(1).strip()
+                    
+                    if 'progressive overload' in philosophy_content.lower():
+                        # Extract progression strategy
+                        prog_match = re.search(r'Progressive overload([^.]+\.)', philosophy_content, re.IGNORECASE)
+                        if prog_match:
+                            extracted_data['progression_strategy'] = 'Progressive overload' + prog_match.group(1).strip()
+                    
+                    if 'recovery' in philosophy_content.lower() or 'joint safety' in philosophy_content.lower():
+                        # Extract special considerations
+                        safety_parts = []
+                        if 'joint safety' in philosophy_content.lower():
+                            safety_parts.append('Machine- and cable-focused for joint safety')
+                        if 'recovery' in philosophy_content.lower():
+                            recovery_match = re.search(r'Recovery([^.]+\.)', philosophy_content, re.IGNORECASE)
+                            if recovery_match:
+                                safety_parts.append('Recovery' + recovery_match.group(1).strip())
+                        if safety_parts:
+                            extracted_data['special_considerations'] = '; '.join(safety_parts)
+                    
+                    extracted_data['reasoning'] = f"Updated with natural language philosophy from user"
+                    print(f"🧠 Successfully parsed natural language philosophy")
+                    return extracted_data
+                
+                # Parse Grok's structured response (fallback)
                 lines = response.split('\n')
                 extracted_data = {}
 
