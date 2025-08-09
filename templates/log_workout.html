@@ -688,8 +688,11 @@ function loadCurrentExercise() {
     // Update exercise info
     document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
 
-    // Determine if it's complex
-    const isComplex = exerciseReps.includes('/') || exerciseReps.includes('@');
+    // Check if this is a complex exercise - use proper field check
+    const isComplex = exercise.is_complex || 
+                    (exercise.complex_structure && exercise.complex_structure !== '') ||
+                    exercise.exercise_name.toLowerCase().includes('finisher') ||
+                    exercise.exercise_name.toLowerCase().includes('rounds');
 
     const setsSection = document.getElementById('setsSection');
     const complexExerciseSection = document.getElementById('complexExerciseSection');
@@ -774,7 +777,7 @@ function loadComplexExerciseSets(exercise) {
 
     // Parse the complex exercise structure - handle multiple formats
     let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
-    
+
     if (complexStructure.length === 0) {
         // Fallback to old format if parsing fails
         complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
@@ -806,7 +809,7 @@ function loadComplexExerciseSets(exercise) {
 function parseComplexExerciseStructure(repsString, weightString, notesString) {
     // Parse different complex exercise formats
     let structure = [];
-    
+
     // Format 1: Bicep finisher format - "2x10/15/10" with weights "20/15/15lbs" and notes describing movements
     if (repsString.includes('/') && weightString && weightString.includes('/')) {
         // Extract the pattern: "2x10/15/10" -> 2 rounds of 10/15/10 reps
@@ -815,10 +818,10 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
             const [, rounds, repsPattern] = roundsMatch;
             const repsArray = repsPattern.split('/');
             const weightsArray = weightString.replace(/lbs/g, '').replace(/kg/g, '').split('/');
-            
+
             // Default movement names for bicep finisher rounds
             const defaultMovements = ['slow bicep curls', 'fast bicep curls', 'hammer curls'];
-            
+
             // Parse movement names from notes if available
             let movementNames = defaultMovements;
             if (notesString) {
@@ -831,12 +834,12 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
                     });
                 }
             }
-            
+
             // Create structure for each movement in the round
             repsArray.forEach((reps, index) => {
                 const weight = weightsArray[index] || weightsArray[0] || '0';
                 const movementName = movementNames[index] || defaultMovements[index] || `Movement ${index + 1}`;
-                
+
                 structure.push({
                     roundLabel: `Movement ${index + 1}`,
                     movement: movementName,
@@ -851,9 +854,9 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
         const movements = repsString.split(',');
         movements.forEach((movement, index) => {
             const trimmed = movement.trim();
-            
+
             // Extract reps, movement name, and weight
-            const repsMatch = trimmed.match(/^(\d+)\s+(.+?)\s*\((.+?)\)/);
+            const repsMatch = trimmed.match(/(\d+)\s+(.+?)\s*\((.+?)\)/);
             if (repsMatch) {
                 const [, reps, movementName, weight] = repsMatch;
                 structure.push({
@@ -892,7 +895,7 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
             plannedWeight: "varies"
         });
     }
-    
+
     return structure;
 }
 
@@ -933,7 +936,7 @@ function setReps(setNumber, reps) {
 function getNumericReps(repsString) {
     // Handle different rep formats like "8-12", "8", etc.
     if (!repsString) return 8; // default
-    
+
     const repsStr = String(repsString);
     if (repsStr.includes('-')) {
         return parseInt(repsStr.split('-')[0]);
@@ -945,7 +948,7 @@ function handleQuickFillAllSets(type) {
     // Determine which mode we're in based on which elements are visible
     const liveWorkoutActive = document.getElementById('workout-active').style.display !== 'none';
     const postWorkoutActive = document.getElementById('post-workout-active').style.display !== 'none';
-    
+
     if (liveWorkoutActive) {
         quickFillAllSets(type);
     } else if (postWorkoutActive) {
@@ -956,7 +959,7 @@ function handleQuickFillAllSets(type) {
 function quickFillAllSets(type) {
     const exercise = currentWorkoutPlan[currentExerciseIndex];
     if (!exercise) return;
-    
+
     const exerciseReps = exercise.reps || exercise.target_reps || '8';
     const exerciseSets = exercise.sets || exercise.target_sets || 3;
     const plannedReps = getNumericReps(exerciseReps);
@@ -1032,7 +1035,10 @@ function logCurrentExercise() {
     }
 
     // Determine if it's a complex exercise based on the original plan's reps format
-    const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
+    const isComplex = exercise.is_complex || 
+                    (exercise.complex_structure && exercise.complex_structure !== '') ||
+                    exercise.exercise_name.toLowerCase().includes('finisher') ||
+                    exercise.exercise_name.toLowerCase().includes('rounds');
 
     if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
         let collectedReps = [];
@@ -1043,7 +1049,7 @@ function logCurrentExercise() {
             const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
             let allComplexFieldsFilled = true;
             let complexPerformanceData = [];
-            
+
             movementItems.forEach((item, index) => {
                 const repsInput = item.querySelector(`#complexMovement${index}Reps`);
                 const weightInput = item.querySelector(`#complexMovement${index}Weight`);
@@ -1052,18 +1058,18 @@ function logCurrentExercise() {
                     allComplexFieldsFilled = false;
                     return;
                 }
-                
+
                 // Store detailed performance data
                 const movementLabel = item.querySelector('strong').textContent.replace(':', '');
                 const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
-                
+
                 complexPerformanceData.push({
                     movement: movementName,
                     reps: repsInput.value,
                     weight: weightInput.value,
                     label: movementLabel
                 });
-                
+
                 collectedReps.push(`${movementLabel}: ${repsInput.value}`);
                 collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
             });
@@ -1072,7 +1078,7 @@ function logCurrentExercise() {
                 alert('Please fill in reps and weight for all movements of the complex exercise.');
                 return;
             }
-            
+
             // Store both simple and detailed formats
             workoutData.reps_performed = collectedReps.join(' | ');
             workoutData.weight_performed = collectedWeight.join(' | ');
@@ -1266,16 +1272,19 @@ function loadCurrentPostExercise() {
     document.getElementById('postSelectedDate').textContent = selectedWorkoutDate;
 
     document.getElementById('postExerciseName').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
-    
+
     // Safely extract exercise properties
     const targetReps = exercise.reps || exercise.target_reps || '8';
     const targetSets = exercise.sets || exercise.target_sets || 3;
     const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
-    
+
     document.getElementById('postExerciseTarget').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
 
     // Determine if it's a complex exercise
-    const isComplex = targetReps.includes('/') || targetReps.includes('@');
+    const isComplex = exercise.is_complex || 
+                    (exercise.complex_structure && exercise.complex_structure !== '') ||
+                    exercise.exercise_name.toLowerCase().includes('finisher') ||
+                    exercise.exercise_name.toLowerCase().includes('rounds');
 
     const setsSection = document.getElementById('setsSection'); // This is the parent div for set logging
     const complexExerciseSection = document.getElementById('complexExerciseSection');
@@ -1348,7 +1357,7 @@ function loadComplexPostExerciseSets(exercise) {
 
     // Use the same parsing logic as live workout
     let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
-    
+
     if (complexStructure.length === 0) {
         complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
         return;
@@ -1408,7 +1417,7 @@ function postSetReps(setNumber, reps) {
 function postQuickFillAllSets(type) {
     const exercise = postWorkoutPlan[postCurrentExerciseIndex];
     if (!exercise) return;
-    
+
     const postExerciseReps = exercise.reps || exercise.target_reps || '8';
     const postExerciseSets = exercise.sets || exercise.target_sets || 3;
     const plannedReps = getNumericReps(postExerciseReps);
@@ -1483,7 +1492,10 @@ function logCurrentPostExercise() {
     }
 
     // Determine if it's a complex exercise based on the original plan's reps format
-    const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
+    const isComplex = exercise.is_complex || 
+                    (exercise.complex_structure && exercise.complex_structure !== '') ||
+                    exercise.exercise_name.toLowerCase().includes('finisher') ||
+                    exercise.exercise_name.toLowerCase().includes('rounds');
 
     if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
         let collectedReps = [];
@@ -1493,7 +1505,7 @@ function logCurrentPostExercise() {
             const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
             let allComplexFieldsFilled = true;
             let complexPerformanceData = [];
-            
+
             movementItems.forEach((item, index) => {
                 const repsInput = item.querySelector(`#postComplexMovement${index}Reps`);
                 const weightInput = item.querySelector(`#postComplexMovement${index}Weight`);
@@ -1502,17 +1514,17 @@ function logCurrentPostExercise() {
                     allComplexFieldsFilled = false;
                     return;
                 }
-                
+
                 const movementLabel = item.querySelector('strong').textContent.replace(':', '');
                 const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
-                
+
                 complexPerformanceData.push({
                     movement: movementName,
                     reps: repsInput.value,
                     weight: weightInput.value,
                     label: movementLabel
                 });
-                
+
                 collectedReps.push(`${movementLabel}: ${repsInput.value}`);
                 collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
             });
@@ -1521,7 +1533,7 @@ function logCurrentPostExercise() {
                 alert('Please fill in reps and weight for all movements of the complex exercise.');
                 return;
             }
-            
+
             workoutData.reps_performed = collectedReps.join(' | ');
             workoutData.weight_performed = collectedWeight.join(' | ');
             workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);

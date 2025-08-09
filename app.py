@@ -345,6 +345,45 @@ def init_db():
     conn.commit()
     conn.close()
 
+def parseComplexExerciseStructure(exercise_data):
+    """Parse complex exercise structure from standardized JSON format"""
+    try:
+        # Handle structured JSON format (new standard)
+        if isinstance(exercise_data, str) and exercise_data.startswith('{'):
+            return json.loads(exercise_data)
+
+        # Handle dict format (already parsed)
+        if isinstance(exercise_data, dict):
+            return exercise_data
+
+        # Handle comma-separated standard format: "10 slow bicep curls(20lbs), 15 fast bicep curls(15lbs), 10 hammer curls(15lbs)"
+        if isinstance(exercise_data, str) and ',' in exercise_data:
+            movements = []
+            parts = exercise_data.split(',')
+
+            for part in parts:
+                part = part.strip()
+                # Parse: "10 slow bicep curls(20lbs)"
+                match = re.match(r'(\d+)\s+(.+?)\(([^)]+)\)', part)
+                if match:
+                    reps, movement_name, weight = match.groups()
+                    movements.append({
+                        'name': movement_name.strip(),
+                        'reps': reps,
+                        'weight': weight
+                    })
+
+            if movements:
+                return {
+                    'type': 'complex',
+                    'movements': movements
+                }
+
+        return None
+    except Exception as e:
+        print(f"Error parsing complex exercise: {e}")
+        return None
+
 def analyze_query_intent(prompt, conversation_context=None):
     """Enhanced intent detection with confidence scoring, multi-intent support, and context awareness"""
     prompt_lower = prompt.lower()
@@ -1149,179 +1188,6 @@ Make sure to provide complete, updated versions of both sections, not just ackno
 
     except Exception as e:
         print(f"Error parsing philosophy update: {e}")
-
-    return None
-
-def standardize_complex_exercise_format():
-    """Convert existing complex exercises to standard format for better parsing"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Find and update bicep finisher rounds to standard format
-        cursor.execute('''
-            SELECT id, exercise_name, target_reps, target_weight, notes
-            FROM weekly_plan 
-            WHERE LOWER(exercise_name) LIKE '%bicep finisher%'
-        ''')
-        
-        bicep_exercises = cursor.fetchall()
-        
-        for exercise_id, name, reps, weight, notes in bicep_exercises:
-            # Convert "2x10/15/10 @ 20/15/15lbs" to standard format
-            if '/' in reps and '/' in weight:
-                # Extract movements from notes
-                movements = [
-                    "slow bicep curls",
-                    "fast bicep curls", 
-                    "hammer curls"
-                ]
-                
-                # Parse reps: "2x10/15/10" -> ["10", "15", "10"]
-                rounds_match = re.match(r'(\d+)x(.+)', reps)
-                if rounds_match:
-                    rounds, reps_pattern = rounds_match.groups()
-                    reps_array = reps_pattern.split('/')
-                    weights_array = weight.replace('lbs', '').replace('kg', '').split('/')
-                    
-                    # Create standard format: "10 slow bicep curls(20lbs), 15 fast bicep curls(15lbs), 10 hammer curls(15lbs)"
-                    standard_parts = []
-                    for i, movement in enumerate(movements):
-                        if i < len(reps_array) and i < len(weights_array):
-                            standard_parts.append(f"{reps_array[i]} {movement}({weights_array[i]}lbs)")
-                    
-                    standard_reps = ", ".join(standard_parts)
-                    
-                    # Update to standard format
-                    cursor.execute('''
-                        UPDATE weekly_plan 
-                        SET target_reps = ?, target_weight = 'varies', 
-                            notes = COALESCE(notes, '') || ' [Converted to standard complex format]'
-                        WHERE id = ?
-                    ''', (standard_reps, exercise_id))
-                    
-                    print(f"✅ Converted {name} to standard format: {standard_reps}")
-        
-        conn.commit()
-        conn.close()
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Error standardizing complex exercises: {e}")
-        return False
-
-def regenerate_exercise_metadata_from_plan():
-    """Regenerate exercise metadata when plan changes significantly"""
-    try:
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-
-        # Clear existing exercise metadata
-        cursor.execute('DELETE FROM exercise_metadata WHERE user_id = 1')
-
-        # Get all exercises from current weekly plan
-        cursor.execute('''
-            SELECT DISTINCT exercise_name FROM weekly_plan
-            ORDER BY exercise_name
-        ''')
-        exercises = cursor.fetchall()
-
-        for (exercise_name,) in exercises:
-            exercise_lower = exercise_name.lower()
-
-            # Determine purpose and progression based on exercise type
-            if any(word in exercise_lower for word in ['ab', 'crunch', 'core', 'woodchop', 'back extension']):
-                purpose = "Midsection hypertrophy for muscle development"
-                progression_logic = "aggressive"
-                notes = "Core work treated as main lift per plan philosophy"
-            elif any(word in exercise_lower for word in ['press', 'chest supported row', 'glute drive', 'leg press', 'assisted pull', 'assisted dip']):
-                purpose = "Compound strength and mass building"
-                progression_logic = "aggressive"
-                notes = "Main compound movement"
-            elif any(word in exercise_lower for word in ['leg curl', 'leg extension', 'glute slide', 'glute abduction', 'adductor']):
-                purpose = "Lower body isolation and hypertrophy"
-                progression_logic = "aggressive"
-                notes = "Machine-based isolation for joint safety"
-            elif any(word in exercise_lower for word in ['curl', 'raise', 'fly', 'lateral', 'rear delt', 'front raise']):
-                purpose = "Upper body isolation hypertrophy"
-                progression_logic = "slow"
-                notes = "Isolation exercise for targeted growth"
-            elif any(word in exercise_lower for word in ['pushup', 'push up', 'hanging leg', 'split squat', 'goblet']):
-                purpose = "Bodyweight strength and control"
-                progression_logic = "slow"
-                notes = "Bodyweight progression: reps → tempo → weight"
-            elif 'finisher' in exercise_lower:
-                purpose = "High-rep endurance and muscle pump"
-                progression_logic = "maintain"
-                notes = "High-rep finisher work"
-            else:
-                purpose = "Hypertrophy and strength development"
-                progression_logic = "normal"
-                notes = "General hypertrophy and strength work"
-
-            cursor.execute('''
-                INSERT INTO exercise_metadata
-                (user_id, exercise_name, exercise_type, primary_purpose,
-                 progression_logic, ai_notes, created_date)
-                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
-            ''', (
-                exercise_name,
-                purpose,
-                progression_logic,
-                notes,
-                datetime.now().strftime('%Y-%m-%d')
-            ))
-
-        conn.commit()
-        conn.close()
-        print(f"✅ Regenerated metadata for {len(exercises)} exercises")
-
-    except Exception as e:
-        print(f"⚠️ Error regenerating exercise metadata: {str(e)}")
-
-def parse_preference_updates_from_conversation(ai_response, user_request):
-    """Parse conversation to detect AI preference changes"""
-    try:
-        combined_text = f"{user_request} {ai_response}".lower()
-
-        # Look for preference change requests
-        preference_changes = {}
-
-        # Tone preferences
-        if any(phrase in combined_text for phrase in ['too long', 'shorter', 'more brief', 'less verbose', 'keep it short']):
-            preference_changes['grok_detail_level'] = 'brief'
-        elif any(phrase in combined_text for phrase in ['more detail', 'longer', 'more comprehensive', 'explain more']):
-            preference_changes['grok_detail_level'] = 'detailed'
-        elif any(phrase in combined_text for phrase in ['more casual', 'less formal', 'relaxed']):
-            preference_changes['grok_tone'] = 'casual'
-        elif any(phrase in combined_text for phrase in ['more professional', 'formal', 'business like']):
-            preference_changes['grok_tone'] = 'professional'
-        elif any(phrase in combined_text for phrase in ['more motivational', 'pump me up', 'encourage me']):
-            preference_changes['grok_tone'] = 'motivational'
-        elif any(phrase in combined_text for phrase in ['more analytical', 'technical', 'data focused']):
-            preference_changes['grok_tone'] = 'analytical'
-
-        # Format preferences
-        if any(phrase in combined_text for phrase in ['bullet points', 'bulleted list', 'use bullets']):
-            preference_changes['grok_format'] = 'bullet_points'
-        elif any(phrase in combined_text for phrase in ['paragraph', 'full sentences', 'narrative']):
-            preference_changes['grok_format'] = 'paragraphs'
-        elif any(phrase in combined_text for phrase in ['numbered list', 'numbers', 'step by step']):
-            preference_changes['grok_format'] = 'numbered_lists'
-
-        # Communication style
-        if any(phrase in combined_text for phrase in ['more direct', 'straight to the point', 'no fluff']):
-            preference_changes['communication_style'] = 'direct'
-        elif any(phrase in combined_text for phrase in ['more friendly', 'warmer', 'nicer']):
-            preference_changes['communication_style'] = 'friendly'
-        elif any(phrase in combined_text for phrase in ['more encouraging', 'supportive', 'positive']):
-            preference_changes['communication_style'] = 'encouraging'
-
-        return preference_changes if preference_changes else None
-
-    except Exception as e:
-        print(f"Error parsing preference updates: {e}")
 
     return None
 
@@ -4459,7 +4325,7 @@ def standardize_complex_exercises():
     """Convert complex exercises to standard format for better parsing"""
     try:
         success = standardize_complex_exercise_format()
-        
+
         if success:
             return jsonify({
                 'success': True,
@@ -4470,7 +4336,7 @@ def standardize_complex_exercises():
                 'success': False,
                 'error': 'Failed to convert complex exercises'
             })
-            
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
