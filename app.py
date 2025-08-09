@@ -1793,9 +1793,11 @@ STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - t
 
             system_prompt = f"""You are the AI training assistant built into this fitness app. 
 
-RESPONSE STYLE REQUIREMENTS: {preference_directives}These are NOT suggestions - follow them strictly.
+RESPONSE STYLE REQUIREMENTS: {preference_directives}
 
-Respond naturally as the user's embedded training partner while adhering to the above requirements."""
+IMPORTANT: The AI preferences shown in the context data below are the user's actual settings that should shape how you respond. Pay attention to their chosen detail level, tone, and format preferences and adapt your response style accordingly. These preferences override any default behavior.
+
+Respond naturally as the user's embedded training partner while following the user's preferred communication style."""
 
         # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
         print("🤖 System prompt being sent:")
