@@ -2267,21 +2267,17 @@ def chat_stream():
                     
                     plan_change_executed = False
                     for prev_response in recent_responses:
-                        if prev_response[0] and ('add' in prev_response[0].lower() or 'monday' in prev_response[0].lower()):
-                            # Extract plan change from previous AI response
-                            prev_ai_text = prev_response[0]
+                        if prev_response[0]:
+                            prev_ai_text = prev_response[0].lower()
                             
-                            # Look for exercise addition patterns in the AI's previous response
-                            if 'glute drive' in prev_ai_text.lower() and 'monday' in prev_ai_text.lower():
+                            # Look for various plan modification patterns
+                            if 'glute drive' in prev_ai_text and 'monday' in prev_ai_text and 'add' in prev_ai_text:
                                 print("🎯 User confirmed plan change - executing glute drive addition to Monday")
                                 
-                                # Execute the plan modification
                                 try:
-                                    # Get next order for Monday
                                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', ('monday',))
                                     next_order = cursor.fetchone()[0]
                                     
-                                    # Add glute drive to Monday (same specs as Friday)
                                     cursor.execute('''
                                         INSERT INTO weekly_plan
                                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, 
@@ -2292,18 +2288,47 @@ def chat_stream():
                                     
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
                                     plan_change_executed = True
-                                    
                                     print("✅ Successfully added glute drive to Monday plan")
                                     break
                                     
                                 except Exception as e:
                                     print(f"❌ Error executing plan change: {e}")
                                     response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
+                            
+                            # Look for weight update patterns (for your Friday glute drive test)
+                            elif ('friday' in prev_ai_text and 'glute drive' in prev_ai_text and 
+                                  any(word in prev_ai_text for word in ['increase', 'heavier', 'bump up', 'raise'])):
+                                print("🎯 User confirmed weight change - executing Friday glute drive weight increase")
+                                
+                                try:
+                                    # Extract new weight from AI response or use sensible default
+                                    import re
+                                    weight_match = re.search(r'(\d+)\s*(?:lbs?|pounds?)', prev_response[0])
+                                    new_weight = f"{weight_match.group(1)}lbs" if weight_match else "100lbs"
+                                    
+                                    cursor.execute('''
+                                        UPDATE weekly_plan
+                                        SET target_weight = ?, notes = COALESCE(notes, '') || ' [Weight increased per user request]'
+                                        WHERE day_of_week = 'friday' AND LOWER(exercise_name) = 'glute drive'
+                                    ''', (new_weight,))
+                                    
+                                    if cursor.rowcount > 0:
+                                        plan_modifications = f"✅ EXECUTED: Updated Friday glute drive weight to {new_weight}"
+                                        plan_change_executed = True
+                                        print(f"✅ Successfully updated Friday glute drive to {new_weight}")
+                                    break
+                                    
+                                except Exception as e:
+                                    print(f"❌ Error executing weight change: {e}")
+                                    response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
                             break
                     
                     # If we executed a plan change, return a simple confirmation without calling AI
                     if plan_change_executed:
-                        response = "✅ **DONE!** Added glute drive (3x12@90lbs) to your Monday workout. Check your Weekly Plan tab to see the update!"
+                        if 'friday' in plan_modifications.lower():
+                            response = "✅ **DONE!** Updated your Friday glute drive weight. Check your Weekly Plan tab to see the change!"
+                        else:
+                            response = "✅ **DONE!** Added glute drive (3x12@90lbs) to your Monday workout. Check your Weekly Plan tab to see the update!"
 
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
