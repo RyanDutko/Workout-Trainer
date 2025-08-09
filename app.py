@@ -1135,148 +1135,11 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
 
     return None
 
-def get_conversation_context(days_back=14, limit=10):
-    """Get recent conversation context for enhanced AI responses"""
-    try:
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
+# Conversation context functions removed for testing simplification
 
-        # Get conversations from last N days
-        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+# Contextual reference resolution removed for testing simplification
 
-        cursor.execute('''
-            SELECT user_message, ai_response, detected_intent, exercise_mentioned,
-                   form_cues_given, performance_notes, timestamp
-            FROM conversations
-            WHERE timestamp >= ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-        ''', (cutoff_date, limit))
-
-        conversations = cursor.fetchall()
-        conn.close()
-
-        if not conversations:
-            return ""
-
-        context = "\n=== RECENT CONVERSATION CONTEXT ===\n"
-        for conv in reversed(conversations):  # Show oldest first for chronological context
-            user_msg, ai_resp, intent, exercise, form_cues, perf_notes, timestamp = conv
-            context += f"[{timestamp}] User: {user_msg[:100]}{'...' if len(user_msg) > 100 else ''}\n"
-            if form_cues:
-                context += f"  Form tips given: {form_cues}\n"
-            if perf_notes:
-                context += f"  Performance noted: {perf_notes}\n"
-            context += f"  AI: {ai_resp[:150]}{'...' if len(ai_resp) > 150 else ''}\n\n"
-
-        return context
-
-    except Exception as e:
-        print(f"Error getting conversation context: {str(e)}")
-        return ""
-
-def resolve_contextual_references(prompt, entities, conversation_context):
-    """Enhanced resolution of pronouns and references using conversation context"""
-    if not entities.get('references') or not conversation_context:
-        return prompt, {}
-
-    resolved_entities = {}
-
-    # Get last conversation for context with more detail
-    conn = sqlite3.connect('workout_logs.db')
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT user_message, ai_response, exercise_mentioned, plan_modifications, timestamp
-        FROM conversations
-        ORDER BY timestamp DESC
-        LIMIT 5
-    ''')
-
-    recent_convs = cursor.fetchall()
-    conn.close()
-
-    if not recent_convs:
-        return prompt, resolved_entities
-
-    # Enhanced reference resolution
-    reference_map = {}
-
-    for conv in recent_convs:
-        user_msg, ai_resp, exercise_mentioned, plan_mods, timestamp = conv
-
-        # Extract specific exercise variations mentioned in recent conversation
-        import re
-
-        # Look for specific exercise patterns in recent conversation
-        exercise_patterns = [
-            r'(low to high chest fl[yi]e?s?)',
-            r'(high to low chest fl[yi]e?s?)',
-            r'(heavy [\w\s]+ chest fl[yi]e?s?)',
-            r'(light [\w\s]+ chest fl[yi]e?s?)',
-            r'(first [\w\s]+)',
-            r'(second [\w\s]+)',
-            r'(\w+ press)',
-            r'(\w+ curl)',
-            r'(\w+ extension)'
-        ]
-
-        combined_text = f"{user_msg} {ai_resp}".lower()
-
-        for pattern in exercise_patterns:
-            matches = re.findall(pattern, combined_text)
-            for match in matches:
-                exercise_name = match.strip()
-                if len(exercise_name) > 3:  # Avoid short meaningless matches
-                    reference_map[exercise_name] = exercise_name
-
-        # Store the most mentioned exercise
-        if exercise_mentioned and len(exercise_mentioned) > 3:
-            reference_map['it'] = exercise_mentioned
-            reference_map['that'] = exercise_mentioned
-            reference_map['the exercise'] = exercise_mentioned
-
-    # Apply reference resolution to prompt
-    resolved_prompt = prompt
-    for reference, actual_exercise in reference_map.items():
-        if reference in prompt.lower():
-            resolved_prompt = resolved_prompt.replace(reference, actual_exercise)
-            resolved_entities[reference] = actual_exercise
-
-    return resolved_prompt, resolved_entities
-
-def get_conversation_state():
-    """Get current conversation state for context-aware responses"""
-    try:
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-
-        # Get last conversation
-        cursor.execute('''
-            SELECT detected_intent, exercise_mentioned, plan_modifications,
-                   extracted_workout_data, timestamp
-            FROM conversations
-            ORDER BY timestamp DESC
-            LIMIT 1
-        ''')
-
-        last_conv = cursor.fetchone()
-        conn.close()
-
-        if not last_conv:
-            return None
-
-        return {
-            'last_intent': last_conv[0],
-            'last_exercise': last_conv[1],
-            'last_plan_mods': last_conv[2],
-            'last_workout_data': last_conv[3],
-            'timestamp': last_conv[4]
-        }
-
-    except Exception as e:
-        print(f"Error getting conversation state: {e}")
-        return None
+# Conversation state tracking removed for testing simplification
 
 def analyze_day_progression(date_str):
     """Analyze progression for all exercises completed on a specific day"""
@@ -1596,7 +1459,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
     else:
         return build_general_context(prompt, user_background)
 
-def get_grok_response_with_context(prompt, user_background=None, recent_workouts=None):
+def get_grok_response_with_context(prompt, user_background=None):
     """Context-aware Grok response with smart context selection"""
     try:
         # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
@@ -2169,29 +2032,11 @@ def chat_stream():
             except sqlite3.OperationalError as e:
                 print(f"Error fetching user background: {e}")
 
-            # Get recent workouts for context
-            recent_workouts = ""
-            try:
-                cursor.execute('SELECT exercise_name, sets, reps, weight FROM workouts ORDER BY date_logged DESC LIMIT 10')
-                recent_logs = cursor.fetchall()
-                if recent_logs:
-                    recent_workouts = "Recent exercises:\n"
-                    for log in recent_logs[:5]:  # Limit to 5 most recent
-                        recent_workouts += f"- {log[0]}: {log[1]}x{log[2]} @ {log[3]}\n"
-            except sqlite3.OperationalError as e:
-                print(f"Error fetching recent workouts: {e}")
-
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # Build context-aware prompt with conversation history for follow-ups
-            if conv_history and len(conv_history) > 50:
-                # This is a follow-up question - include recent conversation context
-                context_prompt = f"PREVIOUS CONVERSATION:\n{conv_history[-1000:]}\n\nUSER'S FOLLOW-UP: {message}"
-                response = get_grok_response_with_context(context_prompt, user_background, recent_workouts)
-            else:
-                # First message or no significant history
-                response = get_grok_response_with_context(message, user_background, recent_workouts)
+            # SIMPLIFIED: No conversation history context - each message is independent
+            response = get_grok_response_with_context(message, user_background)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
             # Stream the response
@@ -2209,24 +2054,8 @@ def chat_stream():
                 # Generate session ID for conversation grouping
                 session_id = str(uuid.uuid4())[:8]
 
-                # Enhanced intent detection with confidence scoring and context
-                conversation_state = get_conversation_state()
-
-                # Resolve contextual references first
-                original_message = message
-                current_message = message
-                if conversation_state:
-                    temp_analysis = analyze_query_intent(message)
-                    if temp_analysis.get('entities', {}).get('references'):
-                        current_message, resolved_refs = resolve_contextual_references(
-                            message,
-                            temp_analysis['entities'],
-                            conversation_state
-                        )
-                        print(f"🔗 Resolved references: {original_message} → {current_message}")
-
-                # Enhanced intent detection with confidence scoring
-                intent_analysis = analyze_query_intent(current_message, conversation_state)
+                # Simplified intent detection without conversation context
+                intent_analysis = analyze_query_intent(message, None)
                 detected_intent = intent_analysis['intent']
                 confidence_score = intent_analysis['confidence']
                 potential_actions = intent_analysis.get('actions', [])
@@ -2443,14 +2272,14 @@ def chat_stream():
                     print(f"Error managing conversation threads: {e}")
 
 
-                # Store enhanced conversation
+                # Store simplified conversation
                 cursor.execute('''
                     INSERT INTO conversations
                     (user_message, ai_response, detected_intent, confidence_score, exercise_mentioned,
                      form_cues_given, coaching_context, plan_modifications, extracted_workout_data,
                      session_id, conversation_thread_id, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (current_message, response, detected_intent, confidence_score, exercise_mentioned,
+                ''', (message, response, detected_intent, confidence_score, exercise_mentioned,
                       form_cues, coaching_context, plan_modifications, extracted_workout_data,
                       session_id, thread_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
