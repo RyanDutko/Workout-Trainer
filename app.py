@@ -423,6 +423,13 @@ def analyze_query_intent(prompt, conversation_context=None):
     if exercise_score > 0:
         intents['exercise_specific'] = min(exercise_score * 0.2, 1.0)
 
+    # Philosophy update detection (HIGH PRIORITY - should override other intents)
+    philosophy_update_keywords = ['update my philosophy', 'update my philisophy', 'change my philosophy', 'modify my philosophy']
+    philosophy_update_score = sum(10 for phrase in philosophy_update_keywords if phrase in prompt_lower)  # Very high score
+    
+    if philosophy_update_score > 0:
+        intents['philosophy_update'] = 1.0  # Maximum confidence for philosophy updates
+
     # Enhanced historical queries - don't duplicate if already scored above
     if 'historical' not in intents:
         historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week', 'recent', 'latest']
@@ -1537,9 +1544,14 @@ def build_smart_context(prompt, query_intent, user_background=None):
         return plan_context + "\n\n" + historical_context
 
     # PHILOSOPHY UPDATES - Special handling for "update my philosophy" requests (HIGHEST PRIORITY)
-    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to']
+    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to', 'update my philosophy', 'change my philosophy', 'modify my philosophy']
     if any(phrase in prompt.lower() for phrase in philosophy_update_phrases):
         print(f"🎯 Override: Detected philosophy UPDATE request - building philosophy context")
+        return build_philosophy_update_context(prompt)
+
+    # Check if intent analysis detected philosophy_update
+    if actual_intent == 'philosophy_update':
+        print(f"🎯 Override: Intent analysis detected philosophy update - building philosophy context")
         return build_philosophy_update_context(prompt)
 
     # Route plan discussions to plan context (including specific plan requests)
