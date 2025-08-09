@@ -2146,6 +2146,27 @@ def chat_stream():
                                 except (json.JSONDecodeError, KeyError) as e:
                                     print(f"❌ Error parsing JSON modification: {e}")
 
+                            # Look for renaming patterns (Monday glute drive to "glute drive (light load)")
+                            elif ('rename' in prev_ai_text or 'differentiate' in prev_ai_text) and 'glute drive' in prev_ai_text and 'monday' in prev_ai_text and 'light load' in prev_ai_text:
+                                print("🎯 User confirmed renaming - executing Monday glute drive rename to 'glute drive (light load)'")
+
+                                try:
+                                    cursor.execute('''
+                                        UPDATE weekly_plan
+                                        SET exercise_name = 'glute drive (light load)'
+                                        WHERE day_of_week = 'monday' AND LOWER(exercise_name) = 'glute drive'
+                                    ''')
+
+                                    if cursor.rowcount > 0:
+                                        plan_modifications = "✅ EXECUTED: Renamed Monday's glute drive to 'glute drive (light load)'"
+                                        plan_change_executed = True
+                                        print("✅ Successfully renamed Monday glute drive to 'glute drive (light load)'")
+                                    break
+
+                                except Exception as e:
+                                    print(f"❌ Error executing rename: {e}")
+                                    response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
+
                             # Fallback to legacy pattern matching
                             elif 'glute drive' in prev_ai_text and 'monday' in prev_ai_text and 'add' in prev_ai_text:
                                 print("🎯 User confirmed plan change - executing glute drive addition to Monday")
@@ -2211,6 +2232,8 @@ def chat_stream():
                     if plan_change_executed:
                         if 'friday' in plan_modifications.lower():
                             response = "✅ **DONE!** Updated your Friday glute drive weight. Check your Weekly Plan tab to see the change!"
+                        elif 'rename' in plan_modifications.lower() or 'light load' in plan_modifications.lower():
+                            response = "✅ **DONE!** Renamed Monday's exercise to 'glute drive (light load)' to differentiate it from Friday's heavier version. Check your Weekly Plan tab to see the update!"
                         else:
                             response = "✅ **DONE!** Added glute drive (3x12@90lbs) to your Monday workout. Check your Weekly Plan tab to see the update!"
 
