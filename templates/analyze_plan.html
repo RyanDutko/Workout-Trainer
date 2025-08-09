@@ -22,6 +22,9 @@
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0"><i class="fas fa-compass me-2"></i>Core Training Philosophy</h5>
                 <small>Your fundamental training approach - remains consistent</small>
+                <button class="btn btn-light btn-sm ms-3" onclick="openPhilosophyEditor()">
+                    <i class="fas fa-edit me-1"></i>Edit Philosophy
+                </button>
             </div>
             <div class="card-body">
                 <div id="corePhilosophy">
@@ -184,6 +187,34 @@
         </div>
     </div>
 </div>
+
+<!-- Philosophy Editor Modal -->
+<div class="modal fade" id="philosophyEditorModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Core Training Philosophy</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="corePhilosophyText" class="form-label">Core Training Philosophy</label>
+                    <textarea class="form-control" id="corePhilosophyText" rows="6" 
+                              placeholder="Enter your core training philosophy - your fundamental approach to training that remains consistent..."></textarea>
+                    <div class="form-text">
+                        This should include your foundational training principles, preferred equipment/methods, and overall approach.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="savePhilosophy()">
+                    <i class="fas fa-save me-2"></i>Save Philosophy
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -297,11 +328,11 @@ async function displayWeeklyPlanAnalysis(data) {
     try {
         // Get actual weekly plan data
         const response = await fetch('/api/weekly_plan');
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const weeklyPlan = await response.json();
 
         // Check if weeklyPlan has an error property
@@ -710,11 +741,11 @@ function loadProgressionNotes() {
         if (exerciseCard) {
             const titleElement = exerciseCard.querySelector('.card-title');
             const exerciseDataElement = exerciseCard.querySelector('.text-muted');
-            
+
             if (titleElement && exerciseDataElement) {
                 const fullExerciseName = titleElement.textContent.trim();
                 const exerciseDataText = exerciseDataElement.textContent;
-                
+
                 // Parse exercise data (format: "3x8-12@135lbs")
                 const parts = exerciseDataText.match(/(\d+)x([\d-]+)@([\w\d.]+)/);
                 let sets = '3';
@@ -1183,6 +1214,53 @@ function openPriorityEditor() {
 
     new bootstrap.Modal(document.getElementById('priorityEditorModal')).show();
 }
+
+function openPhilosophyEditor() {
+    const container = document.getElementById('corePhilosophy');
+    const philosophyTextElement = document.getElementById('corePhilosophyText');
+
+    if (container && philosophyTextElement) {
+        let currentPhilosophyText = '';
+        const philosophyContent = container.querySelector('p.lead');
+        if (philosophyContent) {
+            currentPhilosophyText = philosophyContent.textContent;
+        }
+        philosophyTextElement.value = currentPhilosophyText;
+        new bootstrap.Modal(document.getElementById('philosophyEditorModal')).show();
+    }
+}
+
+async function savePhilosophy() {
+    const philosophyText = document.getElementById('corePhilosophyText').value.trim();
+    if (!philosophyText) {
+        alert('Please enter your core training philosophy.');
+        return;
+    }
+
+    try {
+        const response = await fetch('/update_philosophy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ philosophy: philosophyText })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('✅ Core training philosophy updated successfully!');
+            bootstrap.Modal.getInstance(document.getElementById('philosophyEditorModal')).hide();
+            loadPhilosophyAndPriorities(); // Refresh the displayed philosophy
+        } else {
+            alert('❌ Error updating philosophy: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error saving philosophy:', error);
+        alert('❌ An unexpected error occurred.');
+    }
+}
+
 
 function showQuickPriorityOptions() {
     new bootstrap.Modal(document.getElementById('quickPriorityModal')).show();

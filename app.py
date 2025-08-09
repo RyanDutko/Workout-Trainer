@@ -4535,6 +4535,60 @@ def analyze_day_progression_api():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/update_philosophy', methods=['POST'])
+def update_philosophy():
+    """Update core training philosophy manually"""
+    try:
+        data = request.json
+        core_philosophy = data.get('core_philosophy', '').strip()
+
+        if not core_philosophy:
+            return jsonify({'success': False, 'error': 'Philosophy text is required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get current plan context to preserve other fields
+        cursor.execute('''
+            SELECT progression_strategy, weekly_structure, special_considerations
+            FROM plan_context
+            WHERE user_id = 1
+            ORDER BY created_date DESC
+            LIMIT 1
+        ''')
+        
+        current_data = cursor.fetchone()
+        progression_strategy = current_data[0] if current_data else ''
+        weekly_structure = current_data[1] if current_data else ''
+        special_considerations = current_data[2] if current_data else ''
+
+        # Update or insert the philosophy
+        cursor.execute('''
+            INSERT OR REPLACE INTO plan_context
+            (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
+             created_by_ai, creation_reasoning, created_date, updated_date)
+            VALUES (1, ?, ?, ?, ?, FALSE, 'Manually updated by user', ?, ?)
+        ''', (
+            core_philosophy,
+            progression_strategy,
+            weekly_structure,
+            special_considerations,
+            datetime.now().strftime('%Y-%m-%d'),
+            datetime.now().strftime('%Y-%m-%d')
+        ))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': 'Core philosophy updated successfully',
+            'updated_philosophy': core_philosophy[:100] + "..." if len(core_philosophy) > 100 else core_philosophy
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/make_substitution_permanent', methods=['POST'])
 def make_substitution_permanent():
     """Make a workout substitution permanent in the weekly plan"""
