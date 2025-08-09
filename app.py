@@ -1495,12 +1495,17 @@ def build_smart_context(prompt, query_intent, user_background=None):
     is_workout_history_request = any(phrase in prompt.lower() for phrase in [
         'show me tuesday', 'show me wednesday', 'show me monday', 'show me thursday', 'show me friday',
         'what did i do on', 'my tuesday workout', 'my wednesday workout', 'my monday workout',
-        'tuesday instead', 'wednesday instead', 'monday instead'
+        'tuesday instead', 'wednesday instead', 'monday instead', 'what i did on wednesday',
+        'my wednesday', 'workouts i did', 'what workouts'
     ])
     
-    # If historical intent exists AND this is clearly a workout history request, use historical
-    if is_workout_history_request and all_intents.get('historical', 0) > 0:
-        print(f"🎯 Override: Detected workout history request despite primary intent '{actual_intent}'")
+    # CRITICAL FIX: Also check for follow-up historical requests
+    # If prompt contains day names AND historical intent exists, it's likely historical
+    contains_day = any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+    
+    # If historical intent exists AND (clear workout history request OR contains day), use historical
+    if all_intents.get('historical', 0) > 0 and (is_workout_history_request or contains_day):
+        print(f"🎯 Override: Detected workout history request despite primary intent '{actual_intent}' - historical score: {all_intents.get('historical', 0)}")
         return build_historical_context(prompt)
     
     # Route to focused context builders
