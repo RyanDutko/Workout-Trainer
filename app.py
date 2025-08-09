@@ -1540,6 +1540,29 @@ ANALYSIS APPROACH:
 4. End with "What would you like me to elaborate on?" to encourage follow-up
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
+        elif 'plan' in prompt.lower() and any(word in prompt.lower() for word in ['rename', 'update', 'change', 'modify']):
+            system_prompt = """You are the AI training assistant built into this fitness app. 
+
+CRITICAL: When the user asks to modify their plan (rename exercises, change weights, etc.), you MUST:
+
+1. Respond naturally and enthusiastically about the change
+2. Include a JSON command at the end for the system to parse
+
+PLAN MODIFICATION JSON FORMAT:
+When user wants to rename an exercise, include this exact format at the end of your response:
+
+PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}
+
+For other modifications:
+- Add exercise: {"action": "add", "day": "monday", "exercise": "new exercise", "sets": 3, "reps": "12", "weight": "90lbs"}
+- Update weight: {"action": "update", "day": "friday", "exercise": "glute drive", "weight": "110lbs"}
+
+EXAMPLE RESPONSE:
+"Absolutely! That's perfect logic - having a lighter load on Monday makes total sense since it's the new addition. I'll rename Monday's glute drive to 'glute drive (light load)' to differentiate it from Friday's heavier version.
+
+PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}"
+
+Always respond naturally first, then include the JSON command."""
         else:
             system_prompt = """You are the AI training assistant built into this fitness app. You have direct access to the user's workout data, weekly plan, and training history through the app's database.
 
