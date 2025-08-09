@@ -365,8 +365,8 @@ function finalizeStreamingMessage(messageId) {
         
         // Check if this message contains plan modification keywords
         const messageText = messageDiv.textContent.toLowerCase();
-        if ((messageText.includes('add') || messageText.includes('great choice')) && 
-            (messageText.includes('plan') || messageText.includes('monday')) && 
+        if ((messageText.includes('add') || messageText.includes('great choice') || messageText.includes('update') || messageText.includes('bump up')) && 
+            (messageText.includes('plan') || messageText.includes('monday') || messageText.includes('friday') || messageText.includes('weight')) && 
             !messageText.includes('done!')) {
             // This looks like a plan modification response - add confirmation UI
             setTimeout(() => addPlanModificationConfirmation(messageDiv), 500);
@@ -377,8 +377,32 @@ function finalizeStreamingMessage(messageId) {
 function addPlanModificationConfirmation(messageDiv) {
     const messageText = messageDiv.textContent;
     
+    // Detect weight updates for glute drive on Friday
+    if (messageText.toLowerCase().includes('glute drive') && messageText.toLowerCase().includes('friday') && 
+        (messageText.toLowerCase().includes('110') || messageText.toLowerCase().includes('weight') || messageText.toLowerCase().includes('bump'))) {
+        const confirmationDiv = document.createElement('div');
+        confirmationDiv.className = 'alert alert-warning mt-2 p-3';
+        confirmationDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong><i class="fas fa-arrow-up me-2"></i>Weight Update Proposal</strong>
+                    <br><small class="text-muted">Update Friday glute drive weight to 110lbs (based on your actual performance)</small>
+                </div>
+                <div>
+                    <button class="btn btn-success btn-sm me-2" onclick="confirmWeightUpdate('glute drive', 'friday', '110lbs', this)">
+                        <i class="fas fa-check me-1"></i>Update Weight
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="this.parentElement.parentElement.parentElement.remove()">
+                        <i class="fas fa-times me-1"></i>Dismiss
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        messageDiv.appendChild(confirmationDiv);
+    }
     // Detect glute drive addition to Monday specifically
-    if (messageText.toLowerCase().includes('glute drive') && messageText.toLowerCase().includes('monday')) {
+    else if (messageText.toLowerCase().includes('glute drive') && messageText.toLowerCase().includes('monday')) {
         const confirmationDiv = document.createElement('div');
         confirmationDiv.className = 'alert alert-warning mt-2 p-3';
         confirmationDiv.innerHTML = `
@@ -463,6 +487,55 @@ function confirmPlanChange(exercise, day, sets, reps, weight) {
     .catch(error => {
         console.error('Error:', error);
         addMessage('❌ Error confirming plan change', 'system');
+    });
+}
+
+function confirmWeightUpdate(exercise, day, weight, buttonElement) {
+    // Show loading state
+    const originalButton = buttonElement.innerHTML;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Updating...';
+    buttonElement.disabled = true;
+    
+    // Send confirmation message to trigger the weight update logic
+    const confirmationMessage = "yes";
+    
+    // Add the confirmation to chat history and trigger the backend logic
+    addMessage(confirmationMessage, 'user');
+    
+    // Send to AI to trigger the weight update logic
+    fetch('/chat_stream', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'message=' + encodeURIComponent(confirmationMessage) + '&conversation_history=' + encodeURIComponent(conversationHistory)
+    })
+    .then(response => {
+        // Replace the confirmation UI with success message
+        const confirmationDiv = buttonElement.closest('.alert-warning');
+        confirmationDiv.className = 'alert alert-success mt-2 p-3';
+        confirmationDiv.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="fas fa-check-circle me-2 text-success"></i>
+                <div>
+                    <strong>Success!</strong> Updated ${exercise} weight to ${weight} for ${day.charAt(0).toUpperCase() + day.slice(1)}.
+                    <br><small class="text-muted">Check your Weekly Plan tab to see the update.</small>
+                </div>
+            </div>
+        `;
+        
+        // Auto-remove success message after 5 seconds
+        setTimeout(() => {
+            if (confirmationDiv && confirmationDiv.parentNode) {
+                confirmationDiv.remove();
+            }
+        }, 5000);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        buttonElement.innerHTML = originalButton;
+        buttonElement.disabled = false;
+        addMessage('❌ Error confirming weight update', 'system');
     });
 }
 
