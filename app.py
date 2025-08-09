@@ -1671,13 +1671,6 @@ def get_grok_response_with_context(prompt, user_background=None):
         # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
 
-        # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
-        print("🤖 System prompt being sent:")
-        print(system_prompt)
-        print("=" * 80)
-        print("📦 Final user prompt sent to GPT:\n", full_prompt)
-        print("=" * 80)
-
         # Adjust system prompt based on query type
         if is_philosophy_update:
             system_prompt = """You are an AI training assistant helping to update the user's training philosophy.
@@ -1838,6 +1831,13 @@ APP CONTEXT AWARENESS:
 - You have real-time access to their training data
 - Your responses should feel like natural extensions of their app experience
 - Never break the illusion that you're seamlessly integrated into their training ecosystem"""
+
+        # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
+        print("🤖 System prompt being sent:")
+        print(system_prompt)
+        print("=" * 80)
+        print("📦 Final user prompt sent to GPT:\n", full_prompt)
+        print("=" * 80)
 
         response = client.chat.completions.create(
             model="gpt-4", # Updated model name
