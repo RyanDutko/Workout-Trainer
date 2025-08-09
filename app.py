@@ -949,26 +949,77 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                     print(f"🧠 Successfully parsed natural language philosophy into core philosophy + current priorities")
                     return extracted_data
                 
-                # Parse Grok's structured response (fallback) using new 2-field structure
+                # Parse ChatGPT's structured response using new 2-field structure
                 lines = response.split('\n')
                 extracted_data = {}
+                current_section = None
+                current_content = []
 
                 for line in lines:
                     line = line.strip()
-                    if 'CORE_PHILOSOPHY:' in line:
-                        extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    elif 'CURRENT_PLAN_PRIORITIES:' in line:
-                        extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    
+                    # Look for section headers (more flexible matching)
+                    if any(header in line.upper() for header in ['CORE_PHILOSOPHY:', 'CORE PHILOSOPHY:']):
+                        # Save previous section
+                        if current_section and current_content:
+                            extracted_data[current_section] = ' '.join(current_content).strip()
+                        
+                        current_section = 'plan_philosophy'
+                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+                        
+                    elif any(header in line.upper() for header in ['CURRENT_PLAN_PRIORITIES:', 'CURRENT PLAN PRIORITIES:', 'PLAN_PRIORITIES:', 'PRIORITIES:']):
+                        # Save previous section  
+                        if current_section and current_content:
+                            extracted_data[current_section] = ' '.join(current_content).strip()
+                            
+                        current_section = 'progression_strategy'
+                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+                        
+                    elif any(header in line.upper() for header in ['REASONING:', 'REASON:']):
+                        # Save previous section
+                        if current_section and current_content:
+                            extracted_data[current_section] = ' '.join(current_content).strip()
+                            
+                        current_section = 'reasoning'
+                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+                        
                     # Legacy compatibility
-                    elif 'TRAINING_PHILOSOPHY:' in line and not extracted_data.get('plan_philosophy'):
-                        extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    elif 'PROGRESSION_STRATEGY:' in line and not extracted_data.get('progression_strategy'):
-                        extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    elif 'TRAINING_PHILOSOPHY:' in line.upper() and not extracted_data.get('plan_philosophy'):
+                        if current_section and current_content:
+                            extracted_data[current_section] = ' '.join(current_content).strip()
+                        current_section = 'plan_philosophy'
+                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+                        
+                    elif 'PROGRESSION_STRATEGY:' in line.upper() and not extracted_data.get('progression_strategy'):
+                        if current_section and current_content:
+                            extracted_data[current_section] = ' '.join(current_content).strip()
+                        current_section = 'progression_strategy' 
+                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
+                        
+                    else:
+                        # Add to current section if we're in one
+                        if current_section and line:
+                            current_content.append(line)
 
-                # Add reasoning
-                extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
+                # Save final section
+                if current_section and current_content:
+                    extracted_data[current_section] = ' '.join(current_content).strip()
 
-                print(f"🧠 Successfully rewrote philosophy with current context using new 2-field structure")
+                # If no structured sections found, try to use the whole response
+                if not extracted_data.get('plan_philosophy') and not extracted_data.get('progression_strategy'):
+                    # Split the response roughly in half
+                    full_response = response.strip()
+                    sentences = full_response.split('.')
+                    mid_point = len(sentences) // 2
+                    
+                    extracted_data['plan_philosophy'] = '. '.join(sentences[:mid_point]).strip() + '.'
+                    extracted_data['progression_strategy'] = '. '.join(sentences[mid_point:]).strip()
+
+                # Ensure we have reasoning
+                if not extracted_data.get('reasoning'):
+                    extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
+
+                print(f"🧠 Successfully parsed philosophy update - Core: {len(extracted_data.get('plan_philosophy', ''))} chars, Priorities: {len(extracted_data.get('progression_strategy', ''))} chars")
                 return extracted_data
 
             else:
