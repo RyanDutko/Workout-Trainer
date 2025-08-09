@@ -1505,7 +1505,9 @@ def build_smart_context(prompt, query_intent, user_background=None):
     
     # PLAN DISCUSSION OVERRIDE - check for plan-related keywords
     plan_keywords = ['weekly plan', 'my plan', 'plan changes', 'modify plan', 'update plan', 'change plan',
-                     'philosophy', 'training philosophy', 'approach', 'progression strategy']
+                     'philosophy', 'training philosophy', 'approach', 'progression strategy',
+                     'monday plan', 'tuesday plan', 'wednesday plan', 'thursday plan', 'friday plan',
+                     'saturday plan', 'sunday plan', 'show me my plan']
     is_plan_discussion = any(keyword in prompt.lower() for keyword in plan_keywords)
     
     # PHILOSOPHY DISCUSSION - check for philosophy keywords
@@ -1513,9 +1515,15 @@ def build_smart_context(prompt, query_intent, user_background=None):
                           'my philosophy', 'plan philosophy', 'training strategy']
     is_philosophy_discussion = any(keyword in prompt.lower() for keyword in philosophy_keywords)
     
-    # Route plan discussions to plan context
-    if is_plan_discussion and not is_workout_history_request:
-        print(f"🎯 Override: Detected plan discussion - routing to plan context")
+    # SPECIFIC PLAN VIEW REQUESTS - these should use plan context even if they mention days
+    specific_plan_requests = ['show me my monday plan', 'show me my tuesday plan', 'show me my wednesday plan',
+                             'show me my thursday plan', 'show me my friday plan', 'what is my monday plan',
+                             'what is my tuesday plan', 'monday plan', 'tuesday plan', 'wednesday plan']
+    is_specific_plan_request = any(request in prompt.lower() for request in specific_plan_requests)
+    
+    # Route plan discussions to plan context (including specific plan requests)
+    if (is_plan_discussion or is_specific_plan_request) and not is_workout_history_request:
+        print(f"🎯 Override: Detected plan discussion/request - routing to plan context")
         return build_plan_context()
     
     # Route philosophy discussions to general context with philosophy data
