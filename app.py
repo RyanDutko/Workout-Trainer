@@ -1671,8 +1671,11 @@ def get_grok_response_with_context(prompt, user_background=None):
         # Build final prompt with smart context
         full_prompt = context_info + "\n\n" + prompt
 
-        # DEBUG: Print the full prompt being sent to ChatGPT
-        print("📦 Final prompt sent to GPT:\n", full_prompt)
+        # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
+        print("🤖 System prompt being sent:")
+        print(system_prompt)
+        print("=" * 80)
+        print("📦 Final user prompt sent to GPT:\n", full_prompt)
         print("=" * 80)
 
         # Adjust system prompt based on query type
@@ -1771,6 +1774,7 @@ CRITICAL TONE INSTRUCTION:
 The structured data above is app context - ignore its formal tone completely. 
 Your response tone should ONLY match the user's actual message and their AI preferences.
 Respond as if they said this in a normal conversation, not based on database format.
+DO NOT adopt the formal database language - match the user's conversational style.
 
 CRITICAL AI PREFERENCES:
 Check the "=== AI RESPONSE PREFERENCES ===" section in the context for the user's preferred:
