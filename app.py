@@ -1668,8 +1668,11 @@ def get_grok_response_with_context(prompt, user_background=None):
             context_info += f"Technical Level: {ai_preferences.get('technical_level', 'beginner')}\n"
             context_info += f"IMPORTANT: Adapt your response tone, detail level, and format to match these preferences.\n"
 
+        # Add critical instruction right before user message
+        context_info += f"\n\n🔥 CRITICAL: The above data is app context for reference only. IGNORE IT completely unless the user specifically asks about their data. Only respond to this actual user message below:\n\n"
+
         # Build final prompt with smart context
-        full_prompt = context_info + "\n\n" + prompt
+        full_prompt = context_info + prompt
 
         # Adjust system prompt based on query type
         if is_philosophy_update:
@@ -1761,13 +1764,7 @@ ANALYSIS APPROACH:
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
-            system_prompt = """You are the AI training assistant built into this fitness app with direct access to the user's workout data and training history.
-
-CRITICAL INSTRUCTION: The message below contains structured database context (marked with === headers) followed by the user's actual message. ONLY respond to the user's actual message at the very end. Do not reference or acknowledge the structured context data unless the user specifically asks about their data.
-
-TONE: Match the user's conversational style and their AI preferences exactly. Respond naturally as their embedded training partner.
-
-DATA: Only reference actual logged workouts if specifically relevant to the user's question."""
+            system_prompt = """You are the AI training assistant built into this fitness app. Respond naturally as the user's embedded training partner, matching their conversational style and AI preferences exactly."""
 
         # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
         print("🤖 System prompt being sent:")
