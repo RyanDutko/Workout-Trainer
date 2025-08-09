@@ -676,7 +676,16 @@ function loadCurrentExercise() {
 
     // Update exercise info
     document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
-    
+
+    // Safely extract exercise properties and determine if it's complex
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const isComplex = targetReps.includes('/') || targetReps.includes('@');
+
+    const setsSection = document.getElementById('setsSection');
+    const complexExerciseSection = document.getElementById('complexExerciseSection');
+    const regularSetsContainer = document.getElementById('regularSetsContainer');
+    const quickFillSection = document.getElementById('quickFillSection');
+
     // Show different header for complex vs regular exercises
     if (isComplex) {
         document.getElementById('exercise-target').textContent = 'Complex Exercise';
@@ -685,14 +694,6 @@ function loadCurrentExercise() {
         document.getElementById('exercise-target').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
         document.getElementById('exercise-target').className = 'badge bg-info fs-6';
     }
-
-    // Determine if it's a complex exercise (simple heuristic: contains '/')
-    const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
-
-    const setsSection = document.getElementById('setsSection');
-    const complexExerciseSection = document.getElementById('complexExerciseSection');
-    const regularSetsContainer = document.getElementById('regularSetsContainer');
-    const quickFillSection = document.getElementById('quickFillSection');
 
     if (isComplex) {
         complexExerciseSection.style.display = 'block';
@@ -803,10 +804,13 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
         if (roundsMatch) {
             const [, rounds, repsPattern] = roundsMatch;
             const repsArray = repsPattern.split('/');
-            const weightsArray = weightString.replace('lbs', '').replace('kg', '').split('/');
+            const weightsArray = weightString.replace(/lbs/g, '').replace(/kg/g, '').split('/');
+            
+            // Default movement names for bicep finisher rounds
+            const defaultMovements = ['slow bicep curls', 'fast bicep curls', 'hammer curls'];
             
             // Parse movement names from notes if available
-            let movementNames = [];
+            let movementNames = defaultMovements;
             if (notesString) {
                 // Extract movements from notes like "10 slow bicep curls + 15 fast bicep curls + 10 hammer curls"
                 const movementMatches = notesString.match(/\d+\s+([^+]+?)(?:\s*\+|$)/g);
@@ -821,7 +825,7 @@ function parseComplexExerciseStructure(repsString, weightString, notesString) {
             // Create structure for each movement in the round
             repsArray.forEach((reps, index) => {
                 const weight = weightsArray[index] || weightsArray[0] || '0';
-                const movementName = movementNames[index] || `Movement ${index + 1}`;
+                const movementName = movementNames[index] || defaultMovements[index] || `Movement ${index + 1}`;
                 
                 structure.push({
                     roundLabel: `Movement ${index + 1}`,
@@ -1252,10 +1256,16 @@ function loadCurrentPostExercise() {
     document.getElementById('postSelectedDate').textContent = selectedWorkoutDate;
 
     document.getElementById('postExerciseName').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
-    document.getElementById('postExerciseTarget').textContent = `${exercise.sets}x${exercise.reps} @ ${exercise.weight}`;
+    
+    // Safely extract exercise properties
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+    const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
+    
+    document.getElementById('postExerciseTarget').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
 
     // Determine if it's a complex exercise
-    const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
+    const isComplex = targetReps.includes('/') || targetReps.includes('@');
 
     const setsSection = document.getElementById('setsSection'); // This is the parent div for set logging
     const complexExerciseSection = document.getElementById('complexExerciseSection');
