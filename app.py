@@ -328,7 +328,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     }
 
     # Extract entities for context resolution
-    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
+    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
     days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
     for exercise in exercise_keywords:
@@ -1600,6 +1600,32 @@ APP CONTEXT AWARENESS:
 - You have real-time access to their training data
 - Your responses should feel like natural extensions of their app experience
 - Never break the illusion that you're seamlessly integrated into their training ecosystem"""
+        elif any(phrase in prompt.lower() for phrase in [
+            'rename', 'update my plan', 'can you update', 'change to', 'differentiate', 
+            'update accordingly', 'modify my plan', 'change my plan', 'update the plan'
+        ]):
+            system_prompt = """You are the AI training assistant built into this fitness app. 
+
+CRITICAL: When the user asks to modify their plan (rename exercises, change weights, etc.), you MUST:
+
+1. Respond naturally and enthusiastically about the change
+2. Include a JSON command at the end for the system to parse
+
+PLAN MODIFICATION JSON FORMAT:
+When user wants to rename an exercise, include this exact format at the end of your response:
+
+PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}
+
+For other modifications:
+- Add exercise: {"action": "add", "day": "monday", "exercise": "new exercise", "sets": 3, "reps": "12", "weight": "90lbs"}
+- Update weight: {"action": "update", "day": "friday", "exercise": "glute drive", "weight": "110lbs"}
+
+EXAMPLE RESPONSE:
+"Absolutely! That's perfect logic - having a lighter load on Monday makes total sense since it's the new addition. I'll rename Monday's glute drive to 'glute drive (light load)' to differentiate it from Friday's heavier version.
+
+PLAN_MODIFICATION: {"action": "rename", "day": "monday", "old_name": "glute drive", "new_name": "glute drive (light load)"}"
+
+Always respond naturally first, then include the JSON command."""
 
         response = client.chat.completions.create(
             model="gpt-4", # Updated model name
@@ -2179,9 +2205,9 @@ def chat_stream():
                                         INSERT INTO weekly_plan
                                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
                                          notes, created_by, newly_added, date_added)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
                                     ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order,
-                                          'Added per user request for extra glute volume', 'grok_ai', True, datetime.now().strftime('%Y-%m-%d')))
+                                          'Added per user request for extra glute volume', datetime.now().strftime('%Y-%m-%d')))
 
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
                                     plan_change_executed = True
