@@ -2285,9 +2285,9 @@ def chat_stream():
                                         INSERT INTO weekly_plan
                                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, 
                                          notes, created_by, newly_added, date_added)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order, 
-                                          'Added per user request for extra glute volume', 'grok_ai', datetime.now().strftime('%Y-%m-%d')))
+                                          'Added per user request for extra glute volume', 'grok_ai', True, datetime.now().strftime('%Y-%m-%d')))
                                     
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
                                     response += "\n\n✅ **DONE!** I've added glute drive (3x12@90lbs) to your Monday workout as exercise #7. Check your Weekly Plan tab to see the update!"
