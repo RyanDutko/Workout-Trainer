@@ -2121,7 +2121,6 @@ def chat_stream():
 
                             if json_match:
                                 try:
-                                    import json
                                     modification_data = json.loads(json_match.group(1))
 
                                     action = modification_data.get('action')
