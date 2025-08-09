@@ -4384,6 +4384,47 @@ def fix_newly_added():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/rename_exercise', methods=['POST'])
+def rename_exercise():
+    """Rename an exercise in the weekly plan"""
+    try:
+        data = request.json
+        current_name = data.get('current_name')
+        new_name = data.get('new_name')
+        day = data.get('day', '').lower()
+
+        if not all([current_name, new_name]):
+            return jsonify({'success': False, 'error': 'Current name and new name required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if day:
+            # Rename specific day
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET exercise_name = ?
+                WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
+            ''', (new_name, current_name, day))
+        else:
+            # Rename across all days
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET exercise_name = ?
+                WHERE LOWER(exercise_name) = LOWER(?)
+            ''', (new_name, current_name))
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'message': f'Renamed "{current_name}" to "{new_name}"'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Exercise not found in weekly plan'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/mark_exercise_new', methods=['POST'])
 def mark_exercise_new():
     """Manually mark an exercise as newly added"""

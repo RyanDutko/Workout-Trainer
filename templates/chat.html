@@ -377,73 +377,48 @@ function finalizeStreamingMessage(messageId) {
 function addPlanModificationConfirmation(messageDiv) {
     const messageText = messageDiv.textContent;
     
-    // Detect weight updates for glute drive on Friday
-    if (messageText.toLowerCase().includes('glute drive') && messageText.toLowerCase().includes('friday') && 
-        (messageText.toLowerCase().includes('110') || messageText.toLowerCase().includes('weight') || messageText.toLowerCase().includes('bump'))) {
+    // Parse what the AI actually suggested instead of using keyword detection
+    const proposalData = parseAIProposal(messageText);
+    
+    if (proposalData) {
         const confirmationDiv = document.createElement('div');
         confirmationDiv.className = 'alert alert-warning mt-2 p-3';
-        confirmationDiv.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <strong><i class="fas fa-arrow-up me-2"></i>Weight Update Proposal</strong>
-                    <br><small class="text-muted">Update Friday glute drive weight to 110lbs (based on your actual performance)</small>
-                </div>
-                <div>
-                    <button class="btn btn-success btn-sm me-2" onclick="confirmWeightUpdate('glute drive', 'friday', '110lbs', this)">
-                        <i class="fas fa-check me-1"></i>Update Weight
-                    </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="this.parentElement.parentElement.parentElement.remove()">
-                        <i class="fas fa-times me-1"></i>Dismiss
-                    </button>
-                </div>
-            </div>
-        `;
         
-        messageDiv.appendChild(confirmationDiv);
-    }
-    // Detect glute drive addition to Monday specifically
-    else if (messageText.toLowerCase().includes('glute drive') && messageText.toLowerCase().includes('monday')) {
-        const confirmationDiv = document.createElement('div');
-        confirmationDiv.className = 'alert alert-warning mt-2 p-3';
-        confirmationDiv.innerHTML = `
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <strong><i class="fas fa-plus-circle me-2"></i>Plan Modification Proposal</strong>
-                    <br><small class="text-muted">Add "glute drive" to Monday - 3x12@90lbs</small>
-                </div>
-                <div>
-                    <button class="btn btn-success btn-sm me-2" onclick="confirmPlanChangeWithFeedback('glute drive', 'monday', 3, '12', '90lbs', this)">
-                        <i class="fas fa-check me-1"></i>Add to Plan
-                    </button>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="this.parentElement.parentElement.parentElement.remove()">
-                        <i class="fas fa-times me-1"></i>Dismiss
-                    </button>
-                </div>
-            </div>
-        `;
+        let actionButton = '';
+        let description = '';
         
-        messageDiv.appendChild(confirmationDiv);
-    } else {
-        // Try to extract exercise details from other AI responses (fallback)
-        const exerciseMatch = messageText.match(/(\w+[\s\w]*(?:extension|curl|press|raise|row|drive))/i);
-        const setsMatch = messageText.match(/(\d+)\s*(?:sets?|x)/i);
-        const repsMatch = messageText.match(/(\d+(?:-\d+)?)\s*reps?/i);
-        const weightMatch = messageText.match(/(\d+)\s*(?:lb|pound)/i);
-        const dayMatch = messageText.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i);
+        if (proposalData.type === 'rename') {
+            description = `Rename "${proposalData.currentName}" to "${proposalData.newName}"`;
+            actionButton = `
+                <button class="btn btn-success btn-sm me-2" onclick="confirmExerciseRename('${proposalData.currentName}', '${proposalData.newName}', '${proposalData.day}', this)">
+                    <i class="fas fa-edit me-1"></i>Rename Exercise
+                </button>
+            `;
+        } else if (proposalData.type === 'weight_update') {
+            description = `Update ${proposalData.exercise} weight to ${proposalData.newWeight} on ${proposalData.day}`;
+            actionButton = `
+                <button class="btn btn-success btn-sm me-2" onclick="confirmWeightUpdate('${proposalData.exercise}', '${proposalData.day}', '${proposalData.newWeight}', this)">
+                    <i class="fas fa-arrow-up me-1"></i>Update Weight
+                </button>
+            `;
+        } else if (proposalData.type === 'add_exercise') {
+            description = `Add "${proposalData.exercise}" to ${proposalData.day} - ${proposalData.sets}x${proposalData.reps}@${proposalData.weight}`;
+            actionButton = `
+                <button class="btn btn-success btn-sm me-2" onclick="confirmPlanChangeWithFeedback('${proposalData.exercise}', '${proposalData.day}', ${proposalData.sets}, '${proposalData.reps}', '${proposalData.weight}', this)">
+                    <i class="fas fa-plus me-1"></i>Add to Plan
+                </button>
+            `;
+        }
         
-        if (exerciseMatch && dayMatch) {
-            const confirmationDiv = document.createElement('div');
-            confirmationDiv.className = 'alert alert-warning mt-2 p-3';
+        if (description && actionButton) {
             confirmationDiv.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <strong><i class="fas fa-plus-circle me-2"></i>Plan Modification Proposal</strong>
-                        <br><small class="text-muted">Add "${exerciseMatch[1]}" to ${dayMatch[1]}${setsMatch ? ` - ${setsMatch[1]}x${repsMatch ? repsMatch[1] : '8-12'}` : ''}${weightMatch ? `@${weightMatch[1]}lbs` : ''}</small>
+                        <strong><i class="fas fa-cog me-2"></i>Plan Modification Proposal</strong>
+                        <br><small class="text-muted">${description}</small>
                     </div>
                     <div>
-                        <button class="btn btn-success btn-sm me-2" onclick="confirmPlanChangeWithFeedback('${exerciseMatch[1]}', '${dayMatch[1].toLowerCase()}', ${setsMatch ? setsMatch[1] : 3}, '${repsMatch ? repsMatch[1] : '8-12'}', '${weightMatch ? weightMatch[1] + 'lbs' : 'bodyweight'}', this)">
-                            <i class="fas fa-check me-1"></i>Add to Plan
-                        </button>
+                        ${actionButton}
                         <button class="btn btn-outline-secondary btn-sm" onclick="this.parentElement.parentElement.parentElement.remove()">
                             <i class="fas fa-times me-1"></i>Dismiss
                         </button>
@@ -454,6 +429,64 @@ function addPlanModificationConfirmation(messageDiv) {
             messageDiv.appendChild(confirmationDiv);
         }
     }
+}
+
+function parseAIProposal(messageText) {
+    const text = messageText.toLowerCase();
+    
+    // Check for rename proposals
+    if (text.includes('rename') || text.includes('call it') || text.includes('change the name')) {
+        const renameMatch = text.match(/rename.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row)).*?to.*?"([^"]+)"/i) ||
+                           text.match(/call.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row)).*?"([^"]+)"/i);
+        
+        if (renameMatch) {
+            const dayMatch = text.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+            return {
+                type: 'rename',
+                currentName: renameMatch[1].trim(),
+                newName: renameMatch[2].trim(),
+                day: dayMatch ? dayMatch[1] : 'monday'
+            };
+        }
+    }
+    
+    // Check for weight updates
+    if (text.includes('update') && text.includes('weight') || text.includes('bump up') || text.includes('increase')) {
+        const exerciseMatch = text.match(/([a-zA-Z\s]+(?:drive|press|curl|extension|row))/);
+        const weightMatch = text.match(/(\d+)\s*(?:lbs?|pounds?)/);
+        const dayMatch = text.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+        
+        if (exerciseMatch && weightMatch && dayMatch) {
+            return {
+                type: 'weight_update',
+                exercise: exerciseMatch[1].trim(),
+                newWeight: weightMatch[1] + 'lbs',
+                day: dayMatch[1]
+            };
+        }
+    }
+    
+    // Check for exercise additions
+    if (text.includes('add') || text.includes('include')) {
+        const exerciseMatch = text.match(/add.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row))/);
+        const dayMatch = text.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
+        const setsMatch = text.match(/(\d+)\s*(?:sets?|x)/);
+        const repsMatch = text.match(/(\d+(?:-\d+)?)\s*reps?/);
+        const weightMatch = text.match(/(\d+)\s*(?:lbs?|pounds?)/);
+        
+        if (exerciseMatch && dayMatch) {
+            return {
+                type: 'add_exercise',
+                exercise: exerciseMatch[1].trim(),
+                day: dayMatch[1],
+                sets: setsMatch ? parseInt(setsMatch[1]) : 3,
+                reps: repsMatch ? repsMatch[1] : '8-12',
+                weight: weightMatch ? weightMatch[1] + 'lbs' : 'bodyweight'
+            };
+        }
+    }
+    
+    return null;
 }
 
 function confirmPlanChange(exercise, day, sets, reps, weight) {
@@ -487,6 +520,60 @@ function confirmPlanChange(exercise, day, sets, reps, weight) {
     .catch(error => {
         console.error('Error:', error);
         addMessage('❌ Error confirming plan change', 'system');
+    });
+}
+
+function confirmExerciseRename(currentName, newName, day, buttonElement) {
+    // Show loading state
+    const originalButton = buttonElement.innerHTML;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Renaming...';
+    buttonElement.disabled = true;
+    
+    // Make the rename via direct API call
+    fetch('/rename_exercise', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            current_name: currentName,
+            new_name: newName,
+            day: day
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Replace the confirmation UI with success message
+            const confirmationDiv = buttonElement.closest('.alert-warning');
+            confirmationDiv.className = 'alert alert-success mt-2 p-3';
+            confirmationDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-check-circle me-2 text-success"></i>
+                    <div>
+                        <strong>Success!</strong> Renamed "${currentName}" to "${newName}" on ${day.charAt(0).toUpperCase() + day.slice(1)}.
+                        <br><small class="text-muted">Check your Weekly Plan tab to see the update.</small>
+                    </div>
+                </div>
+            `;
+            
+            // Auto-remove success message after 5 seconds
+            setTimeout(() => {
+                if (confirmationDiv && confirmationDiv.parentNode) {
+                    confirmationDiv.remove();
+                }
+            }, 5000);
+        } else {
+            buttonElement.innerHTML = originalButton;
+            buttonElement.disabled = false;
+            addMessage(`❌ Error renaming exercise: ${data.error}`, 'system');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        buttonElement.innerHTML = originalButton;
+        buttonElement.disabled = false;
+        addMessage('❌ Error confirming exercise rename', 'system');
     });
 }
 
