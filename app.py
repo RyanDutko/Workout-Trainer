@@ -14,8 +14,10 @@ app = Flask(__name__)
 # Database initialization
 def get_db_connection():
     """Get a database connection with proper timeout and thread safety"""
-    conn = sqlite3.connect('workout_logs.db', timeout=30.0, check_same_thread=False)
+    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
     conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
+    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
     return conn
 
 def init_db():
@@ -762,43 +764,7 @@ def remove_text_and_cleanup(original_text, target_text):
 
     return updated_text
 
-def update_progression_notes_from_performance(exercise_name, day_of_week, performance_notes):
-    """Update progression notes based on workout performance"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
 
-        # Analyze performance and generate progression note
-        if any(phrase in performance_notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
-            progression_note = "Focus on completing all reps this week"
-        elif any(phrase in performance_notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
-            progression_note = "Ready for weight increase next week"
-        elif any(phrase in performance_notes.lower() for phrase in ['perfect', 'good', 'solid']):
-            progression_note = "Maintain current intensity"
-        else:
-            progression_note = ""
-
-        if progression_note:
-            cursor.execute('''
-                UPDATE weekly_plan
-                SET progression_notes = ?
-                WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
-            ''', (progression_note, exercise_name, day_of_week))
-
-            if cursor.rowcount > 0:
-                conn.commit()
-                print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
-            else:
-                print(f"⚠️ Exercise {exercise_name} not found in weekly plan for {day_of_week}")
-
-        conn.close()
-
-    except Exception as e:
-        print(f"Error updating progression notes: {e}")
-        try:
-            conn.close()
-        except:
-            pass
 
 def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
@@ -3972,11 +3938,33 @@ def save_workout():
                 else:
                     print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
 
-        # Update progression notes if there are performance notes
+        # Update progression notes if there are performance notes (do this in the same transaction)
         if notes:
             try:
                 today_name = datetime.now().strftime('%A').lower()
-                update_progression_notes_from_performance(exercise_name, today_name, notes)
+                
+                # Analyze performance and generate progression note within the same transaction
+                if any(phrase in notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
+                    progression_note = "Focus on completing all reps this week"
+                elif any(phrase in notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
+                    progression_note = "Ready for weight increase next week"
+                elif any(phrase in notes.lower() for phrase in ['perfect', 'good', 'solid']):
+                    progression_note = "Maintain current intensity"
+                else:
+                    progression_note = ""
+
+                if progression_note:
+                    cursor.execute('''
+                        UPDATE weekly_plan
+                        SET progression_notes = ?
+                        WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
+                    ''', (progression_note, exercise_name, today_name))
+
+                    if cursor.rowcount > 0:
+                        print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
+                    else:
+                        print(f"⚠️ Exercise {exercise_name} not found in weekly plan for {today_name}")
+                        
             except Exception as e:
                 print(f"Failed to update progression notes for {exercise_name}: {e}")
 
