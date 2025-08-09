@@ -762,7 +762,7 @@ function loadComplexExerciseSets(exercise) {
     complexSetsContainer.innerHTML = '';
 
     // Parse the complex exercise structure - handle multiple formats
-    let complexStructure = parseComplexExerciseStructure(exercise.reps);
+    let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
     
     if (complexStructure.length === 0) {
         // Fallback to old format if parsing fails
@@ -792,13 +792,48 @@ function loadComplexExerciseSets(exercise) {
     });
 }
 
-function parseComplexExerciseStructure(repsString) {
+function parseComplexExerciseStructure(repsString, weightString, notesString) {
     // Parse different complex exercise formats
     let structure = [];
     
-    // Format 1: "10 slow bicep curls(20 lbs), 15 fast bicep curls(15 lbs), 10 hammer curls(15 lbs)"
-    // This appears to be the format from your bicep finisher rounds
-    if (repsString.includes('(') && repsString.includes(')')) {
+    // Format 1: Bicep finisher format - "2x10/15/10" with weights "20/15/15lbs" and notes describing movements
+    if (repsString.includes('/') && weightString && weightString.includes('/')) {
+        // Extract the pattern: "2x10/15/10" -> 2 rounds of 10/15/10 reps
+        const roundsMatch = repsString.match(/^(\d+)x(.+)/);
+        if (roundsMatch) {
+            const [, rounds, repsPattern] = roundsMatch;
+            const repsArray = repsPattern.split('/');
+            const weightsArray = weightString.replace('lbs', '').replace('kg', '').split('/');
+            
+            // Parse movement names from notes if available
+            let movementNames = [];
+            if (notesString) {
+                // Extract movements from notes like "10 slow bicep curls + 15 fast bicep curls + 10 hammer curls"
+                const movementMatches = notesString.match(/\d+\s+([^+]+?)(?:\s*\+|$)/g);
+                if (movementMatches) {
+                    movementNames = movementMatches.map(match => {
+                        const nameMatch = match.match(/\d+\s+(.+?)(?:\s*\+|$)/);
+                        return nameMatch ? nameMatch[1].trim() : 'movement';
+                    });
+                }
+            }
+            
+            // Create structure for each movement in the round
+            repsArray.forEach((reps, index) => {
+                const weight = weightsArray[index] || weightsArray[0] || '0';
+                const movementName = movementNames[index] || `Movement ${index + 1}`;
+                
+                structure.push({
+                    roundLabel: `Movement ${index + 1}`,
+                    movement: movementName,
+                    plannedReps: reps.trim(),
+                    plannedWeight: `${weight}lbs`
+                });
+            });
+        }
+    }
+    // Format 2: Standard complex format "10 slow bicep curls(20 lbs), 15 fast bicep curls(15 lbs)"
+    else if (repsString.includes('(') && repsString.includes(')')) {
         const movements = repsString.split(',');
         movements.forEach((movement, index) => {
             const trimmed = movement.trim();
@@ -816,7 +851,7 @@ function parseComplexExerciseStructure(repsString) {
             }
         });
     }
-    // Format 2: Your original "movement reps@weight" format
+    // Format 3: Your original "movement reps@weight" format
     else if (repsString.includes('@')) {
         const rounds = repsString.split(',');
         rounds.forEach((round, roundIndex) => {
@@ -834,13 +869,8 @@ function parseComplexExerciseStructure(repsString) {
             });
         });
     }
-    // Format 3: Multi-round complex (like your bicep finisher)
-    else if (repsString.toLowerCase().includes('round') || repsString.includes('/')) {
-        // Try to detect rounds and movements
-        // This would handle formats like "Round 1: 10 bicep curls / 15 fast curls / 10 hammer curls"
-        // We'll implement this as needed based on your specific formats
-        
-        // For now, treat as single complex movement
+    // Format 4: Fallback for unrecognized formats
+    else {
         structure.push({
             roundLabel: "Complex Movement",
             movement: "Multi-movement exercise",
@@ -1297,7 +1327,7 @@ function loadComplexPostExerciseSets(exercise) {
     complexSetsContainer.innerHTML = '';
 
     // Use the same parsing logic as live workout
-    let complexStructure = parseComplexExerciseStructure(exercise.reps);
+    let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
     
     if (complexStructure.length === 0) {
         complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';

@@ -1152,6 +1152,65 @@ Make sure to provide complete, updated versions of both sections, not just ackno
 
     return None
 
+def standardize_complex_exercise_format():
+    """Convert existing complex exercises to standard format for better parsing"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Find and update bicep finisher rounds to standard format
+        cursor.execute('''
+            SELECT id, exercise_name, target_reps, target_weight, notes
+            FROM weekly_plan 
+            WHERE LOWER(exercise_name) LIKE '%bicep finisher%'
+        ''')
+        
+        bicep_exercises = cursor.fetchall()
+        
+        for exercise_id, name, reps, weight, notes in bicep_exercises:
+            # Convert "2x10/15/10 @ 20/15/15lbs" to standard format
+            if '/' in reps and '/' in weight:
+                # Extract movements from notes
+                movements = [
+                    "slow bicep curls",
+                    "fast bicep curls", 
+                    "hammer curls"
+                ]
+                
+                # Parse reps: "2x10/15/10" -> ["10", "15", "10"]
+                rounds_match = re.match(r'(\d+)x(.+)', reps)
+                if rounds_match:
+                    rounds, reps_pattern = rounds_match.groups()
+                    reps_array = reps_pattern.split('/')
+                    weights_array = weight.replace('lbs', '').replace('kg', '').split('/')
+                    
+                    # Create standard format: "10 slow bicep curls(20lbs), 15 fast bicep curls(15lbs), 10 hammer curls(15lbs)"
+                    standard_parts = []
+                    for i, movement in enumerate(movements):
+                        if i < len(reps_array) and i < len(weights_array):
+                            standard_parts.append(f"{reps_array[i]} {movement}({weights_array[i]}lbs)")
+                    
+                    standard_reps = ", ".join(standard_parts)
+                    
+                    # Update to standard format
+                    cursor.execute('''
+                        UPDATE weekly_plan 
+                        SET target_reps = ?, target_weight = 'varies', 
+                            notes = COALESCE(notes, '') || ' [Converted to standard complex format]'
+                        WHERE id = ?
+                    ''', (standard_reps, exercise_id))
+                    
+                    print(f"✅ Converted {name} to standard format: {standard_reps}")
+        
+        conn.commit()
+        conn.close()
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error standardizing complex exercises: {e}")
+        return False
+
 def regenerate_exercise_metadata_from_plan():
     """Regenerate exercise metadata when plan changes significantly"""
     try:
@@ -4392,6 +4451,26 @@ def clean_loose_skin_final():
             'message': f'Cleaned up {len(changes_made)} remaining references'
         })
 
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/standardize_complex_exercises', methods=['POST'])
+def standardize_complex_exercises():
+    """Convert complex exercises to standard format for better parsing"""
+    try:
+        success = standardize_complex_exercise_format()
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Complex exercises converted to standard format'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert complex exercises'
+            })
+            
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
