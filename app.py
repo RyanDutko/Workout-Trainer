@@ -143,7 +143,7 @@ def init_db():
         conversation_thread_id TEXT,
         parent_conversation_id INTEGER,
         FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
+        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
     )
     ''')
 
