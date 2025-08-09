@@ -893,89 +893,82 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             if current_context:
                 current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
 
-                # Create a comprehensive rewrite prompt for Grok
+                # Create a comprehensive rewrite prompt for Grok using new 2-field structure
                 rewrite_prompt = f"""Here is my current training philosophy:
 
 CURRENT PHILOSOPHY:
-Training Philosophy: {current_philosophy or 'Not set'}
-Weekly Structure: {weekly_structure or 'Not set'}
-Progression Strategy: {progression_strategy or 'Not set'}
-Special Considerations: {special_considerations or 'Not set'}
+Core Philosophy: {current_philosophy or 'Not set'}
+Current Plan Priorities: {progression_strategy or 'Not set'}
 
 USER REQUEST: {user_request}
 
 Please provide a complete updated philosophy that addresses the user's request. Format your response with these exact sections:
 
-TRAINING_PHILOSOPHY: [updated philosophy text]
-WEEKLY_STRUCTURE: [updated weekly structure reasoning]
-PROGRESSION_STRATEGY: [updated progression approach]
-SPECIAL_CONSIDERATIONS: [updated special considerations]
+CORE_PHILOSOPHY: [the foundational training approach and principles that don't change often]
+CURRENT_PLAN_PRIORITIES: [specific current focuses, goals, and priorities for this training phase]
 
-Make sure to provide complete, updated versions of all sections, not just acknowledgments."""
+Make sure to provide complete, updated versions of both sections, not just acknowledgments."""
 
                 # Get Grok's structured rewrite
                 # progression_analysis = get_grok_response_with_context(rewrite_prompt, user_background) # Grok API call
                 response = get_grok_response_with_context(rewrite_prompt)
 
-                # For natural language philosophy (like from ChatGPT), use intelligent parsing
+                # For natural language philosophy (like from ChatGPT), use intelligent parsing for new 2-field structure
                 if any(phrase in user_request_lower for phrase in ['update my philosophy with', 'update my philosophy to', 'update my philisophy to']):
                     # Extract the actual philosophy content after "with:" or "to:"
                     philosophy_content = user_request.split(':', 1)[1].strip() if ':' in user_request else response
                     
-                    # Parse the natural language philosophy into structured sections
+                    # Parse the natural language philosophy into new 2-field structure
                     extracted_data = {}
                     
-                    # Use the full philosophy content as the main philosophy
-                    extracted_data['plan_philosophy'] = philosophy_content
+                    # Split content into core philosophy (foundational) and current priorities (specific)
+                    # Look for structural/foundational elements vs specific current focuses
+                    core_parts = []
+                    priority_parts = []
                     
-                    # Extract key sections from the natural language
-                    if '5-day split' in philosophy_content.lower():
-                        # Extract weekly structure
-                        structure_match = re.search(r'5-day split:([^.]+\.)', philosophy_content, re.IGNORECASE)
-                        if structure_match:
-                            extracted_data['weekly_structure'] = structure_match.group(1).strip()
+                    sentences = philosophy_content.split('.')
+                    for sentence in sentences:
+                        sentence = sentence.strip()
+                        if not sentence:
+                            continue
+                            
+                        # Core philosophy indicators (foundational approaches)
+                        if any(word in sentence.lower() for word in ['machine-', 'cable-focused', 'joint safety', 'free weights', 'progressive overload', 'recovery']):
+                            core_parts.append(sentence + '.')
+                        # Current priority indicators (specific focuses)
+                        elif any(word in sentence.lower() for word in ['midsection', 'pelvis', 'abs', '5-day split', 'top priority', 'custom-built', 'balanced muscle']):
+                            priority_parts.append(sentence + '.')
+                        else:
+                            # Default to priorities for specific content
+                            priority_parts.append(sentence + '.')
                     
-                    if 'progressive overload' in philosophy_content.lower():
-                        # Extract progression strategy
-                        prog_match = re.search(r'Progressive overload([^.]+\.)', philosophy_content, re.IGNORECASE)
-                        if prog_match:
-                            extracted_data['progression_strategy'] = 'Progressive overload' + prog_match.group(1).strip()
+                    extracted_data['plan_philosophy'] = ' '.join(core_parts) if core_parts else philosophy_content[:len(philosophy_content)//2]
+                    extracted_data['progression_strategy'] = ' '.join(priority_parts) if priority_parts else philosophy_content[len(philosophy_content)//2:]
                     
-                    if 'recovery' in philosophy_content.lower() or 'joint safety' in philosophy_content.lower():
-                        # Extract special considerations
-                        safety_parts = []
-                        if 'joint safety' in philosophy_content.lower():
-                            safety_parts.append('Machine- and cable-focused for joint safety')
-                        if 'recovery' in philosophy_content.lower():
-                            recovery_match = re.search(r'Recovery([^.]+\.)', philosophy_content, re.IGNORECASE)
-                            if recovery_match:
-                                safety_parts.append('Recovery' + recovery_match.group(1).strip())
-                        if safety_parts:
-                            extracted_data['special_considerations'] = '; '.join(safety_parts)
-                    
-                    extracted_data['reasoning'] = f"Updated with natural language philosophy from user"
-                    print(f"🧠 Successfully parsed natural language philosophy")
+                    extracted_data['reasoning'] = f"Updated with natural language philosophy from user using new 2-field structure"
+                    print(f"🧠 Successfully parsed natural language philosophy into core philosophy + current priorities")
                     return extracted_data
                 
-                # Parse Grok's structured response (fallback)
+                # Parse Grok's structured response (fallback) using new 2-field structure
                 lines = response.split('\n')
                 extracted_data = {}
 
                 for line in lines:
                     line = line.strip()
-                    if 'TRAINING_PHILOSOPHY:' in line:
+                    if 'CORE_PHILOSOPHY:' in line:
                         extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    elif 'WEEKLY_STRUCTURE:' in line:
-                        extracted_data['weekly_structure'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    elif 'PROGRESSION_STRATEGY:' in line:
+                    elif 'CURRENT_PLAN_PRIORITIES:' in line:
                         extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
-                    elif 'SPECIAL_CONSIDERATIONS:' in line:
-                        extracted_data['special_considerations'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    # Legacy compatibility
+                    elif 'TRAINING_PHILOSOPHY:' in line and not extracted_data.get('plan_philosophy'):
+                        extracted_data['plan_philosophy'] = line.split(':', 1)[1].strip() if ':' in line else ''
+                    elif 'PROGRESSION_STRATEGY:' in line and not extracted_data.get('progression_strategy'):
+                        extracted_data['progression_strategy'] = line.split(':', 1)[1].strip() if ':' in line else ''
 
                 # Add reasoning
                 extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
 
-                print(f"🧠 Successfully rewrote philosophy with current context")
+                print(f"🧠 Successfully rewrote philosophy with current context using new 2-field structure")
                 return extracted_data
 
             else:
@@ -1389,7 +1382,7 @@ def build_philosophy_update_context(prompt):
         
         # Get current philosophy from database
         cursor.execute('''
-            SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
+            SELECT plan_philosophy, progression_strategy
             FROM plan_context
             WHERE user_id = 1
             ORDER BY created_date DESC
@@ -1400,27 +1393,23 @@ def build_philosophy_update_context(prompt):
         conn.close()
         
         if current_context:
-            current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
+            current_philosophy, current_priorities = current_context
             
             context_info = "=== PHILOSOPHY UPDATE REQUEST ===\n"
             context_info += f"CURRENT PHILOSOPHY:\n"
-            context_info += f"Training Philosophy: {current_philosophy or 'Not set'}\n"
-            context_info += f"Weekly Structure: {weekly_structure or 'Not set'}\n"
-            context_info += f"Progression Strategy: {progression_strategy or 'Not set'}\n"
-            context_info += f"Special Considerations: {special_considerations or 'Not set'}\n\n"
+            context_info += f"Core Philosophy: {current_philosophy or 'Not set'}\n"
+            context_info += f"Current Plan Priorities: {current_priorities or 'Not set'}\n\n"
             
             context_info += f"USER REQUEST: {prompt}\n\n"
             context_info += """Please parse the new philosophy from the user request and provide a structured response with these exact sections:
 
-TRAINING_PHILOSOPHY: [updated philosophy text]
-WEEKLY_STRUCTURE: [updated weekly structure reasoning]
-PROGRESSION_STRATEGY: [updated progression approach]
-SPECIAL_CONSIDERATIONS: [updated special considerations]
+CORE_PHILOSOPHY: [the foundational training approach and principles]
+CURRENT_PLAN_PRIORITIES: [specific current focuses and priorities for this training phase]
 REASONING: [brief explanation of changes made]
 
-Extract the philosophy content after the colon (:) in the user's message and structure it appropriately."""
+Extract the philosophy content after the colon (:) in the user's message and structure it appropriately into these 2 sections."""
             
-            print(f"🧠 Built philosophy update context with current stored philosophy")
+            print(f"🧠 Built philosophy update context with current stored philosophy (2-field structure)")
             return context_info
         else:
             print(f"⚠️ No existing philosophy found for update")
@@ -2374,24 +2363,24 @@ def chat_stream():
                         print(f"🎯 Executed comprehensive removal of '{philosophy_update.get('target_text')}'")
                         plan_modifications = f"Comprehensive removal: {philosophy_update.get('reasoning')}"
                     else:
-                        # Auto-update philosophy in database for regular updates
+                        # Auto-update philosophy in database for regular updates using new 2-field structure
                         try:
                             cursor.execute('''
                                 INSERT OR REPLACE INTO plan_context
-                                (user_id, plan_philosophy, training_style, weekly_structure, progression_strategy, special_considerations,
+                                (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
                                  created_by_ai, creation_reasoning, created_date, updated_date)
-                                VALUES (1, ?, ?, ?, ?, ?, TRUE, ?, ?, ?)
+                                VALUES (1, ?, ?, '', '', TRUE, ?, ?, ?)
                             ''', (
                                 philosophy_update.get('plan_philosophy', ''),
-                                philosophy_update.get('training_style', ''),
-                                philosophy_update.get('weekly_structure', ''),
                                 philosophy_update.get('progression_strategy', ''),
-                                philosophy_update.get('special_considerations', ''),
                                 philosophy_update.get('reasoning', ''),
                                 datetime.now().strftime('%Y-%m-%d'),
                                 datetime.now().strftime('%Y-%m-%d')
                             ))
-                            print(f"🧠 Auto-updated training philosophy based on conversation")
+                            print(f"🧠 Auto-updated training philosophy based on conversation using new 2-field structure")
+                            
+                            # Add confirmation message to response
+                            response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {philosophy_update.get('plan_philosophy', '')[:100]}...\n• **Current Priorities:** {philosophy_update.get('progression_strategy', '')[:100]}...\n\nCheck your Plan Philosophy page to see the full update!"
 
                             # If this was a comprehensive plan change, regenerate exercise metadata
                             if any(keyword in message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
