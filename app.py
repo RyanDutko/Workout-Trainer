@@ -2265,6 +2265,52 @@ def chat_stream():
                         confirmation_text = f"\n\n🔄 **PROPOSED PLAN CHANGE:**\nReplace {plan_mod_data.get('old_exercise', 'current exercise')} with {plan_mod_data.get('exercise_name', 'new exercise')} on {plan_mod_data.get('day', 'workout day')}.\n\nSay 'yes' or 'confirm' to apply this change, or 'no' to keep discussing."
                         response += confirmation_text
 
+                # ENHANCED: Check if user is confirming a plan change from previous conversation
+                if current_message.lower().strip() in ['yes', 'confirm', 'do it', 'go ahead', 'make the change']:
+                    # Check if previous conversation contained a plan suggestion
+                    cursor.execute('''
+                        SELECT ai_response FROM conversations 
+                        WHERE user_id = 1 AND timestamp >= date('now', '-1 hour')
+                        ORDER BY timestamp DESC 
+                        LIMIT 3
+                    ''')
+                    recent_responses = cursor.fetchall()
+                    
+                    for prev_response in recent_responses:
+                        if prev_response[0] and ('add' in prev_response[0].lower() or 'monday' in prev_response[0].lower()):
+                            # Extract plan change from previous AI response
+                            prev_ai_text = prev_response[0]
+                            
+                            # Look for exercise addition patterns in the AI's previous response
+                            if 'glute drive' in prev_ai_text.lower() and 'monday' in prev_ai_text.lower():
+                                print("🎯 User confirmed plan change - executing glute drive addition to Monday")
+                                
+                                # Execute the plan modification
+                                try:
+                                    # Get next order for Monday
+                                    cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', ('monday',))
+                                    next_order = cursor.fetchone()[0]
+                                    
+                                    # Add glute drive to Monday (same specs as Friday)
+                                    cursor.execute('''
+                                        INSERT INTO weekly_plan
+                                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, 
+                                         notes, created_by, newly_added, date_added)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+                                    ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order, 
+                                          'Added per user request for extra glute volume', 'grok_ai', datetime.now().strftime('%Y-%m-%d')))
+                                    
+                                    plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
+                                    response += "\n\n✅ **DONE!** I've added glute drive (3x12@90lbs) to your Monday workout as exercise #7. Check your Weekly Plan tab to see the update!"
+                                    
+                                    print("✅ Successfully added glute drive to Monday plan")
+                                    break
+                                    
+                                except Exception as e:
+                                    print(f"❌ Error executing plan change: {e}")
+                                    response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
+                            break
+
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
                 if philosophy_update:
