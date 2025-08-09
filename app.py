@@ -1658,15 +1658,17 @@ def get_grok_response_with_context(prompt, user_background=None):
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
 
-        # Add AI preferences to context
+        # Add AI preferences to context (subtle integration)
         if ai_preferences:
-            context_info += f"\n=== AI RESPONSE PREFERENCES ===\n"
-            context_info += f"Tone: {ai_preferences.get('tone', 'motivational')}\n"
-            context_info += f"Detail Level: {ai_preferences.get('detail_level', 'concise')}\n"
-            context_info += f"Format: {ai_preferences.get('format', 'bullet_points')}\n"
-            context_info += f"Communication Style: {ai_preferences.get('communication_style', 'encouraging')}\n"
-            context_info += f"Technical Level: {ai_preferences.get('technical_level', 'beginner')}\n"
-            context_info += f"IMPORTANT: Adapt your response tone, detail level, and format to match these preferences.\n"
+            detail_level = ai_preferences.get('detail_level', 'concise')
+            tone = ai_preferences.get('tone', 'motivational')
+            format_pref = ai_preferences.get('format', 'bullet_points')
+            
+            context_info += f"\n=== RESPONSE CONTEXT ===\n"
+            context_info += f"User prefers {detail_level} responses with a {tone} tone"
+            if format_pref == 'bullet_points':
+                context_info += f" using bullet points when listing information"
+            context_info += f".\n"
 
         # Build context prompt
         context_prompt = context_info
@@ -1764,11 +1766,24 @@ ANALYSIS APPROACH:
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
-            system_prompt = """You are the AI training assistant built into this fitness app. 
+            # Build dynamic system prompt based on query type and preferences
+            if query_intent.get('intent') in ['general'] and len(prompt.strip()) < 20:
+                # Simple greeting - be natural, don't force preferences
+                system_prompt = """You are the AI training assistant built into this fitness app. Respond naturally and conversationally."""
+            else:
+                # Fitness-related query - apply user preferences
+                preference_note = ""
+                if ai_preferences:
+                    detail_level = ai_preferences.get('detail_level', 'concise')
+                    tone = ai_preferences.get('tone', 'motivational')
+                    if detail_level == 'brief':
+                        preference_note += "Keep responses concise. "
+                    if tone == 'motivational':
+                        preference_note += "Use an encouraging, motivational tone. "
+                
+                system_prompt = f"""You are the AI training assistant built into this fitness app. 
 
-IMPORTANT: The AI preferences shown in the context data below are the user's actual settings that should shape how you respond. Pay attention to their chosen detail level, tone, and format preferences and adapt your response style accordingly. These preferences override any default behavior.
-
-Respond naturally as the user's embedded training partner while following the user's preferred communication style."""
+{preference_note}Respond as the user's embedded training partner while being helpful and natural."""
 
         # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
         print("🤖 System prompt being sent:")
