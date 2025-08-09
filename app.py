@@ -1487,6 +1487,13 @@ def build_smart_context(prompt, query_intent, user_background=None):
                              'what is my tuesday plan', 'monday plan', 'tuesday plan', 'wednesday plan']
     is_specific_plan_request = any(request in prompt.lower() for request in specific_plan_requests)
     
+    # COMBINED CONTEXT: If user mentions BOTH plan AND recent logs, provide both contexts
+    if (is_plan_discussion or is_specific_plan_request) and is_workout_history_request:
+        print(f"🎯 Override: Detected COMBINED plan + history request - providing both contexts")
+        plan_context = build_plan_context()
+        historical_context = build_historical_context(prompt)
+        return plan_context + "\n\n" + historical_context
+    
     # Route plan discussions to plan context (including specific plan requests)
     if (is_plan_discussion or is_specific_plan_request) and not is_workout_history_request:
         print(f"🎯 Override: Detected plan discussion/request - routing to plan context")
@@ -3920,7 +3927,7 @@ def save_workout():
 
             # Check if we actually updated any rows (meaning it was newly added)
             if cursor.rowcount > 0:
-                print(f"✅ Cleared 'newly_added' flag for {exercise_name} - first time logged")
+                print(f"🆕 {exercise_name} logged for the first time - cleared NEW flag")
             else:
                 # Check if exercise exists in plan
                 plan_result = None
@@ -3932,11 +3939,11 @@ def save_workout():
 
                 if plan_result:
                     if plan_result[0]:
-                        print(f"⚠️ {exercise_name} still shows as newly_added despite logging")
+                        print(f"⚠️ {exercise_name} still shows as NEW despite being logged before")
                     else:
-                        print(f"ℹ️ {exercise_name} was already marked as completed")
+                        print(f"📝 {exercise_name} logged (already completed before)")
                 else:
-                    print(f"ℹ️ {exercise_name} not in weekly plan (free logging)")
+                    print(f"📋 {exercise_name} logged as free exercise (not in weekly plan)")
 
         # Update progression notes if there are performance notes (do this in the same transaction)
         if notes:
