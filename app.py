@@ -1600,6 +1600,7 @@ APP CONTEXT AWARENESS:
 - You have real-time access to their training data
 - Your responses should feel like natural extensions of their app experience
 - Never break the illusion that you're seamlessly integrated into their training ecosystem"""
+
         elif any(phrase in prompt.lower() for phrase in [
             'rename', 'update my plan', 'can you update', 'change to', 'differentiate', 
             'update accordingly', 'modify my plan', 'change my plan', 'update the plan'
