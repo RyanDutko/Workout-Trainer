@@ -25,16 +25,16 @@ def get_user_ai_preferences():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT grok_tone, grok_detail_level, grok_format, communication_style, technical_level
             FROM users
             WHERE id = 1
         ''')
-        
+
         result = cursor.fetchone()
         conn.close()
-        
+
         if result:
             return {
                 'tone': result[0] or 'motivational',
@@ -43,9 +43,9 @@ def get_user_ai_preferences():
                 'communication_style': result[3] or 'encouraging',
                 'technical_level': result[4] or 'beginner'
             }
-        
+
         return None
-        
+
     except Exception as e:
         print(f"Error getting AI preferences: {e}")
         return None
@@ -173,7 +173,7 @@ def init_db():
         conversation_thread_id TEXT,
         parent_conversation_id INTEGER,
         FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
+        FOREIGN FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
     )
     ''')
 
@@ -456,7 +456,7 @@ def analyze_query_intent(prompt, conversation_context=None):
     # Philosophy update detection (HIGH PRIORITY - should override other intents)
     philosophy_update_keywords = ['update my philosophy', 'update my philisophy', 'change my philosophy', 'modify my philosophy']
     philosophy_update_score = sum(10 for phrase in philosophy_update_keywords if phrase in prompt_lower)  # Very high score
-    
+
     if philosophy_update_score > 0:
         intents['philosophy_update'] = 1.0  # Maximum confidence for philosophy updates
 
@@ -897,7 +897,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
         ]
 
         user_wants_change = any(request in user_request_lower for request in user_change_requests)
-        
+
         # CRITICAL: Exclude discussion-only requests
         discussion_only_requests = [
             'talk about my philosophy',
@@ -906,7 +906,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
             'show me my philosophy',
             'tell me about my approach'
         ]
-        
+
         if any(discussion in user_request_lower for discussion in discussion_only_requests):
             user_wants_change = False
 
@@ -954,21 +954,21 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                 if any(phrase in user_request_lower for phrase in ['update my philosophy with', 'update my philosophy to', 'update my philisophy to']):
                     # Extract the actual philosophy content after "with:" or "to:"
                     philosophy_content = user_request.split(':', 1)[1].strip() if ':' in user_request else response
-                    
+
                     # Parse the natural language philosophy into new 2-field structure
                     extracted_data = {}
-                    
+
                     # Split content into core philosophy (foundational) and current priorities (specific)
                     # Look for structural/foundational elements vs specific current focuses
                     core_parts = []
                     priority_parts = []
-                    
+
                     sentences = philosophy_content.split('.')
                     for sentence in sentences:
                         sentence = sentence.strip()
                         if not sentence:
                             continue
-                            
+
                         # Core philosophy indicators (foundational approaches)
                         if any(word in sentence.lower() for word in ['machine-', 'cable-focused', 'joint safety', 'free weights', 'progressive overload', 'recovery']):
                             core_parts.append(sentence + '.')
@@ -978,14 +978,14 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                         else:
                             # Default to priorities for specific content
                             priority_parts.append(sentence + '.')
-                    
+
                     extracted_data['plan_philosophy'] = ' '.join(core_parts) if core_parts else philosophy_content[:len(philosophy_content)//2]
                     extracted_data['progression_strategy'] = ' '.join(priority_parts) if priority_parts else philosophy_content[len(philosophy_content)//2:]
-                    
+
                     extracted_data['reasoning'] = f"Updated with natural language philosophy from user using new 2-field structure"
                     print(f"🧠 Successfully parsed natural language philosophy into core philosophy + current priorities")
                     return extracted_data
-                
+
                 # Parse ChatGPT's structured response using new 2-field structure
                 lines = response.split('\n')
                 extracted_data = {}
@@ -994,45 +994,45 @@ Make sure to provide complete, updated versions of both sections, not just ackno
 
                 for line in lines:
                     line = line.strip()
-                    
+
                     # Look for section headers (more flexible matching)
                     if any(header in line.upper() for header in ['CORE_PHILOSOPHY:', 'CORE PHILOSOPHY:']):
                         # Save previous section
                         if current_section and current_content:
                             extracted_data[current_section] = ' '.join(current_content).strip()
-                        
+
                         current_section = 'plan_philosophy'
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
+
                     elif any(header in line.upper() for header in ['CURRENT_PLAN_PRIORITIES:', 'CURRENT PLAN PRIORITIES:', 'PLAN_PRIORITIES:', 'PRIORITIES:']):
                         # Save previous section  
                         if current_section and current_content:
                             extracted_data[current_section] = ' '.join(current_content).strip()
-                            
+
                         current_section = 'progression_strategy'
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
+
                     elif any(header in line.upper() for header in ['REASONING:', 'REASON:']):
                         # Save previous section
                         if current_section and current_content:
                             extracted_data[current_section] = ' '.join(current_content).strip()
-                            
+
                         current_section = 'reasoning'
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
+
                     # Legacy compatibility
                     elif 'TRAINING_PHILOSOPHY:' in line.upper() and not extracted_data.get('plan_philosophy'):
                         if current_section and current_content:
                             extracted_data[current_section] = ' '.join(current_content).strip()
                         current_section = 'plan_philosophy'
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
+
                     elif 'PROGRESSION_STRATEGY:' in line.upper() and not extracted_data.get('progression_strategy'):
                         if current_section and current_content:
                             extracted_data[current_section] = ' '.join(current_content).strip()
                         current_section = 'progression_strategy' 
                         current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-                        
+
                     else:
                         # Add to current section if we're in one
                         if current_section and line:
@@ -1048,7 +1048,7 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                     full_response = response.strip()
                     sentences = full_response.split('.')
                     mid_point = len(sentences) // 2
-                    
+
                     extracted_data['plan_philosophy'] = '. '.join(sentences[:mid_point]).strip() + '.'
                     extracted_data['progression_strategy'] = '. '.join(sentences[mid_point:]).strip()
 
@@ -1467,7 +1467,7 @@ def build_philosophy_update_context(prompt):
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
-        
+
         # Get current philosophy from database
         cursor.execute('''
             SELECT plan_philosophy, progression_strategy
@@ -1476,18 +1476,18 @@ def build_philosophy_update_context(prompt):
             ORDER BY created_date DESC
             LIMIT 1
         ''')
-        
+
         current_context = cursor.fetchone()
         conn.close()
-        
+
         if current_context:
             current_philosophy, current_priorities = current_context
-            
+
             context_info = "=== PHILOSOPHY UPDATE REQUEST ===\n"
             context_info += f"CURRENT PHILOSOPHY:\n"
             context_info += f"Core Philosophy: {current_philosophy or 'Not set'}\n"
             context_info += f"Current Plan Priorities: {current_priorities or 'Not set'}\n\n"
-            
+
             context_info += f"USER REQUEST: {prompt}\n\n"
             context_info += """Please parse the new philosophy from the user request and provide a structured response with these exact sections:
 
@@ -1496,13 +1496,13 @@ CURRENT_PLAN_PRIORITIES: [specific current focuses and priorities for this train
 REASONING: [brief explanation of changes made]
 
 Extract the philosophy content after the colon (:) in the user's message and structure it appropriately into these 2 sections."""
-            
+
             print(f"🧠 Built philosophy update context with current stored philosophy (2-field structure)")
             return context_info
         else:
             print(f"⚠️ No existing philosophy found for update")
             return "=== NO EXISTING PHILOSOPHY FOUND ===\nPlease provide the philosophy content and I'll help structure it.\n\n" + prompt
-            
+
     except Exception as e:
         print(f"Error building philosophy update context: {e}")
         return prompt
@@ -1534,7 +1534,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         'my wednesday', 'workouts i did', 'what workouts'
     ])
 
-    # CRITICAL FIX: Also check for follow-up historical requests
+    # CRITICAL: Also check for follow-up historical requests
     # If prompt contains day names AND historical intent exists, it's likely historical
     contains_day = any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
 
@@ -1653,7 +1653,7 @@ def get_grok_response_with_context(prompt, user_background=None):
 
         # Check for philosophy update before general intent analysis
         is_philosophy_update = any(phrase in prompt.lower() for phrase in ['update my philosophy to', 'update my philosophy with', 'update my philisophy to'])
-        
+
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
         context_info = build_smart_context(prompt, query_intent, user_background)
@@ -1665,7 +1665,6 @@ def get_grok_response_with_context(prompt, user_background=None):
             context_info += f"Detail Level: {ai_preferences.get('detail_level', 'concise')}\n"
             context_info += f"Format: {ai_preferences.get('format', 'bullet_points')}\n"
             context_info += f"Communication Style: {ai_preferences.get('communication_style', 'encouraging')}\n"
-            context_info += f"Technical Level: {ai_preferences.get('technical_level', 'beginner')}\n"
             context_info += f"IMPORTANT: Adapt your response tone, detail level, and format to match these preferences.\n"
 
         # Build context prompt
@@ -1692,7 +1691,7 @@ After your natural response, include this structured data:
 TRAINING_PHILOSOPHY: [the main philosophy text]
 WEEKLY_STRUCTURE: [reasoning about how the week is organized]
 PROGRESSION_STRATEGY: [approach to progressive overload]
-SPECIAL_CONSIDERATIONS: [any special notes, safety considerations, etc.]
+SPECIAL_CONSIDERATIONS: [any limitations, safety considerations, etc.]
 REASONING: [brief note about the update]
 
 TONE: Respond naturally and conversationally, then provide the structured sections for database parsing."""
@@ -1770,7 +1769,7 @@ IMPORTANT: The AI preferences shown in the context data below are the user's act
 
 Respond naturally as the user's embedded training partner while following the user's preferred communication style."""
 
-        # DEBUG: Print the system prompt and full prompt being sent to ChatGPT
+        # DEBUG: Print the system prompt and final prompt being sent to ChatGPT
         print("🤖 System prompt being sent:")
         print(system_prompt)
         print("=" * 80)
@@ -2436,7 +2435,7 @@ def chat_stream():
                                 datetime.now().strftime('%Y-%m-%d')
                             ))
                             print(f"🧠 Auto-updated training philosophy based on conversation using new 2-field structure")
-                            
+
                             # Add confirmation message to response
                             response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {philosophy_update.get('plan_philosophy', '')[:100]}...\n• **Current Priorities:** {philosophy_update.get('progression_strategy', '')[:100]}...\n\nCheck your Plan Philosophy page to see the full update!"
 
@@ -2529,7 +2528,7 @@ def chat_stream():
                     print(f"🤖 Detected {len(potential_actions)} potential auto-actions")
 
             except Exception as e:
-                print(f"⚠️ Failed to store conversation: {str(e)}")
+                print(f"Failed to store conversation: {str(e)}")
 
         except Exception as e:
             print(f"Chat stream error: {str(e)}")  # Debug log
@@ -2773,7 +2772,7 @@ def get_stored_context():
             metadata_columns = [description[0] for description in cursor.description]
 
             for row in exercise_results:
-                exercise_metadata.append(dict(zip(metadata_columns, row)))
+                metadata_data.append(dict(zip(metadata_columns, row)))
         except sqlite3.OperationalError as e:
             print(f"Error fetching exercise metadata: {e}")
 
@@ -2782,9 +2781,9 @@ def get_stored_context():
 
         return jsonify({
             'plan_context': plan_context,
-            'exercise_metadata': exercise_metadata,
+            'exercise_metadata': metadata_data,
             'context_count': len(plan_context) if plan_context else 0,
-            'metadata_count': len(exercise_metadata)
+            'metadata_count': len(metadata_data)
         })
 
     except Exception as e:
@@ -4048,90 +4047,70 @@ def save_workout():
         original_weight = data.get('original_weight', '')
         substitution_reason = data.get('substitution_reason', '')
 
+        # Handle complex exercise data
+        is_complex = data.get('is_complex', False)
+        complex_rounds = data.get('complex_rounds', [])
+
+        # Handle performance tracking data
+        performance_context = data.get('performance_context', '')
+        environmental_factors = data.get('environmental_factors', '')
+        difficulty_rating = data.get('difficulty_rating')
+        gym_location = data.get('gym_location', '')
+
         if not exercise_name:
             return jsonify({'status': 'error', 'message': 'Exercise name is required'})
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Build substitution context for notes if this was a substitution
-        substitution_context = ''
+        # Handle complex exercise formatting
+        if is_complex and complex_rounds:
+            # Format complex rounds for storage
+            complex_reps_data = []
+            for i, round_data in enumerate(complex_rounds, 1):
+                complex_reps_data.append(f"Round {i}: {round_data}")
+            final_reps = ' | '.join(complex_reps_data)
+            final_notes = f"{notes} [COMPLEX EXERCISE]" if notes else "[COMPLEX EXERCISE]"
+        else:
+            final_reps = reps
+            final_notes = notes
+
+        # Build comprehensive notes
+        comprehensive_notes = final_notes
         if original_exercise and substitution_reason:
-            # Store the substitution details in a structured way for Grok to understand
-            substitution_context = f" [SUBSTITUTED FROM: {original_exercise} (planned {original_weight}) -> {exercise_name} (actual {weight}) | REASON: {substitution_reason}]"
-            notes = (notes + substitution_context).strip()
+            comprehensive_notes += f" SUBSTITUTED FROM: {original_exercise} (planned: {original_weight}) - Reason: {substitution_reason}"
+        if performance_context:
+            comprehensive_notes += f" Performance: {performance_context}"
+        if environmental_factors:
+            comprehensive_notes += f" Environment: {environmental_factors}"
 
         cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, substitution_reason)
-            VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
-        ''', (exercise_name, sets, reps, weight, notes, date, substitution_reason))
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, 
+                                substitution_reason, performance_context, environmental_factors, 
+                                difficulty_rating, gym_location, day_completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (exercise_name, sets, final_reps, weight, comprehensive_notes, date,
+              substitution_reason, performance_context, environmental_factors,
+              difficulty_rating, gym_location, False))
 
-        # Remove newly_added flag for this exercise since it's been completed
-        # Check if exercise name is valid before proceeding
-        if exercise_name:
+        # Clear newly_added flag if this exercise was recently added to plan
+        try:
             cursor.execute('''
-                UPDATE weekly_plan
-                SET newly_added = FALSE
+                UPDATE weekly_plan 
+                SET newly_added = FALSE 
                 WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
             ''', (exercise_name,))
-
-            # Check if we actually updated any rows (meaning it was newly added)
-            if cursor.rowcount > 0:
-                print(f"🆕 {exercise_name} logged for the first time - cleared NEW flag")
-            else:
-                # Check if exercise exists in plan
-                plan_result = None
-                try:
-                    cursor.execute('SELECT newly_added FROM weekly_plan WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
-                    plan_result = cursor.fetchone()
-                except sqlite3.OperationalError as e:
-                    print(f"Error checking plan for {exercise_name}: {e}")
-
-                if plan_result:
-                    if plan_result[0]:
-                        print(f"⚠️ {exercise_name} still shows as NEW despite being logged before")
-                    else:
-                        print(f"📝 {exercise_name} logged (already completed before)")
-                else:
-                    print(f"📋 {exercise_name} logged as free exercise (not in weekly plan)")
-
-        # Update progression notes if there are performance notes (do this in the same transaction)
-        if notes:
-            try:
-                today_name = datetime.now().strftime('%A').lower()
-
-                # Analyze performance and generate progression note within the same transaction
-                if any(phrase in notes.lower() for phrase in ['couldn\'t hit', 'missed reps', 'failed', 'too hard']):
-                    progression_note = "Focus on completing all reps this week"
-                elif any(phrase in notes.lower() for phrase in ['easy', 'felt light', 'could do more']):
-                    progression_note = "Ready for weight increase next week"
-                elif any(phrase in notes.lower() for phrase in ['perfect', 'good', 'solid']):
-                    progression_note = "Maintain current intensity"
-                else:
-                    progression_note = ""
-
-                if progression_note:
-                    cursor.execute('''
-                        UPDATE weekly_plan
-                        SET progression_notes = ?
-                        WHERE LOWER(exercise_name) = LOWER(?) AND day_of_week = ?
-                    ''', (progression_note, exercise_name, today_name))
-
-                    if cursor.rowcount > 0:
-                        print(f"📈 Updated progression note for {exercise_name}: {progression_note}")
-                    else:
-                        print(f"⚠️ Exercise {exercise_name} not found in weekly plan for {today_name}")
-
-            except Exception as e:
-                print(f"Failed to update progression notes for {exercise_name}: {e}")
+        except sqlite3.OperationalError:
+            pass  # newly_added column might not exist in older databases
 
         conn.commit()
+        workout_id = cursor.lastrowid
         conn.close()
 
         return jsonify({
-            'status': 'success',
+            'status': 'success', 
             'message': 'Workout logged successfully',
-            'progression_analysis_available': True  # Signal that progression analysis can be triggered
+            'workout_id': workout_id
         })
 
     except Exception as e:
@@ -4584,7 +4563,7 @@ def update_philosophy():
             ORDER BY created_date DESC
             LIMIT 1
         ''')
-        
+
         current_data = cursor.fetchone()
         progression_strategy = current_data[0] if current_data else ''
         weekly_structure = current_data[1] if current_data else ''
@@ -4592,7 +4571,7 @@ def update_philosophy():
 
         # Delete existing entries and insert fresh one to ensure clean update
         cursor.execute('DELETE FROM plan_context WHERE user_id = 1')
-        
+
         # Insert the updated philosophy
         cursor.execute('''
             INSERT INTO plan_context
