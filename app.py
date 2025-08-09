@@ -918,8 +918,8 @@ Make sure to provide complete, updated versions of all sections, not just acknow
                 response = get_grok_response_with_context(rewrite_prompt)
 
                 # For natural language philosophy (like from ChatGPT), use intelligent parsing
-                if 'update my philosophy with' in user_request_lower:
-                    # Extract the actual philosophy content after "with:"
+                if any(phrase in user_request_lower for phrase in ['update my philosophy with', 'update my philosophy to', 'update my philisophy to']):
+                    # Extract the actual philosophy content after "with:" or "to:"
                     philosophy_content = user_request.split(':', 1)[1].strip() if ':' in user_request else response
                     
                     # Parse the natural language philosophy into structured sections
