@@ -1668,11 +1668,11 @@ def get_grok_response_with_context(prompt, user_background=None):
             context_info += f"Technical Level: {ai_preferences.get('technical_level', 'beginner')}\n"
             context_info += f"IMPORTANT: Adapt your response tone, detail level, and format to match these preferences.\n"
 
-        # Add critical instruction right before user message
-        context_info += f"\n\n🔥 CRITICAL: The above data is app context for reference only. IGNORE IT completely unless the user specifically asks about their data. Only respond to this actual user message below:\n\n"
+        # Build context prompt
+        context_prompt = context_info
 
-        # Build final prompt with smart context
-        full_prompt = context_info + prompt
+        # Build final prompt with critical instruction right before user message
+        full_prompt = context_prompt + f"\n\n🚫 CRITICAL INSTRUCTION: The above context data is for reference only. DO NOT reference any workout data, fitness context, or app information unless the user specifically asks about their data. Respond ONLY to this user message:\n\n{prompt}"
 
         # Adjust system prompt based on query type
         if is_philosophy_update:
