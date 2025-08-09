@@ -2265,6 +2265,7 @@ def chat_stream():
                     ''')
                     recent_responses = cursor.fetchall()
                     
+                    plan_change_executed = False
                     for prev_response in recent_responses:
                         if prev_response[0] and ('add' in prev_response[0].lower() or 'monday' in prev_response[0].lower()):
                             # Extract plan change from previous AI response
@@ -2290,7 +2291,7 @@ def chat_stream():
                                           'Added per user request for extra glute volume', 'grok_ai', True, datetime.now().strftime('%Y-%m-%d')))
                                     
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
-                                    response += "\n\n✅ **DONE!** I've added glute drive (3x12@90lbs) to your Monday workout as exercise #7. Check your Weekly Plan tab to see the update!"
+                                    plan_change_executed = True
                                     
                                     print("✅ Successfully added glute drive to Monday plan")
                                     break
@@ -2299,6 +2300,10 @@ def chat_stream():
                                     print(f"❌ Error executing plan change: {e}")
                                     response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
                             break
+                    
+                    # If we executed a plan change, return a simple confirmation without calling AI
+                    if plan_change_executed:
+                        response = "✅ **DONE!** Added glute drive (3x12@90lbs) to your Monday workout. Check your Weekly Plan tab to see the update!"
 
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, current_message)
