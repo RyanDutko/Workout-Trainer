@@ -668,9 +668,15 @@ function loadCurrentExercise() {
     document.getElementById('current-exercise-num').textContent = currentExerciseIndex + 1;
     document.getElementById('total-exercises').textContent = totalExercises;
 
+    // Safely extract exercise properties
+    const exerciseName = exercise.exercise_name || 'Unknown Exercise';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
+
     // Update exercise info
-    document.getElementById('exercise-name').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
-    document.getElementById('exercise-target').textContent = `${exercise.sets}x${exercise.reps} @ ${exercise.weight}`;
+    document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
+    document.getElementById('exercise-target').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
 
     // Determine if it's a complex exercise (simple heuristic: contains '/')
     const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
@@ -714,7 +720,11 @@ function loadRegularExerciseSets(exercise) {
     const setsContainer = document.getElementById('regularSetsContainer');
     setsContainer.innerHTML = '';
 
-    for (let i = 1; i <= exercise.sets; i++) {
+    // Safely extract reps value
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+
+    for (let i = 1; i <= targetSets; i++) {
         setsContainer.innerHTML += `
             <div class="row mb-2 align-items-center">
                 <div class="col-3">
@@ -722,14 +732,14 @@ function loadRegularExerciseSets(exercise) {
                 </div>
                 <div class="col-5">
                     <input type="number" class="form-control" id="set${i}Reps" 
-                           placeholder="${exercise.reps}" min="0" max="50">
+                           placeholder="${targetReps}" min="0" max="50">
                 </div>
                 <div class="col-4">
                     <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${exercise.reps}')" title="As planned">
-                            ${exercise.reps}
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${targetReps}')" title="As planned">
+                            ${targetReps}
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${parseInt(exercise.reps) + 1})" title="+1">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${getNumericReps(targetReps) + 1})" title="+1">
                             +1
                         </button>
                     </div>
@@ -804,9 +814,24 @@ function setReps(setNumber, reps) {
     document.getElementById(`set${setNumber}Reps`).value = reps;
 }
 
+function getNumericReps(repsString) {
+    // Handle different rep formats like "8-12", "8", etc.
+    if (!repsString) return 8; // default
+    
+    const repsStr = String(repsString);
+    if (repsStr.includes('-')) {
+        return parseInt(repsStr.split('-')[0]);
+    }
+    return parseInt(repsStr) || 8;
+}
+
 function quickFillAllSets(type) {
     const exercise = currentWorkoutPlan[currentExerciseIndex];
-    const plannedReps = parseInt(exercise.reps);
+    if (!exercise) return;
+    
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+    const plannedReps = getNumericReps(targetReps);
     let repsValue;
 
     switch(type) {
@@ -821,8 +846,11 @@ function quickFillAllSets(type) {
             break;
     }
 
-    for (let i = 1; i <= exercise.sets; i++) {
-        document.getElementById(`set${i}Reps`).value = repsValue;
+    for (let i = 1; i <= targetSets; i++) {
+        const input = document.getElementById(`set${i}Reps`);
+        if (input) {
+            input.value = repsValue;
+        }
     }
 }
 
@@ -1134,7 +1162,11 @@ function loadRegularPostExerciseSets(exercise) {
     const setsContainer = document.getElementById('regularSetsContainer');
     setsContainer.innerHTML = '';
 
-    for (let i = 1; i <= exercise.sets; i++) {
+    // Safely extract reps and sets values
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+
+    for (let i = 1; i <= targetSets; i++) {
         setsContainer.innerHTML += `
             <div class="row mb-2 align-items-center">
                 <div class="col-3">
@@ -1142,14 +1174,14 @@ function loadRegularPostExerciseSets(exercise) {
                 </div>
                 <div class="col-5">
                     <input type="number" class="form-control" id="postSet${i}Reps" 
-                           placeholder="${exercise.reps}" min="0" max="50">
+                           placeholder="${targetReps}" min="0" max="50">
                 </div>
                 <div class="col-4">
                     <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="postSetReps(${i}, '${exercise.reps}')" title="As planned">
-                            ${exercise.reps}
+                        <button type="button" class="btn btn-outline-success btn-sm" onclick="postSetReps(${i}, '${targetReps}')" title="As planned">
+                            ${targetReps}
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="postSetReps(${i}, ${parseInt(exercise.reps) + 1})" title="+1">
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="postSetReps(${i}, ${getNumericReps(targetReps) + 1})" title="+1">
                             +1
                         </button>
                     </div>
@@ -1220,7 +1252,11 @@ function postSetReps(setNumber, reps) {
 
 function postQuickFillAllSets(type) {
     const exercise = postWorkoutPlan[postCurrentExerciseIndex];
-    const plannedReps = parseInt(exercise.reps);
+    if (!exercise) return;
+    
+    const targetReps = exercise.reps || exercise.target_reps || '8';
+    const targetSets = exercise.sets || exercise.target_sets || 3;
+    const plannedReps = getNumericReps(targetReps);
     let repsValue;
 
     switch(type) {
@@ -1235,8 +1271,11 @@ function postQuickFillAllSets(type) {
             break;
     }
 
-    for (let i = 1; i <= exercise.sets; i++) {
-        document.getElementById(`postSet${i}Reps`).value = repsValue;
+    for (let i = 1; i <= targetSets; i++) {
+        const input = document.getElementById(`postSet${i}Reps`);
+        if (input) {
+            input.value = repsValue;
+        }
     }
 }
 
