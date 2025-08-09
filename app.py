@@ -1605,7 +1605,6 @@ APP CONTEXT AWARENESS:
             'rename', 'update my plan', 'can you update', 'change to', 'differentiate', 
             'update accordingly', 'modify my plan', 'change my plan', 'update the plan'
         ]):
-        ]):
             system_prompt = """You are the AI training assistant built into this fitness app. 
 
 CRITICAL: When the user asks to modify their plan (rename exercises, change weights, etc.), you MUST:
