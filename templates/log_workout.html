@@ -198,7 +198,7 @@
                         <div id="complexExerciseSection" class="mb-3" style="display: none;">
                             <div class="alert alert-info">
                                 <i class="fas fa-layer-group me-2"></i>
-                                <strong>Complex Exercise Detected!</strong> Enter each round as: movement reps@weight, movement reps@weight
+                                <strong>Complex Exercise Detected!</strong> Fill in the actual reps and weights you performed for each movement.
                             </div>
                             <div id="complexSetsContainer">
                                 <!-- Complex sets will be populated here -->
@@ -676,7 +676,15 @@ function loadCurrentExercise() {
 
     // Update exercise info
     document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
-    document.getElementById('exercise-target').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
+    
+    // Show different header for complex vs regular exercises
+    if (isComplex) {
+        document.getElementById('exercise-target').textContent = 'Complex Exercise';
+        document.getElementById('exercise-target').className = 'badge bg-warning fs-6';
+    } else {
+        document.getElementById('exercise-target').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
+        document.getElementById('exercise-target').className = 'badge bg-info fs-6';
+    }
 
     // Determine if it's a complex exercise (simple heuristic: contains '/')
     const isComplex = exercise.reps.includes('/') || exercise.reps.includes('@');
@@ -753,31 +761,95 @@ function loadComplexExerciseSets(exercise) {
     const complexSetsContainer = document.getElementById('complexSetsContainer');
     complexSetsContainer.innerHTML = '';
 
-    // Parse the complex exercise format: "movement reps@weight, movement reps@weight"
-    const rounds = exercise.reps.split(',');
-    rounds.forEach((round, roundIndex) => {
-        const parts = round.trim().split(' ');
-        const movement = parts.slice(0, -1).join(' '); // Movement can have multiple words
-        const repWeight = parts[parts.length - 1].split('@');
-        const reps = repWeight[0];
-        const weight = repWeight[1] ? repWeight[1] : '0lbs'; // Handle cases without explicit weight
+    // Parse the complex exercise structure - handle multiple formats
+    let complexStructure = parseComplexExerciseStructure(exercise.reps);
+    
+    if (complexStructure.length === 0) {
+        // Fallback to old format if parsing fails
+        complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
+        return;
+    }
 
+    complexStructure.forEach((item, index) => {
         complexSetsContainer.innerHTML += `
-            <div class="row mb-3 align-items-center border p-2 rounded">
+            <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
                 <div class="col-12 mb-2">
-                    <strong>Round ${roundIndex + 1}:</strong> ${movement}
+                    <strong>${item.roundLabel}:</strong> ${item.movement}
                 </div>
                 <div class="col-6">
-                    <label for="complexSet${roundIndex + 1}Reps" class="form-label">Reps</label>
-                    <input type="text" class="form-control" id="complexSet${roundIndex + 1}Reps" placeholder="${reps}">
+                    <label for="complexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
+                    <input type="number" class="form-control" id="complexMovement${index}Reps" 
+                           placeholder="${item.plannedReps}" min="0" max="50"
+                           value="${item.plannedReps}">
                 </div>
                 <div class="col-6">
-                    <label for="complexSet${roundIndex + 1}Weight" class="form-label">Weight</label>
-                    <input type="text" class="form-control" id="complexSet${roundIndex + 1}Weight" placeholder="${weight}">
+                    <label for="complexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
+                    <input type="text" class="form-control" id="complexMovement${index}Weight" 
+                           placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
                 </div>
             </div>
         `;
     });
+}
+
+function parseComplexExerciseStructure(repsString) {
+    // Parse different complex exercise formats
+    let structure = [];
+    
+    // Format 1: "10 slow bicep curls(20 lbs), 15 fast bicep curls(15 lbs), 10 hammer curls(15 lbs)"
+    // This appears to be the format from your bicep finisher rounds
+    if (repsString.includes('(') && repsString.includes(')')) {
+        const movements = repsString.split(',');
+        movements.forEach((movement, index) => {
+            const trimmed = movement.trim();
+            
+            // Extract reps, movement name, and weight
+            const repsMatch = trimmed.match(/^(\d+)\s+(.+?)\s*\((.+?)\)/);
+            if (repsMatch) {
+                const [, reps, movementName, weight] = repsMatch;
+                structure.push({
+                    roundLabel: `Movement ${index + 1}`,
+                    movement: movementName,
+                    plannedReps: reps,
+                    plannedWeight: weight
+                });
+            }
+        });
+    }
+    // Format 2: Your original "movement reps@weight" format
+    else if (repsString.includes('@')) {
+        const rounds = repsString.split(',');
+        rounds.forEach((round, roundIndex) => {
+            const parts = round.trim().split(' ');
+            const movement = parts.slice(0, -1).join(' ');
+            const repWeight = parts[parts.length - 1].split('@');
+            const reps = repWeight[0];
+            const weight = repWeight[1] ? repWeight[1] : '0lbs';
+
+            structure.push({
+                roundLabel: `Round ${roundIndex + 1}`,
+                movement: movement,
+                plannedReps: reps,
+                plannedWeight: weight
+            });
+        });
+    }
+    // Format 3: Multi-round complex (like your bicep finisher)
+    else if (repsString.toLowerCase().includes('round') || repsString.includes('/')) {
+        // Try to detect rounds and movements
+        // This would handle formats like "Round 1: 10 bicep curls / 15 fast curls / 10 hammer curls"
+        // We'll implement this as needed based on your specific formats
+        
+        // For now, treat as single complex movement
+        structure.push({
+            roundLabel: "Complex Movement",
+            movement: "Multi-movement exercise",
+            plannedReps: "varies",
+            plannedWeight: "varies"
+        });
+    }
+    
+    return structure;
 }
 
 
@@ -923,27 +995,44 @@ function logCurrentExercise() {
         let collectedWeight = [];
 
         if (isComplex) {
-            // For complex exercises, collect reps and weights from complexSetsContainer
-            const rounds = document.querySelectorAll('#complexSetsContainer .row');
+            // For complex exercises, collect reps and weights from all movement items
+            const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
             let allComplexFieldsFilled = true;
-            rounds.forEach((round, index) => {
-                const repsInput = round.querySelector(`#complexSet${index + 1}Reps`);
-                const weightInput = round.querySelector(`#complexSet${index + 1}Weight`);
+            let complexPerformanceData = [];
+            
+            movementItems.forEach((item, index) => {
+                const repsInput = item.querySelector(`#complexMovement${index}Reps`);
+                const weightInput = item.querySelector(`#complexMovement${index}Weight`);
 
                 if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
                     allComplexFieldsFilled = false;
-                    return; // Exit forEach if fields are missing
+                    return;
                 }
-                collectedReps.push(repsInput.value);
-                collectedWeight.push(weightInput.value);
+                
+                // Store detailed performance data
+                const movementLabel = item.querySelector('strong').textContent.replace(':', '');
+                const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
+                
+                complexPerformanceData.push({
+                    movement: movementName,
+                    reps: repsInput.value,
+                    weight: weightInput.value,
+                    label: movementLabel
+                });
+                
+                collectedReps.push(`${movementLabel}: ${repsInput.value}`);
+                collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
             });
 
             if (!allComplexFieldsFilled) {
-                alert('Please fill in reps and weight for all rounds of the complex exercise.');
+                alert('Please fill in reps and weight for all movements of the complex exercise.');
                 return;
             }
-            workoutData.reps_performed = collectedReps.join('/'); // Join with slash for complex
-            workoutData.weight_performed = collectedWeight.join('/'); // Join with slash for complex
+            
+            // Store both simple and detailed formats
+            workoutData.reps_performed = collectedReps.join(' | ');
+            workoutData.weight_performed = collectedWeight.join(' | ');
+            workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
         } else {
             // For regular exercises, collect reps from regularSetsContainer
             const setsContainer = document.getElementById('regularSetsContainer');
@@ -1207,26 +1296,30 @@ function loadComplexPostExerciseSets(exercise) {
     const complexSetsContainer = document.getElementById('complexSetsContainer');
     complexSetsContainer.innerHTML = '';
 
-    const rounds = exercise.reps.split(',');
-    rounds.forEach((round, roundIndex) => {
-        const parts = round.trim().split(' ');
-        const movement = parts.slice(0, -1).join(' ');
-        const repWeight = parts[parts.length - 1].split('@');
-        const reps = repWeight[0];
-        const weight = repWeight[1] ? repWeight[1] : '0lbs';
+    // Use the same parsing logic as live workout
+    let complexStructure = parseComplexExerciseStructure(exercise.reps);
+    
+    if (complexStructure.length === 0) {
+        complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
+        return;
+    }
 
+    complexStructure.forEach((item, index) => {
         complexSetsContainer.innerHTML += `
-            <div class="row mb-3 align-items-center border p-2 rounded">
+            <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
                 <div class="col-12 mb-2">
-                    <strong>Round ${roundIndex + 1}:</strong> ${movement}
+                    <strong>${item.roundLabel}:</strong> ${item.movement}
                 </div>
                 <div class="col-6">
-                    <label for="postComplexSet${roundIndex + 1}Reps" class="form-label">Reps</label>
-                    <input type="text" class="form-control" id="postComplexSet${roundIndex + 1}Reps" placeholder="${reps}">
+                    <label for="postComplexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
+                    <input type="number" class="form-control" id="postComplexMovement${index}Reps" 
+                           placeholder="${item.plannedReps}" min="0" max="50"
+                           value="${item.plannedReps}">
                 </div>
                 <div class="col-6">
-                    <label for="postComplexSet${roundIndex + 1}Weight" class="form-label">Weight</label>
-                    <input type="text" class="form-control" id="postComplexSet${roundIndex + 1}Weight" placeholder="${weight}">
+                    <label for="postComplexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
+                    <input type="text" class="form-control" id="postComplexMovement${index}Weight" 
+                           placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
                 </div>
             </div>
         `;
@@ -1347,26 +1440,41 @@ function logCurrentPostExercise() {
         let collectedWeight = [];
 
         if (isComplex) {
-            const rounds = document.querySelectorAll('#complexSetsContainer .row');
+            const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
             let allComplexFieldsFilled = true;
-            rounds.forEach((round, index) => {
-                const repsInput = round.querySelector(`#postComplexSet${index + 1}Reps`);
-                const weightInput = round.querySelector(`#postComplexSet${index + 1}Weight`);
+            let complexPerformanceData = [];
+            
+            movementItems.forEach((item, index) => {
+                const repsInput = item.querySelector(`#postComplexMovement${index}Reps`);
+                const weightInput = item.querySelector(`#postComplexMovement${index}Weight`);
 
                 if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
                     allComplexFieldsFilled = false;
                     return;
                 }
-                collectedReps.push(repsInput.value);
-                collectedWeight.push(weightInput.value);
+                
+                const movementLabel = item.querySelector('strong').textContent.replace(':', '');
+                const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
+                
+                complexPerformanceData.push({
+                    movement: movementName,
+                    reps: repsInput.value,
+                    weight: weightInput.value,
+                    label: movementLabel
+                });
+                
+                collectedReps.push(`${movementLabel}: ${repsInput.value}`);
+                collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
             });
 
             if (!allComplexFieldsFilled) {
-                alert('Please fill in reps and weight for all rounds of the complex exercise.');
+                alert('Please fill in reps and weight for all movements of the complex exercise.');
                 return;
             }
-            workoutData.reps_performed = collectedReps.join('/');
-            workoutData.weight_performed = collectedWeight.join('/');
+            
+            workoutData.reps_performed = collectedReps.join(' | ');
+            workoutData.weight_performed = collectedWeight.join(' | ');
+            workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
         } else {
             const setsContainer = document.getElementById('regularSetsContainer');
             const setInputs = setsContainer.querySelectorAll('input[type="number"]');

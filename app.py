@@ -281,7 +281,8 @@ def init_db():
         ('difficulty_rating', 'INTEGER'),
         ('gym_location', 'TEXT'),
         ('progression_notes', 'TEXT'),
-        ('day_completed', 'BOOLEAN DEFAULT FALSE')
+        ('day_completed', 'BOOLEAN DEFAULT FALSE'),
+        ('complex_exercise_data', 'TEXT')
     ]
 
     for column_name, column_def in workout_columns_to_add:
@@ -4050,6 +4051,7 @@ def save_workout():
         # Handle complex exercise data
         is_complex = data.get('is_complex', False)
         complex_rounds = data.get('complex_rounds', [])
+        complex_performance_data = data.get('complex_performance_data', '')
 
         # Handle performance tracking data
         performance_context = data.get('performance_context', '')
@@ -4071,6 +4073,10 @@ def save_workout():
                 complex_reps_data.append(f"Round {i}: {round_data}")
             final_reps = ' | '.join(complex_reps_data)
             final_notes = f"{notes} [COMPLEX EXERCISE]" if notes else "[COMPLEX EXERCISE]"
+        elif complex_performance_data:
+            # Handle the new detailed complex exercise data
+            final_reps = reps  # This should already be formatted from the frontend
+            final_notes = f"{notes} [COMPLEX EXERCISE - Detailed: {complex_performance_data}]" if notes else f"[COMPLEX EXERCISE - Detailed: {complex_performance_data}]"
         else:
             final_reps = reps
             final_notes = notes
@@ -4087,11 +4093,11 @@ def save_workout():
         cursor.execute('''
             INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, 
                                 substitution_reason, performance_context, environmental_factors, 
-                                difficulty_rating, gym_location, day_completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                difficulty_rating, gym_location, day_completed, complex_exercise_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (exercise_name, sets, final_reps, weight, comprehensive_notes, date,
               substitution_reason, performance_context, environmental_factors,
-              difficulty_rating, gym_location, False))
+              difficulty_rating, gym_location, False, complex_performance_data))
 
         # Clear newly_added flag if this exercise was recently added to plan
         try:
