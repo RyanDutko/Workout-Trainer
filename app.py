@@ -1503,6 +1503,26 @@ def build_smart_context(prompt, query_intent, user_background=None):
     # If prompt contains day names AND historical intent exists, it's likely historical
     contains_day = any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
     
+    # PLAN DISCUSSION OVERRIDE - check for plan-related keywords
+    plan_keywords = ['weekly plan', 'my plan', 'plan changes', 'modify plan', 'update plan', 'change plan',
+                     'philosophy', 'training philosophy', 'approach', 'progression strategy']
+    is_plan_discussion = any(keyword in prompt.lower() for keyword in plan_keywords)
+    
+    # PHILOSOPHY DISCUSSION - check for philosophy keywords
+    philosophy_keywords = ['philosophy', 'training philosophy', 'approach', 'training approach', 
+                          'my philosophy', 'plan philosophy', 'training strategy']
+    is_philosophy_discussion = any(keyword in prompt.lower() for keyword in philosophy_keywords)
+    
+    # Route plan discussions to plan context
+    if is_plan_discussion and not is_workout_history_request:
+        print(f"🎯 Override: Detected plan discussion - routing to plan context")
+        return build_plan_context()
+    
+    # Route philosophy discussions to general context with philosophy data
+    if is_philosophy_discussion and not is_workout_history_request:
+        print(f"🎯 Override: Detected philosophy discussion - routing to general context with philosophy")
+        return build_general_context(prompt, user_background)
+    
     # If historical intent exists AND (clear workout history request OR contains day), use historical
     if all_intents.get('historical', 0) > 0 and (is_workout_history_request or contains_day):
         print(f"🎯 Override: Detected workout history request despite primary intent '{actual_intent}' - historical score: {all_intents.get('historical', 0)}")

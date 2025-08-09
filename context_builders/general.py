@@ -1,56 +1,58 @@
-
 import sqlite3
 
 def build_general_context(prompt, user_background=None):
-    """Build minimal context for general chat"""
+    """Build general context for non-specific queries"""
     print("🔍 Building general context")
-    
-    context_info = ""
-    
-    # Basic user info
-    if user_background:
-        if user_background.get('primary_goal'):
-            context_info += f"User's Goal: {user_background['primary_goal']}\n"
-        if user_background.get('fitness_level'):
-            context_info += f"Fitness Level: {user_background['fitness_level']}\n"
 
     conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
-    
-    context_info += "\n=== BASIC INFO ===\n"
+
+    context_info = "\n=== GENERAL FITNESS CONTEXT ===\n"
+
+    # Add user background if available
+    if user_background:
+        context_info += f"User Goal: {user_background.get('primary_goal', 'Not specified')}\n"
+        context_info += f"Experience Level: {user_background.get('fitness_level', 'Not specified')}\n"
+        if user_background.get('years_training'):
+            context_info += f"Training Experience: {user_background['years_training']} years\n"
+
+    # Check if this is a philosophy discussion and add philosophy context
+    philosophy_keywords = ['philosophy', 'training philosophy', 'approach', 'training approach']
+    if any(keyword in prompt.lower() for keyword in philosophy_keywords):
+        try:
+            cursor.execute('''
+                SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
+                FROM plan_context
+                WHERE user_id = 1
+                ORDER BY created_date DESC
+                LIMIT 1
+            ''')
+            philosophy_data = cursor.fetchone()
+
+            if philosophy_data:
+                philosophy, weekly_structure, progression_strategy, special_considerations = philosophy_data
+                context_info += "\n=== YOUR TRAINING PHILOSOPHY ===\n"
+                if philosophy:
+                    context_info += f"Core Philosophy: {philosophy}\n"
+                if weekly_structure:
+                    context_info += f"Weekly Structure: {weekly_structure}\n"
+                if progression_strategy:
+                    context_info += f"Progression Strategy: {progression_strategy}\n"
+                if special_considerations:
+                    context_info += f"Special Considerations: {special_considerations}\n"
+        except Exception as e:
+            print(f"Error fetching philosophy: {e}")
+
+    # Add basic weekly plan overview
+    cursor.execute('SELECT COUNT(DISTINCT day_of_week) FROM weekly_plan')
+    training_days = cursor.fetchone()[0] or 0
+    context_info += f"Current Training Schedule: {training_days} days per week\n"
+
+    # Add recent activity summary
     cursor.execute('SELECT COUNT(*) FROM workouts WHERE date_logged >= date("now", "-7 days")')
-    recent_count = cursor.fetchone()[0]
-    context_info += f"Workouts this week: {recent_count}\n"
+    recent_workouts = cursor.fetchone()[0] or 0
+    context_info += f"Recent Activity: {recent_workouts} workouts logged this week\n"
 
-    # Include weekly plan if query mentions days or exercises
-    if any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']) or any(word in prompt.lower() for word in ['plan', 'schedule', 'workout', 'exercise']):
-        cursor.execute('''
-            SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order
-            FROM weekly_plan
-            ORDER BY
-                CASE day_of_week
-                    WHEN 'monday' THEN 1
-                    WHEN 'tuesday' THEN 2
-                    WHEN 'wednesday' THEN 3
-                    WHEN 'thursday' THEN 4
-                    WHEN 'friday' THEN 5
-                    WHEN 'saturday' THEN 6
-                    WHEN 'sunday' THEN 7
-                END, exercise_order
-        ''')
-        weekly_plan = cursor.fetchall()
-        if weekly_plan:
-            context_info += "\n=== WEEKLY PLAN ===\n"
-            current_day = ""
-            for row in weekly_plan:
-                day, exercise, sets, reps, weight, order = row
-                if day != current_day:
-                    if current_day:
-                        context_info += "\n"
-                    context_info += f"\n{day.upper()}:\n"
-                    current_day = day
-                context_info += f"  {order}. {exercise}: {sets}x{reps}@{weight}\n"
-
-    print(f"✅ Built general context")
+    print("✅ Built general context")
     conn.close()
     return context_info
