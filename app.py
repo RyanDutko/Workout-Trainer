@@ -988,7 +988,7 @@ Make sure to provide complete, updated versions of both sections, not just ackno
 
                 # Get Grok's structured rewrite
                 # progression_analysis = get_grok_response_with_context(rewrite_prompt, user_background) # Grok API call
-                response = get_grok_response_with_context(rewrite_prompt)
+                response = get_grok_response_with_context(rewrite_prompt, user_background)
 
                 # For natural language philosophy (like from ChatGPT), use intelligent parsing for new 2-field structure
                 if any(phrase in user_request_lower for phrase in ['update my philosophy with', 'update my philosophy to', 'update my philisophy to']):
@@ -1528,7 +1528,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
     else:
         return build_general_context(prompt, user_background)
 
-def get_grok_response_with_context(prompt, user_background=None):
+def get_grok_response_with_context(prompt, user_background=None, conversation_context=None):
     """Context-aware Grok response with smart context selection"""
     try:
         # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
@@ -1559,6 +1559,10 @@ def get_grok_response_with_context(prompt, user_background=None):
         # Build context prompt
         context_prompt = context_info
 
+        # Add conversation context if available
+        if conversation_context:
+            context_prompt += f"\n\n=== RECENT CONVERSATION ===\n{conversation_context}\n"
+        
         # Build final prompt with critical instruction right before user message
         full_prompt = context_prompt + f"\n\n🚫 CRITICAL INSTRUCTION: The above context data is for reference only. DO NOT reference any workout data, fitness context, or app information unless the user specifically asks about their data. Respond ONLY to this user message:\n\n{prompt}"
 
@@ -2093,8 +2097,16 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # SIMPLIFIED: No conversation history context - each message is independent
-            response = get_grok_response_with_context(message, user_background)
+            # Parse conversation history for context
+            conversation_context = None
+            if conv_history and len(conv_history.strip()) > 0:
+                # Get last few exchanges for context
+                messages = conv_history.strip().split('\n\n')
+                recent_messages = messages[-4:]  # Last 2 user-AI exchanges
+                conversation_context = '\n\n'.join(recent_messages)
+            
+            # Pass conversation context to AI
+            response = get_grok_response_with_context(message, user_background, conversation_context)
             print(f"AI response received: {len(response)} characters")  # Debug log
 
             # Stream the response
