@@ -158,14 +158,53 @@ class AIService:
                 })
         
         elif intent == 'plan_discussion':
-            # Look for plan modifications
-            if any(word in ai_response.lower() for word in ['modify', 'change', 'update', 'add', 'remove']):
+            # Look for complex exercise additions
+            if 'rounds' in ai_response.lower() or 'finisher' in ai_response.lower():
+                actions.append({
+                    'type': 'add_complex_exercise',
+                    'data': self._parse_complex_exercise_from_response(ai_response)
+                })
+            # Look for regular plan modifications
+            elif any(word in ai_response.lower() for word in ['modify', 'change', 'update', 'add', 'remove']):
                 actions.append({
                     'type': 'plan_modification_suggested',
                     'data': {'suggestion': ai_response}
                 })
         
         return actions
+    
+    def _parse_complex_exercise_from_response(self, ai_response: str) -> Dict[str, Any]:
+        """Parse complex exercise details from AI response"""
+        import re
+        
+        # Look for exercise name
+        exercise_match = re.search(r'(bicep.*?finisher|.*?rounds)', ai_response.lower())
+        exercise_name = exercise_match.group(1) if exercise_match else 'complex exercise'
+        
+        # Look for movement patterns like "10 slow curls, 15 fast curls, 10 hammer curls"
+        movement_pattern = r'(\d+)\s+([^,]+?)(?:,|$)'
+        movements = re.findall(movement_pattern, ai_response)
+        
+        # Look for weights pattern like "20/15/15lbs"
+        weight_pattern = r'(\d+/\d+/\d+)\s*(?:lbs?|kg)'
+        weight_match = re.search(weight_pattern, ai_response)
+        
+        if movements and weight_match:
+            weights = weight_match.group(1).split('/')
+            return {
+                'exercise_name': exercise_name,
+                'type': 'rounds',
+                'movements': [{'name': movement.strip(), 'reps': reps, 'weight': f"{weights[i] if i < len(weights) else weights[0]}lbs"} 
+                             for i, (reps, movement) in enumerate(movements)],
+                'total_rounds': 2,  # Default
+                'structure': 'rounds'
+            }
+        
+        return {
+            'exercise_name': exercise_name,
+            'type': 'rounds',
+            'structure': 'complex exercise - needs manual setup'
+        }
     
     def save_conversation(self, user_id: int, message: str, ai_response_data: Dict[str, Any]):
         """Save conversation for context and analysis"""
