@@ -2187,6 +2187,9 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
+            # Analyze query intent first (needed for smart context detection)
+            query_intent = analyze_query_intent(message, None)
+
             # Smart conversation context detection - only send when relevant
             conversation_context = None
             if conv_history and len(conv_history.strip()) > 0 and should_include_conversation_context(message, query_intent):
@@ -2214,12 +2217,11 @@ def chat_stream():
                 # Generate session ID for conversation grouping
                 session_id = str(uuid.uuid4())[:8]
 
-                # Simplified intent detection without conversation context
-                intent_analysis = analyze_query_intent(message, None)
-                detected_intent = intent_analysis['intent']
-                confidence_score = intent_analysis['confidence']
-                potential_actions = intent_analysis.get('actions', [])
-                detected_entities = intent_analysis.get('entities', [])
+                # Use the intent analysis we already performed
+                detected_intent = query_intent['intent']
+                confidence_score = query_intent['confidence']
+                potential_actions = query_intent.get('actions', [])
+                detected_entities = query_intent.get('entities', [])
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
