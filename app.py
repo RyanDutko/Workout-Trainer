@@ -909,6 +909,12 @@ def should_include_conversation_context(message, query_intent):
         # Multi-intent scenarios
         actual_intent == 'multi_intent',
         
+        # Questions about suggestions or recommendations (clearly follow-ups)
+        any(phrase in message_lower for phrase in ['is this smart', 'is that good', 'does that make sense', 'should i', 'would that work']),
+        
+        # Exercise-related questions with day references (likely plan follow-ups)
+        ('i already' in message_lower and any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
+        
         # Short messages that likely need context
         len(message.strip()) < 20 and not message_lower.strip() in ['hello', 'hi', 'help', 'thanks', 'thank you']
     ]
@@ -918,16 +924,13 @@ def should_include_conversation_context(message, query_intent):
         # Simple greetings
         message_lower.strip() in ['hello', 'hi', 'hey', 'thanks', 'thank you'],
         
-        # Complete standalone questions
-        message_lower.startswith('what ') and len(message) > 30,
-        message_lower.startswith('how ') and len(message) > 30,
-        message_lower.startswith('show me') and len(message) > 20,
+        # Complete standalone questions that don't reference previous suggestions
+        (message_lower.startswith('what ') and len(message) > 30 and 'is this' not in message_lower),
+        (message_lower.startswith('how ') and len(message) > 30 and 'is this' not in message_lower),
+        (message_lower.startswith('show me') and len(message) > 20 and 'is this' not in message_lower),
         
         # Historical queries (they build their own context)
         actual_intent == 'historical',
-        
-        # General chat
-        actual_intent == 'general' and len(message) > 20 and not any(context_needed_scenarios)
     ]
     
     # Check if context is explicitly not needed
@@ -938,9 +941,18 @@ def should_include_conversation_context(message, query_intent):
     if any(context_needed_scenarios):
         return True
     
-    # Default: include context for unclear cases (better safe than sorry for now)
-    # We can fine-tune this as we see patterns
-    return len(message.strip()) < 50  # Short messages likely need context
+    # CRITICAL: For "general" intent messages that mention exercises and days, likely need context
+    if actual_intent == 'general':
+        # If message mentions exercises AND days AND seems like a follow-up question
+        mentions_exercise = any(ex in message_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder', 'workout'])
+        mentions_days = any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
+        seems_like_question = any(word in message_lower for word in ['?', 'smart', 'good', 'right', 'correct', 'okay', 'should', 'would'])
+        
+        if mentions_exercise and mentions_days and seems_like_question:
+            return True
+    
+    # Default: include context for shorter unclear messages
+    return len(message.strip()) < 50
 
 def parse_preference_updates_from_conversation(ai_response, user_request):
     """Parse conversation to detect AI preference changes"""
@@ -1550,6 +1562,22 @@ def build_smart_context(prompt, query_intent, user_background=None):
     
     if any(indicator in prompt_lower for indicator in plan_modification_indicators):
         print(f"🎯 Detected plan modification request - routing to plan context")
+        return build_plan_context()
+
+    # PLAN-RELATED FOLLOW-UP QUESTIONS (even if marked as "general")
+    plan_followup_indicators = [
+        # Questions about suggestions
+        ('is this smart' in prompt_lower and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
+        ('is that good' in prompt_lower and any(ex in prompt_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder'])),
+        # References to existing plan
+        ('i already do' in prompt_lower and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
+        ('i already have' in prompt_lower and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
+        # Questions about exercise placement
+        (any(ex in prompt_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder']) and '?' in prompt and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']))
+    ]
+    
+    if any(plan_followup_indicators):
+        print(f"🎯 Detected plan-related follow-up question - routing to plan context")
         return build_plan_context()
 
     # CLEAR HISTORICAL REQUESTS 
