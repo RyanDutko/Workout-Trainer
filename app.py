@@ -1446,84 +1446,47 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
     # Extract the actual intent string if it's in a dict format
     actual_intent = query_intent
-    all_intents = {}
     if isinstance(query_intent, dict):
         actual_intent = query_intent.get('intent', 'general')
-        all_intents = query_intent.get('all_intents', {})
 
-    # SPECIAL CASE: If this involves workout history even with negation/correction
-    # Check if this is really about showing workout data despite other intents
-    is_workout_history_request = any(phrase in prompt.lower() for phrase in [
-        'show me tuesday', 'show me wednesday', 'show me monday', 'show me thursday', 'show me friday',
-        'what did i do on', 'my tuesday workout', 'my wednesday workout', 'my monday workout',
-        'tuesday instead', 'wednesday instead', 'monday instead', 'what i did on wednesday',
-        'my wednesday', 'workouts i did', 'what workouts'
-    ])
+    prompt_lower = prompt.lower()
 
-    # CRITICAL: Also check for follow-up historical requests
-    # If prompt contains day names AND historical intent exists, it's likely historical
-    contains_day = any(day in prompt.lower() for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
-
-    # HISTORICAL WORKOUT REQUESTS - check for these FIRST before plan keywords
-    historical_workout_phrases = ['what i did on', 'show me what i did', 'my workout on', 'my recent logs',
-                                  'recent workout', 'what did i do on', 'my tuesday workout', 'my friday workout',
-                                  'my monday workout', 'my wednesday workout', 'my thursday workout',
-                                  'show me my logs', 'recent friday logs', 'recent monday logs']
-    is_historical_workout_request = any(phrase in prompt.lower() for phrase in historical_workout_phrases)
-
-    # PLAN DISCUSSION OVERRIDE - check for plan-related keywords (but not if it's clearly historical)
-    plan_keywords = ['weekly plan', 'my plan', 'plan changes', 'modify plan', 'update plan', 'change plan',
-                     'philosophy', 'training philosophy', 'approach', 'progression strategy']
-    is_plan_discussion = any(keyword in prompt.lower() for keyword in plan_keywords) and not is_historical_workout_request
-
-    # PHILOSOPHY DISCUSSION - check for philosophy keywords
-    philosophy_keywords = ['philosophy', 'training philosophy', 'approach', 'training approach',
-                          'my philosophy', 'plan philosophy', 'training strategy']
-    is_philosophy_discussion = any(keyword in prompt.lower() for keyword in philosophy_keywords) and not is_historical_workout_request
-
-    # SPECIFIC PLAN VIEW REQUESTS - these should use plan context even if they mention days
-    specific_plan_requests = ['show me my monday plan', 'show me my tuesday plan', 'show me my wednesday plan',
-                             'show me my thursday plan', 'show me my friday plan', 'what is my monday plan',
-                             'what is my tuesday plan', 'monday plan', 'tuesday plan', 'wednesday plan']
-    is_specific_plan_request = any(request in prompt.lower() for request in specific_plan_requests)
-
-    # PRIORITY 1: Historical workout requests (highest priority)
-    if is_historical_workout_request or is_workout_history_request:
-        print(f"🎯 Override: Detected historical workout request - routing to historical context")
-        return build_historical_context(prompt)
-
-    # COMBINED CONTEXT: If user mentions BOTH plan AND recent logs, provide both contexts
-    if (is_plan_discussion or is_specific_plan_request) and (is_workout_history_request or is_historical_workout_request):
-        print(f"🎯 Override: Detected COMBINED plan + history request - providing both contexts")
-        plan_context = build_plan_context()
-        historical_context = build_historical_context(prompt)
-        return plan_context + "\n\n" + historical_context
-
-    # PHILOSOPHY UPDATES - Special handling for "update my philosophy" requests (HIGHEST PRIORITY)
-    philosophy_update_phrases = ['update my philosophy to', 'update my philosophy with', 'update my philisophy to', 'update my philosophy', 'change my philosophy', 'modify my philosophy']
-    if any(phrase in prompt.lower() for phrase in philosophy_update_phrases):
-        print(f"🎯 Override: Detected philosophy UPDATE request - building philosophy context")
-        return build_philosophy_update_context(prompt)
-
-    # Check if intent analysis detected philosophy_update
-    if actual_intent == 'philosophy_update':
-        print(f"🎯 Override: Intent analysis detected philosophy update - building philosophy context")
-        return build_philosophy_update_context(prompt)
-
-    # Route plan discussions to plan context (including specific plan requests)
-    if is_plan_discussion or is_specific_plan_request:
-        print(f"🎯 Override: Detected plan discussion/request - routing to plan context")
+    # CLEAR PLAN MODIFICATION REQUESTS - highest priority
+    plan_modification_indicators = [
+        'add to my', 'add a workout to', 'add an exercise to', 'add to the',
+        'modify my plan', 'change my plan', 'update my plan',
+        'weekly plan', 'thursday plan', 'monday plan', 'tuesday plan'
+    ]
+    
+    if any(indicator in prompt_lower for indicator in plan_modification_indicators):
+        print(f"🎯 Detected plan modification request - routing to plan context")
         return build_plan_context()
 
-    # Route philosophy discussions to general context with philosophy data
-    if is_philosophy_discussion:
-        print(f"🎯 Override: Detected philosophy discussion - routing to general context with philosophy")
-        return build_general_context(prompt, user_background)
-
-    # If historical intent exists AND contains day references, use historical
-    if all_intents.get('historical', 0) > 0 and contains_day:
-        print(f"🎯 Override: Detected workout history request with day reference - historical score: {all_intents.get('historical', 0)}")
+    # CLEAR HISTORICAL REQUESTS 
+    historical_indicators = [
+        'what did i do', 'show me what i did', 'my workout on', 'what i did on',
+        'show me my logs', 'recent workout', 'my recent', 'last workout'
+    ]
+    
+    if any(indicator in prompt_lower for indicator in historical_indicators):
+        print(f"🎯 Detected historical request - routing to historical context")
         return build_historical_context(prompt)
+
+    # PHILOSOPHY UPDATES
+    philosophy_update_phrases = ['update my philosophy', 'change my philosophy', 'modify my philosophy']
+    if any(phrase in prompt_lower for phrase in philosophy_update_phrases):
+        print(f"🎯 Detected philosophy update request - building philosophy context")
+        return build_philosophy_update_context(prompt)
+
+    # FALLBACK: Use original intent detection
+    if actual_intent == 'historical':
+        return build_historical_context(prompt)
+    elif actual_intent == 'progression':
+        return build_progression_context()
+    elif actual_intent in ['plan_modification', 'plan_discussion']:
+        return build_plan_context()
+    elif actual_intent == 'philosophy_update':
+        return build_philosophy_update_context(prompt)
 
     # Route to focused context builders
     if actual_intent == 'historical':
