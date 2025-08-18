@@ -177,10 +177,12 @@ class Workout:
         conn = self.db.get_connection()
         cursor = conn.cursor()
         
+        # Flexible exercise structure that can handle any complexity
         exercise_data = {
-            'exercises': exercises,
+            'exercises': exercises,  # Each exercise can have its own structure
             'notes': notes,
-            'logged_at': datetime.now().isoformat()
+            'logged_at': datetime.now().isoformat(),
+            'workout_type': self._detect_workout_type(exercises)
         }
         
         cursor.execute('''
@@ -192,6 +194,143 @@ class Workout:
         conn.commit()
         conn.close()
         return workout_id
+    
+    def _detect_workout_type(self, exercises: List[Dict[str, Any]]) -> str:
+        """Detect if this is a simple, complex, or circuit workout"""
+
+
+class WorkoutTemplateGenerator:
+    """Generate workout logging templates based on exercise structure"""
+    
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def generate_logging_template(self, exercise_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate appropriate logging interface based on exercise type"""
+        
+        exercise_type = exercise_data.get('type', 'simple')
+        
+        if exercise_type == 'simple':
+            return {
+                'template_type': 'simple',
+                'fields': [
+                    {'name': 'sets_completed', 'type': 'number', 'placeholder': exercise_data.get('sets', 3)},
+                    {'name': 'reps_per_set', 'type': 'list', 'sets': exercise_data.get('sets', 3)},
+                    {'name': 'weight_used', 'type': 'text', 'placeholder': exercise_data.get('weight', 'bodyweight')}
+                ]
+            }
+        
+        elif exercise_type == 'rounds':
+            movements = exercise_data.get('movements', [])
+            return {
+                'template_type': 'rounds',
+                'total_rounds': exercise_data.get('total_rounds', 2),
+                'movements': [
+                    {
+                        'name': movement.get('name', ''),
+                        'planned_reps': movement.get('reps', ''),
+                        'planned_weight': movement.get('weight', ''),
+                        'input_fields': {
+                            'actual_reps': {'type': 'number', 'per_round': True},
+                            'actual_weight': {'type': 'text', 'per_round': True}
+                        }
+                    } for movement in movements
+                ]
+            }
+        
+        elif exercise_type == 'circuit':
+            return {
+                'template_type': 'circuit',
+                'circuit_rounds': exercise_data.get('circuit_rounds', 3),
+                'movements': exercise_data.get('movements', []),
+                'timing': exercise_data.get('timing', 'reps_based')  # or 'time_based'
+            }
+        
+        else:
+            # Custom template generation
+            return {
+                'template_type': 'custom',
+                'structure': exercise_data.get('structure', {}),
+                'fields': self._generate_custom_fields(exercise_data)
+            }
+    
+    def _generate_custom_fields(self, exercise_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate input fields for completely custom exercise structures"""
+        # AI can analyze the structure and create appropriate fields
+        return [
+            {'name': 'performance_notes', 'type': 'textarea', 'placeholder': 'Describe how you performed this exercise'},
+            {'name': 'intensity', 'type': 'slider', 'min': 1, 'max': 10},
+            {'name': 'custom_data', 'type': 'json', 'structure': exercise_data.get('structure', {})}
+        ]
+
+
+        for exercise in exercises:
+            if exercise.get('type') in ['rounds', 'circuit', 'complex', 'superset']:
+                return 'complex'
+        return 'simple'
+    
+    def create_exercise_structure(self, exercise_type: str, name: str, **kwargs) -> Dict[str, Any]:
+        """Create flexible exercise structures for any workout style"""
+        
+        if exercise_type == 'simple':
+            return {
+                'name': name,
+                'type': 'simple',
+                'sets': kwargs.get('sets', 3),
+                'reps': kwargs.get('reps', '8-12'),
+                'weight': kwargs.get('weight', 'bodyweight'),
+                'rest': kwargs.get('rest', '60s')
+            }
+        
+        elif exercise_type == 'rounds':
+            return {
+                'name': name,
+                'type': 'rounds',
+                'total_rounds': kwargs.get('rounds', 2),
+                'movements': kwargs.get('movements', []),
+                'rest_between_rounds': kwargs.get('rest', '2min'),
+                'structure': 'rounds'  # e.g., "2 rounds of: 10 slow curls + 15 fast curls + 10 hammer curls"
+            }
+        
+        elif exercise_type == 'circuit':
+            return {
+                'name': name,
+                'type': 'circuit',
+                'movements': kwargs.get('movements', []),
+                'circuit_rounds': kwargs.get('rounds', 3),
+                'rest_between_circuits': kwargs.get('rest', '90s'),
+                'structure': 'circuit'
+            }
+        
+        elif exercise_type == 'superset':
+            return {
+                'name': name,
+                'type': 'superset',
+                'exercises': kwargs.get('exercises', []),
+                'sets': kwargs.get('sets', 3),
+                'rest_between_supersets': kwargs.get('rest', '90s'),
+                'structure': 'superset'
+            }
+        
+        elif exercise_type == 'tempo':
+            return {
+                'name': name,
+                'type': 'tempo',
+                'sets': kwargs.get('sets', 3),
+                'reps': kwargs.get('reps', 8),
+                'weight': kwargs.get('weight', '135lbs'),
+                'tempo': kwargs.get('tempo', '3-1-2-1'),  # eccentric-pause-concentric-pause
+                'rest': kwargs.get('rest', '90s')
+            }
+        
+        else:
+            # Completely custom structure
+            return {
+                'name': name,
+                'type': 'custom',
+                'structure': kwargs.get('structure', {}),
+                'description': kwargs.get('description', '')
+            }
     
     def get_recent_workouts(self, user_id: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
         conn = self.db.get_connection()
