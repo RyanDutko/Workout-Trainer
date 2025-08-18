@@ -880,6 +880,68 @@ def remove_text_and_cleanup(original_text, target_text):
 
 
 
+def should_include_conversation_context(message, query_intent):
+    """Determine if recent conversation context is needed for this message"""
+    message_lower = message.lower()
+    
+    # Extract intent string if it's in dict format
+    actual_intent = query_intent
+    if isinstance(query_intent, dict):
+        actual_intent = query_intent.get('intent', 'general')
+    
+    # Always include context for these scenarios
+    context_needed_scenarios = [
+        # Follow-up responses and corrections
+        message_lower.strip() in ['yes', 'no', 'confirm', 'cancel', 'go ahead', 'do it', 'make the change'],
+        
+        # References that need context
+        any(ref in message_lower for ref in ['it', 'that', 'this exercise', 'the one', 'instead', 'other']),
+        
+        # Continuation words
+        any(word in message_lower for word in ['also', 'additionally', 'but', 'however', 'actually', 'wait']),
+        
+        # Negation/correction phrases
+        any(phrase in message_lower for phrase in ['no not', 'i meant', 'actually i', 'correction', 'change that']),
+        
+        # Plan modification intents (need context for what was discussed)
+        actual_intent == 'plan_modification',
+        
+        # Multi-intent scenarios
+        actual_intent == 'multi_intent',
+        
+        # Short messages that likely need context
+        len(message.strip()) < 20 and not message_lower.strip() in ['hello', 'hi', 'help', 'thanks', 'thank you']
+    ]
+    
+    # Skip context for these scenarios (standalone queries)
+    context_not_needed_scenarios = [
+        # Simple greetings
+        message_lower.strip() in ['hello', 'hi', 'hey', 'thanks', 'thank you'],
+        
+        # Complete standalone questions
+        message_lower.startswith('what ') and len(message) > 30,
+        message_lower.startswith('how ') and len(message) > 30,
+        message_lower.startswith('show me') and len(message) > 20,
+        
+        # Historical queries (they build their own context)
+        actual_intent == 'historical',
+        
+        # General chat
+        actual_intent == 'general' and len(message) > 20 and not any(context_needed_scenarios)
+    ]
+    
+    # Check if context is explicitly not needed
+    if any(context_not_needed_scenarios):
+        return False
+    
+    # Check if context is needed
+    if any(context_needed_scenarios):
+        return True
+    
+    # Default: include context for unclear cases (better safe than sorry for now)
+    # We can fine-tune this as we see patterns
+    return len(message.strip()) < 50  # Short messages likely need context
+
 def parse_preference_updates_from_conversation(ai_response, user_request):
     """Parse conversation to detect AI preference changes"""
     try:
@@ -2125,9 +2187,9 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # Parse conversation history for context
+            # Smart conversation context detection - only send when relevant
             conversation_context = None
-            if conv_history and len(conv_history.strip()) > 0:
+            if conv_history and len(conv_history.strip()) > 0 and should_include_conversation_context(message, query_intent):
                 # Get last few exchanges for context (both user and AI messages)
                 messages = conv_history.strip().split('\n\n')
                 recent_messages = messages[-6:]  # Last 3 complete user-AI exchanges
