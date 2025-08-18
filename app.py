@@ -880,6 +880,34 @@ def remove_text_and_cleanup(original_text, target_text):
 
 
 
+def parse_preference_updates_from_conversation(ai_response, user_request):
+    """Parse conversation to detect AI preference changes"""
+    try:
+        combined_text = f"{user_request} {ai_response}".lower()
+        
+        preference_updates = {}
+        
+        # Look for tone updates
+        if 'change tone to' in combined_text or 'tone to' in combined_text:
+            tone_keywords = ['casual', 'formal', 'motivational', 'friendly', 'professional']
+            for tone in tone_keywords:
+                if tone in combined_text:
+                    preference_updates['grok_tone'] = tone
+                    break
+        
+        # Look for detail level updates
+        if 'more detailed' in combined_text or 'brief' in combined_text or 'concise' in combined_text:
+            if 'more detailed' in combined_text:
+                preference_updates['grok_detail_level'] = 'detailed'
+            elif 'brief' in combined_text or 'concise' in combined_text:
+                preference_updates['grok_detail_level'] = 'brief'
+        
+        return preference_updates if preference_updates else None
+        
+    except Exception as e:
+        print(f"Error parsing preference updates: {e}")
+        return None
+
 def parse_philosophy_update_from_conversation(ai_response, user_request):
     """Parse conversation to detect philosophy/approach changes"""
     try:
@@ -2100,9 +2128,9 @@ def chat_stream():
             # Parse conversation history for context
             conversation_context = None
             if conv_history and len(conv_history.strip()) > 0:
-                # Get last few exchanges for context
+                # Get last few exchanges for context (both user and AI messages)
                 messages = conv_history.strip().split('\n\n')
-                recent_messages = messages[-4:]  # Last 2 user-AI exchanges
+                recent_messages = messages[-6:]  # Last 3 complete user-AI exchanges
                 conversation_context = '\n\n'.join(recent_messages)
             
             # Pass conversation context to AI
