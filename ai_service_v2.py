@@ -215,6 +215,9 @@ class AIServiceV2:
     
     def get_ai_response(self, message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
         """Get AI response using function calling for precise intent detection"""
+        MAX_TOOL_CALLS = 5  # Prevent infinite loops
+        MAX_ITERATIONS = 3  # Limit conversation iterations
+        
         try:
             # Build conversation messages
             messages = [
@@ -231,6 +234,7 @@ Key principles:
 - If logging workouts, confirm the details with the user
 - For plan modifications, explain your reasoning
 - Use the user's actual data to give personalized advice
+- IMPORTANT: Only call tools when necessary. Don't call the same tool repeatedly.
 
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
@@ -260,13 +264,33 @@ When users mention workouts they've completed, use the log_workout tool. When th
             
             # If AI wants to use tools, execute them
             if tool_calls:
+                # SAFEGUARD: Check for too many tool calls
+                if len(tool_calls) > MAX_TOOL_CALLS:
+                    return {
+                        'response': f"I'm trying to call too many tools at once ({len(tool_calls)}). Let me simplify my response.",
+                        'tools_used': [],
+                        'tool_results': [],
+                        'success': False,
+                        'error': 'Too many tool calls attempted'
+                    }
+                
                 # Add the AI's response with tool calls to the conversation
                 messages.append(response_message)
+                
+                # Track which tools we've called to prevent duplicates
+                tools_called = set()
                 
                 # Execute each tool call
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
                     function_args = json.loads(tool_call.function.arguments)
+                    
+                    # SAFEGUARD: Prevent calling the same tool with same args repeatedly
+                    tool_signature = f"{function_name}:{json.dumps(function_args, sort_keys=True)}"
+                    if tool_signature in tools_called:
+                        print(f"⚠️ Skipping duplicate tool call: {function_name}")
+                        continue
+                    tools_called.add(tool_signature)
                     
                     print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
                     
@@ -286,7 +310,8 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     model="gpt-4",
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=1000
+                    max_tokens=1000,
+                    tool_choice="none"  # SAFEGUARD: Force AI to respond, no more tools
                 )
                 
                 ai_response = final_response.choices[0].message.content
@@ -319,6 +344,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
     
     def _execute_tool(self, function_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool function and return the result"""
+        import time
+        start_time = time.time()
+        TOOL_TIMEOUT = 10  # 10 second timeout per tool
+        
         try:
             if function_name == "get_weekly_plan":
                 return self._get_weekly_plan(args.get('day', 'all'))
@@ -376,6 +405,13 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 
         except Exception as e:
             return {"error": f"Tool execution failed: {str(e)}"}
+        
+        finally:
+            # SAFEGUARD: Check if tool took too long
+            execution_time = time.time() - start_time
+            if execution_time > TOOL_TIMEOUT:
+                print(f"⚠️ Tool {function_name} took {execution_time:.2f}s (timeout: {TOOL_TIMEOUT}s)")
+                return {"error": f"Tool execution timeout after {execution_time:.2f}s"}
     
     def _get_weekly_plan(self, day: str) -> Dict[str, Any]:
         """Get weekly plan data"""
