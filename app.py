@@ -1541,6 +1541,14 @@ def build_smart_context(prompt, query_intent, user_background=None):
     from context_builders.plan import build_plan_context
     from context_builders.progression import build_progression_context
     from context_builders.general import build_general_context
+    
+    # Import V2 AI service for testing
+    try:
+        from ai_service_v2 import AIServiceV2
+        from models import Database
+        ai_service_v2 = AIServiceV2(Database())
+    except ImportError:
+        ai_service_v2 = None
 
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
     print(f"🔍 Intent: {query_intent}")
@@ -2186,6 +2194,31 @@ def debug_tuesday_data():
 def chat():
     return render_template('chat.html')
 
+@app.route('/chat_v2_test', methods=['POST'])
+def chat_v2_test():
+    """Test endpoint for V2 AI service with function calling"""
+    if not ai_service_v2:
+        return jsonify({'error': 'V2 AI service not available'})
+    
+    user_message = request.form.get('message', '')
+    
+    try:
+        # Test the V2 AI service
+        result = ai_service_v2.get_ai_response(user_message)
+        
+        return jsonify({
+            'success': True,
+            'response': result.get('response', ''),
+            'tools_used': result.get('tools_used', []),
+            'tool_results': result.get('tool_results', [])
+        })
+    
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
 @app.route('/chat_stream', methods=['POST'])
 def chat_stream():
     # Capture ALL form data immediately at route entry to avoid Flask context issues
@@ -2752,6 +2785,10 @@ def analytics():
 @app.route('/analyze_plan')
 def analyze_plan():
     return render_template('analyze_plan.html')
+
+@app.route('/test_v2')
+def test_v2():
+    return render_template('test_v2.html')
 
 @app.route('/get_stored_context')
 def get_stored_context():
