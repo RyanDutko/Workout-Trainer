@@ -1,4 +1,3 @@
-
 import os
 import json
 from typing import Dict, List, Any, Optional
@@ -13,7 +12,7 @@ class AIServiceV2:
         self.user = User(db)
         self.training_plan = TrainingPlan(db)
         self.workout = Workout(db)
-        
+
         # Define the tools/functions that the AI can call
         self.tools = [
             {
@@ -212,12 +211,12 @@ class AIServiceV2:
                 }
             }
         ]
-    
+
     def get_ai_response(self, message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
         """Get AI response using function calling for precise intent detection"""
         MAX_TOOL_CALLS = 5  # Prevent infinite loops
         MAX_ITERATIONS = 3  # Limit conversation iterations
-        
+
         try:
             # Build conversation messages
             messages = [
@@ -236,19 +235,30 @@ Key principles:
 - Use the user's actual data to give personalized advice
 - IMPORTANT: Only call tools when necessary. Don't call the same tool repeatedly.
 
+DATE HANDLING:
+- When users mention dates like "August 14th", convert to current year format (2025-08-14)
+- For workout history queries, use the exact date they specify
+- If they ask about performance vs plan, call BOTH get_workout_history AND get_weekly_plan
+
+TOOL USAGE GUIDELINES:
+- For "how did I perform on [date]": use get_workout_history with that specific date
+- For "how does it compare to my plan": use get_weekly_plan to get the planned workout
+- For performance comparisons: call both tools to compare actual vs planned
+- Don't call the same tool multiple times with different dates unless specifically asked
+
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
             ]
-            
+
             # Add conversation history if provided
             if conversation_history:
                 for conv in conversation_history[-3:]:  # Last 3 exchanges for context
                     messages.append({"role": "user", "content": conv['user_message']})
                     messages.append({"role": "assistant", "content": conv['ai_response']})
-            
+
             # Add current message
             messages.append({"role": "user", "content": message})
-            
+
             # Make the API call with tools
             response = self.client.chat.completions.create(
                 model="gpt-4",
@@ -258,10 +268,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 temperature=0.7,
                 max_tokens=1000
             )
-            
+
             response_message = response.choices[0].message
             tool_calls = response_message.tool_calls
-            
+
             # If AI wants to use tools, execute them
             if tool_calls:
                 # SAFEGUARD: Check for too many tool calls
@@ -273,30 +283,30 @@ When users mention workouts they've completed, use the log_workout tool. When th
                         'success': False,
                         'error': 'Too many tool calls attempted'
                     }
-                
+
                 # Add the AI's response with tool calls to the conversation
                 messages.append(response_message)
-                
+
                 # Track which tools we've called to prevent duplicates
                 tools_called = set()
-                
+
                 # Execute each tool call
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
                     function_args = json.loads(tool_call.function.arguments)
-                    
+
                     # SAFEGUARD: Prevent calling the same tool with same args repeatedly
                     tool_signature = f"{function_name}:{json.dumps(function_args, sort_keys=True)}"
                     if tool_signature in tools_called:
                         print(f"⚠️ Skipping duplicate tool call: {function_name}")
                         continue
                     tools_called.add(tool_signature)
-                    
+
                     print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
-                    
+
                     # Execute the function
                     tool_result = self._execute_tool(function_name, function_args)
-                    
+
                     # Add tool result to conversation
                     messages.append({
                         "tool_call_id": tool_call.id,
@@ -304,7 +314,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
                         "name": function_name,
                         "content": json.dumps(tool_result)
                     })
-                
+
                 # Get final response from AI after processing tool results
                 final_response = self.client.chat.completions.create(
                     model="gpt-4",
@@ -314,16 +324,16 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     max_tokens=1000,
                     tool_choice="none"  # SAFEGUARD: Force AI to respond, no more tools
                 )
-                
+
                 ai_response = final_response.choices[0].message.content
-                
+
                 return {
                     'response': ai_response,
                     'tools_used': [tc.function.name for tc in tool_calls],
                     'tool_results': [self._execute_tool(tc.function.name, json.loads(tc.function.arguments)) for tc in tool_calls],
                     'success': True
                 }
-            
+
             else:
                 # No tools needed, return direct response
                 return {
@@ -332,7 +342,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     'tool_results': [],
                     'success': True
                 }
-                
+
         except Exception as e:
             print(f"⚠️ AI Service V2 error: {str(e)}")
             return {
@@ -342,37 +352,82 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 'success': False,
                 'error': str(e)
             }
-    
+
     def _execute_tool(self, function_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool function and return the result"""
         import time
         start_time = time.time()
         TOOL_TIMEOUT = 10  # 10 second timeout per tool
-        
+
         try:
             if function_name == "get_weekly_plan":
                 return self._get_weekly_plan(args.get('day', 'all'))
-            
+
             elif function_name == "get_workout_history":
+                # Adjust date parameter for the specific query type
+                if 'date' in args and args['date'] and not args['date'].startswith("2025"): # Assuming current year is 2025
+                    # Attempt to parse and reformat if it looks like a month/day
+                    try:
+                        # Extract month and day from the input string if it's not already YYYY-MM-DD
+                        if '/' in args['date'] or ' ' in args['date']:
+                            # Try parsing common formats if they exist and don't look like YYYY-MM-DD
+                            parts = args['date'].split() # e.g., "August 14th"
+                            if len(parts) >= 2:
+                                month_str = parts[0]
+                                day_str = "".join(filter(str.isdigit, parts[1]))
+                                
+                                # Convert month name to number
+                                month_map = {
+                                    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+                                    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+                                }
+                                month = month_map.get(month_str.lower())
+                                day = int(day_str)
+
+                                if month and day:
+                                    args['date'] = f"2025-{month:02d}-{day:02d}" # Use current year (2025)
+                                else:
+                                     # If parsing fails, use original but log a warning, or default to days_back
+                                    print(f"Warning: Could not parse date '{args['date']}'. Using default date handling.")
+                                    # Fallback to days_back if date parsing fails and no specific date is provided
+                                    if 'date' not in args or not args['date']:
+                                        args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
+                            else:
+                                # If parsing fails, use original but log a warning, or default to days_back
+                                print(f"Warning: Could not parse date '{args['date']}'. Using default date handling.")
+                                # Fallback to days_back if date parsing fails and no specific date is provided
+                                if 'date' not in args or not args['date']:
+                                    args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
+                        else: # If it's not YYYY-MM-DD and not containing '/' or ' ', assume it's something else
+                            print(f"Warning: Unexpected date format '{args['date']}'. Using default date handling.")
+                            if 'date' not in args or not args['date']:
+                                args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
+
+                    except Exception as date_err:
+                        print(f"Error parsing date '{args['date']}': {date_err}. Using default date handling.")
+                        # Fallback to days_back if date parsing fails and no specific date is provided
+                        if 'date' not in args or not args['date']:
+                            args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
+
                 return self._get_workout_history(
                     date=args.get('date'),
                     exercise=args.get('exercise'),
                     days_back=args.get('days_back', 7),
                     limit=args.get('limit', 10)
                 )
-            
+
             elif function_name == "get_user_profile":
                 return self._get_user_profile()
-            
+
             elif function_name == "get_training_philosophy":
                 return self._get_training_philosophy()
-            
+
             elif function_name == "get_progression_data":
                 return self._get_progression_data(
                     exercise=args.get('exercise'),
                     weeks_back=args.get('weeks_back', 4)
                 )
-            
+
             elif function_name == "log_workout":
                 return self._log_workout(
                     exercise_name=args['exercise_name'],
@@ -382,7 +437,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     notes=args.get('notes', ''),
                     date=args.get('date', datetime.now().strftime('%Y-%m-%d'))
                 )
-            
+
             elif function_name == "modify_weekly_plan":
                 return self._modify_weekly_plan(
                     action=args['action'],
@@ -393,32 +448,32 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     weight=args.get('weight'),
                     reasoning=args.get('reasoning', '')
                 )
-            
+
             elif function_name == "update_training_philosophy":
                 return self._update_training_philosophy(
                     core_philosophy=args['core_philosophy'],
                     current_priorities=args.get('current_priorities', ''),
                     reasoning=args.get('reasoning', '')
                 )
-            
+
             else:
                 return {"error": f"Unknown function: {function_name}"}
-                
+
         except Exception as e:
             return {"error": f"Tool execution failed: {str(e)}"}
-        
+
         finally:
             # SAFEGUARD: Check if tool took too long
             execution_time = time.time() - start_time
             if execution_time > TOOL_TIMEOUT:
                 print(f"⚠️ Tool {function_name} took {execution_time:.2f}s (timeout: {TOOL_TIMEOUT}s)")
                 return {"error": f"Tool execution timeout after {execution_time:.2f}s"}
-    
+
     def _get_weekly_plan(self, day: str) -> Dict[str, Any]:
         """Get weekly plan data"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         if day == 'all':
             cursor.execute('''
                 SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
@@ -441,10 +496,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 WHERE day_of_week = ?
                 ORDER BY exercise_order
             ''', (day,))
-        
+
         results = cursor.fetchall()
         conn.close()
-        
+
         plan_data = []
         for row in results:
             plan_data.append({
@@ -456,17 +511,17 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 'order': row[5],
                 'notes': row[6] or ''
             })
-        
+
         return {"plan": plan_data, "total_exercises": len(plan_data)}
-    
+
     def _get_workout_history(self, date: str = None, exercise: str = None, days_back: int = 7, limit: int = 10) -> Dict[str, Any]:
         """Get workout history with optional filtering"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         query = "SELECT exercise_name, sets, reps, weight, date_logged, notes FROM workouts WHERE 1=1"
         params = []
-        
+
         if date:
             query += " AND date_logged = ?"
             params.append(date)
@@ -474,18 +529,18 @@ When users mention workouts they've completed, use the log_workout tool. When th
             cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
             query += " AND date_logged >= ?"
             params.append(cutoff_date)
-        
+
         if exercise:
             query += " AND LOWER(exercise_name) LIKE LOWER(?)"
             params.append(f"%{exercise}%")
-        
+
         query += " ORDER BY date_logged DESC, id DESC LIMIT ?"
         params.append(limit)
-        
+
         cursor.execute(query, params)
         results = cursor.fetchall()
         conn.close()
-        
+
         workouts = []
         for row in results:
             workouts.append({
@@ -496,24 +551,24 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 'date': row[4],
                 'notes': row[5] or ''
             })
-        
+
         return {"workouts": workouts, "total_found": len(workouts)}
-    
+
     def _get_user_profile(self) -> Dict[str, Any]:
         """Get user profile and preferences"""
         profile = self.user.get_profile()
         ai_prefs = self.user.get_ai_preferences()
-        
+
         return {
             "profile": profile,
             "ai_preferences": ai_prefs
         }
-    
+
     def _get_training_philosophy(self) -> Dict[str, Any]:
         """Get current training philosophy"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
             FROM plan_context
@@ -521,10 +576,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
             ORDER BY created_date DESC
             LIMIT 1
         ''')
-        
+
         result = cursor.fetchone()
         conn.close()
-        
+
         if result:
             return {
                 "core_philosophy": result[0] or '',
@@ -532,16 +587,16 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 "weekly_structure": result[2] or '',
                 "special_considerations": result[3] or ''
             }
-        
+
         return {"message": "No training philosophy set yet"}
-    
+
     def _get_progression_data(self, exercise: str = None, weeks_back: int = 4) -> Dict[str, Any]:
         """Get progression data for exercises"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         cutoff_date = (datetime.now() - timedelta(weeks=weeks_back)).strftime('%Y-%m-%d')
-        
+
         if exercise:
             cursor.execute('''
                 SELECT date_logged, weight, sets, reps
@@ -557,10 +612,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 GROUP BY exercise_name
                 ORDER BY latest_date DESC
             ''', (cutoff_date,))
-        
+
         results = cursor.fetchall()
         conn.close()
-        
+
         progression_data = []
         for row in results:
             if exercise:
@@ -578,26 +633,26 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     'sets': row[3],
                     'reps': row[4]
                 })
-        
+
         return {"progression_data": progression_data}
-    
+
     def _log_workout(self, exercise_name: str, sets: int, reps: str, weight: str, notes: str = '', date: str = None) -> Dict[str, Any]:
         """Log a workout entry"""
         if not date:
             date = datetime.now().strftime('%Y-%m-%d')
-        
+
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
-            
+
             # Check if this exact workout was already logged today to prevent duplicates
             cursor.execute('''
                 SELECT COUNT(*) FROM workouts 
                 WHERE LOWER(exercise_name) = LOWER(?) AND sets = ? AND reps = ? AND weight = ? AND date_logged = ?
             ''', (exercise_name, sets, reps, weight, date))
-            
+
             existing_count = cursor.fetchone()[0]
-            
+
             if existing_count > 0:
                 print(f"⚠️ Duplicate workout detected for {exercise_name} {sets}x{reps}@{weight} on {date}")
                 return {
@@ -605,32 +660,32 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     "error": "Duplicate workout detected",
                     "message": f"This exact workout for {exercise_name} was already logged today"
                 }
-            
+
             # Insert workout using the same method as the main app
             cursor.execute('''
                 INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (exercise_name, sets, reps, weight, notes, date, False))
-            
+
             workout_id = cursor.lastrowid
             print(f"✅ V2 AI Service logged workout ID {workout_id}: {exercise_name} {sets}x{reps}@{weight}")
-            
+
             # Clear newly_added flag if this exercise was recently added to plan
             cursor.execute('''
                 UPDATE weekly_plan 
                 SET newly_added = FALSE 
                 WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
             ''', (exercise_name,))
-            
+
             conn.commit()
             conn.close()
-            
+
             return {
                 "success": True,
                 "workout_id": workout_id,
                 "message": f"Logged {exercise_name}: {sets}x{reps}@{weight} on {date}"
             }
-            
+
         except Exception as e:
             print(f"❌ V2 AI Service workout logging error: {str(e)}")
             return {
@@ -638,25 +693,25 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 "error": f"Database error: {str(e)}",
                 "message": f"Failed to log {exercise_name}"
             }
-    
+
     def _modify_weekly_plan(self, action: str, day: str, exercise_name: str, sets: int = None, reps: str = None, weight: str = None, reasoning: str = '') -> Dict[str, Any]:
         """Modify the weekly plan"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         if action == "add":
             # Get next order for the day
             cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
             next_order = cursor.fetchone()[0]
-            
+
             cursor.execute('''
                 INSERT INTO weekly_plan
                 (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'ai_v2', TRUE, ?)
             ''', (day, exercise_name, sets or 3, reps or '8-12', weight or 'bodyweight', next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
-            
+
             message = f"Added {exercise_name} to {day}: {sets or 3}x{reps or '8-12'}@{weight or 'bodyweight'}"
-        
+
         elif action == "update":
             cursor.execute('''
                 UPDATE weekly_plan
@@ -666,37 +721,37 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     notes = ?
                 WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (sets, reps, weight, reasoning, day, exercise_name))
-            
+
             message = f"Updated {exercise_name} on {day}"
-        
+
         elif action == "remove":
             cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
             message = f"Removed {exercise_name} from {day}"
-        
+
         rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
-        
+
         return {
             "success": rows_affected > 0,
             "message": message,
             "rows_affected": rows_affected
         }
-    
+
     def _update_training_philosophy(self, core_philosophy: str, current_priorities: str = '', reasoning: str = '') -> Dict[str, Any]:
         """Update training philosophy"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             INSERT OR REPLACE INTO plan_context
             (user_id, plan_philosophy, progression_strategy, created_by_ai, creation_reasoning, created_date, updated_date)
             VALUES (1, ?, ?, TRUE, ?, ?, ?)
         ''', (core_philosophy, current_priorities, reasoning, datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d')))
-        
+
         conn.commit()
         conn.close()
-        
+
         return {
             "success": True,
             "message": "Training philosophy updated successfully"
