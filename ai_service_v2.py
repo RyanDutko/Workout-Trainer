@@ -240,19 +240,22 @@ DATE HANDLING:
 - For workout history queries, use the exact date they specify
 
 TOOL USAGE GUIDELINES - READ CAREFULLY:
-- For queries asking about performance on a date: use get_workout_history with that date
-- For queries asking about plans: use get_weekly_plan
-- **CRITICAL**: If the user asks ANYTHING about comparing performance to plan (like "how does it compare to my plan"), you MUST call BOTH tools:
-  1. get_workout_history (to get what they actually did)
-  2. get_weekly_plan (to get what was planned)
-- Don't call the same tool multiple times with identical arguments
-- Each tool call should have a distinct purpose
+- **CRITICAL RULE**: If ANY query mentions BOTH performance/history AND plan/comparison, you MUST call EXACTLY TWO tools:
+  1. get_workout_history (to get actual performance data)
+  2. get_weekly_plan (to get the planned workouts)
+- NEVER call the same tool function multiple times in a single response
+- Each tool call must serve a distinct, unique purpose
 
-COMPARISON QUERY PATTERNS (require BOTH tools):
-- "how did I perform... and how does it compare to my plan"
-- "how does my workout compare to my plan"
-- "did I follow my plan on [date]"
-- Any question about actual vs planned workouts
+MANDATORY DUAL TOOL PATTERNS:
+- "how did I perform on [date] and how does it compare to my plan" → get_workout_history + get_weekly_plan
+- "how does my workout compare to my plan" → get_workout_history + get_weekly_plan  
+- "did I follow my plan on [date]" → get_workout_history + get_weekly_plan
+- Any query asking about actual vs planned workouts → get_workout_history + get_weekly_plan
+
+SINGLE TOOL PATTERNS:
+- "show me my weekly plan" → get_weekly_plan (ONCE ONLY)
+- "what did I do on [date]" → get_workout_history (ONCE ONLY)
+- "show my history" → get_workout_history (ONCE ONLY)
 
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
@@ -299,8 +302,8 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 # Add the AI's response with tool calls to the conversation
                 messages.append(response_message)
 
-                # Track which tools we've called to prevent duplicates
-                tools_called = set()
+                # Track which tools we've called to prevent ALL duplicates
+                functions_called = set()
                 tool_results_for_response = []
 
                 # Execute each tool call
@@ -308,13 +311,13 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     function_name = tool_call.function.name
                     function_args = json.loads(tool_call.function.arguments)
 
-                    # SAFEGUARD: Prevent calling the same tool with same args repeatedly
-                    tool_signature = f"{function_name}:{json.dumps(function_args, sort_keys=True)}"
-                    if tool_signature in tools_called:
-                        print(f"⚠️ Skipping duplicate tool call: {function_name} with args {function_args}")
+                    # STRICT SAFEGUARD: Prevent calling the same FUNCTION twice (regardless of args)
+                    if function_name in functions_called:
+                        print(f"⚠️ BLOCKED duplicate function call: {function_name} - already called this function")
+                        print(f"   Args would have been: {function_args}")
                         continue
-                    tools_called.add(tool_signature)
-
+                    
+                    functions_called.add(function_name)
                     print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
 
                     # Execute the function
@@ -343,7 +346,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
 
                 return {
                     'response': ai_response,
-                    'tools_used': list(tools_called),  # Only show actually executed tools
+                    'tools_used': list(functions_called),  # Only show actually executed functions
                     'tool_results': tool_results_for_response,
                     'success': True
                 }
