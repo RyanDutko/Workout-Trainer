@@ -1,0 +1,119 @@
+Please implement OpenAI tool-calling with minimal prompt and reliable multi-tool behavior. Do not refactor unrelated code. Show unified diffs only.
+
+1) API call settings
+
+Use tool_choice="auto".
+
+Keep system prompt short (see below).
+
+Add a compact planner loop with guardrails:
+
+MAX_TOOL_CALLS = 5
+
+Reject duplicate consecutive calls to the same tool with identical args.
+
+If loop cap is reached, return a friendly fallback.
+
+2) Tools to define (schemas + handlers)
+
+A) Composite tool to avoid brittle multi-tool choreography
+
+compare_workout_to_plan({ "date": "YYYY-MM-DD", "day": "string (optional)" })
+
+Internally:
+
+Query workouts for the given date (or most recent matching day if only day).
+
+Query weekly_plan for that day.
+
+Return JSON:
+
+{
+  "criteria": { "date": "...", "day": "..." },
+  "plan": [{ "exercise":"", "sets":0, "reps":0, "weight":0, "order":1 }],
+  "actual": [{ "exercise":"", "sets":0, "reps":0, "weight":0, "notes":"" }],
+  "diff": [{ "exercise":"", "status":"matched|missing|extra|modified", "details":"" }]
+}
+
+
+Description (important): “Use to answer any question that compares actual performance to planned workouts (followed the plan, vs/versus, compliance, differences). Returns plan + actual + diff.”
+
+B) Keep simple, single-source tools as well
+
+get_logs_by_day_or_date({ "day":"string (optional)", "date":"YYYY-MM-DD (optional)", "limit":"integer (optional, default 100)" })
+Description: “Retrieve actual logged workouts for a specific calendar date or most recent matching weekday.”
+
+get_weekly_plan({ "day":"string (optional)" })
+Description: “Retrieve planned exercises; pass day to get a slice or omit for full plan.”
+
+get_user_profile({})
+Description: “User goal/level and latest plan philosophy (newest first).”
+
+3) System prompt (keep it short)
+You are a coaching assistant inside a fitness app.
+Ground all factual answers in tool results. 
+For history/plan/comparison questions, call the appropriate tool(s) first.
+If tools return no data, say so plainly. Do not invent.
+When the user suggests a goal change, propose an update (JSON), do not write.
+Prefer concise, actionable answers citing dates and exact numbers.
+
+4) Tool descriptions carry the “when to use”
+
+Put the “comparison = use compare_workout_to_plan” guidance in the tool description, not in the system prompt.
+
+Avoid long system prompt logic trees. The schemas + descriptions should be enough with tool_choice="auto".
+
+5) Planner loop guardrails (server-side)
+
+Pseudocode:
+
+MAX_TOOL_CALLS = 5
+seen = set()  # (tool_name, json.dumps(sorted(args.items())))
+for i in range(MAX_TOOL_CALLS):
+    resp = openai.chat.completions.create(..., tools=TOOLS, tool_choice="auto", messages=messages)
+    if has_tool_call(resp):
+        name, args = parse_tool_call(resp)
+        key = (name, stable_args_key(args))
+        if key in seen:
+            messages.append({"role":"assistant","content":"Tool already called with same arguments; please proceed to answer."})
+            continue
+        seen.add(key)
+        result = run_tool(name, args)
+        messages.append(tool_result_message(name, result))
+        continue
+    else:
+        return final_assistant_message(resp)
+# safety fallback
+return "I tried multiple times to gather data. Here's what I have so far... (and/or ask a clarifying question)."
+
+6) Acceptance tests (show console prints)
+
+“Did I follow my plan on 2025-08-05?”
+
+Calls compare_workout_to_plan once.
+
+Reply includes plan vs actual with diff.
+
+“What did I do last Tuesday?”
+
+Calls get_logs_by_day_or_date with day="tuesday".
+
+Reply lists real exercises with date.
+
+“Show Friday plan.”
+
+Calls get_weekly_plan with day="friday".
+
+No invented items.
+
+“I want to focus more on legs.”
+
+No DB writes. Returns a small proposal JSON (e.g., { "type": "philosophy_update", "new_goal": "increase lower-body mass" }) and asks to confirm.
+
+7) Constraints
+
+Do not refactor unrelated code or schemas.
+
+Add handlers near the chat route (same file) unless it’s cleaner to create a tools.py—but keep diffs small.
+
+Show unified diffs only.
