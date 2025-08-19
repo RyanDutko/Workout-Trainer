@@ -94,16 +94,25 @@ class AIServiceV2:
         MAX_TOOL_CALLS = 5
 
         try:
-            # Build conversation messages
+            # Get current date and time for context
+            current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            current_year = datetime.now().year
+
             messages = [
                 {
                     "role": "system", 
-                    "content": """You are a coaching assistant inside a fitness app.
+                    "content": f"""You are a coaching assistant inside a fitness app.
+
+CURRENT DATE/TIME: {current_datetime}
+CURRENT YEAR: {current_year}
+
 Ground all factual answers in tool results. 
 For history/plan/comparison questions, call the appropriate tool(s) first.
 If tools return no data, say so plainly. Do not invent.
 When the user suggests a goal change, propose an update (JSON), do not write.
-Prefer concise, actionable answers citing dates and exact numbers."""
+Prefer concise, actionable answers citing dates and exact numbers.
+
+IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday", use the current year ({current_year}) unless explicitly stated otherwise."""
                 }
             ]
 
