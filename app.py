@@ -4277,6 +4277,60 @@ def debug_newly_added():
     except Exception as e:
         return jsonify({'error': str(e)})
 
+@app.route('/debug_duplicate_workouts')
+def debug_duplicate_workouts():
+    """Debug endpoint to check for duplicate workouts"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get all workouts from today
+        today = datetime.now().strftime('%Y-%m-%d')
+        cursor.execute('''
+            SELECT id, exercise_name, sets, reps, weight, date_logged, notes
+            FROM workouts 
+            WHERE date_logged = ?
+            ORDER BY id DESC
+        ''', (today,))
+        
+        today_workouts = cursor.fetchall()
+        
+        # Check for exact duplicates
+        duplicates = []
+        seen = set()
+        
+        for workout in today_workouts:
+            workout_id, exercise, sets, reps, weight, date, notes = workout
+            workout_key = f"{exercise.lower()}_{sets}_{reps}_{weight}_{date}"
+            
+            if workout_key in seen:
+                duplicates.append({
+                    'id': workout_id,
+                    'exercise': exercise,
+                    'sets': sets,
+                    'reps': reps,
+                    'weight': weight,
+                    'date': date,
+                    'duplicate_key': workout_key
+                })
+            else:
+                seen.add(workout_key)
+        
+        conn.close()
+        
+        return jsonify({
+            'today_workouts': [{
+                'id': w[0], 'exercise': w[1], 'sets': w[2], 
+                'reps': w[3], 'weight': w[4], 'date': w[5], 'notes': w[6]
+            } for w in today_workouts],
+            'duplicates_found': duplicates,
+            'total_today': len(today_workouts),
+            'duplicate_count': len(duplicates)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/debug_plan_context')
 def debug_plan_context():
     """Debug endpoint to check plan context data"""

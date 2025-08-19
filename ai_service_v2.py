@@ -590,6 +590,22 @@ When users mention workouts they've completed, use the log_workout tool. When th
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
+            # Check if this exact workout was already logged today to prevent duplicates
+            cursor.execute('''
+                SELECT COUNT(*) FROM workouts 
+                WHERE LOWER(exercise_name) = LOWER(?) AND sets = ? AND reps = ? AND weight = ? AND date_logged = ?
+            ''', (exercise_name, sets, reps, weight, date))
+            
+            existing_count = cursor.fetchone()[0]
+            
+            if existing_count > 0:
+                print(f"⚠️ Duplicate workout detected for {exercise_name} {sets}x{reps}@{weight} on {date}")
+                return {
+                    "success": False,
+                    "error": "Duplicate workout detected",
+                    "message": f"This exact workout for {exercise_name} was already logged today"
+                }
+            
             # Insert workout using the same method as the main app
             cursor.execute('''
                 INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
@@ -597,6 +613,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
             ''', (exercise_name, sets, reps, weight, notes, date, False))
             
             workout_id = cursor.lastrowid
+            print(f"✅ V2 AI Service logged workout ID {workout_id}: {exercise_name} {sets}x{reps}@{weight}")
             
             # Clear newly_added flag if this exercise was recently added to plan
             cursor.execute('''
@@ -615,6 +632,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
             }
             
         except Exception as e:
+            print(f"❌ V2 AI Service workout logging error: {str(e)}")
             return {
                 "success": False,
                 "error": f"Database error: {str(e)}",
