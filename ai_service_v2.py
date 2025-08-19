@@ -18,15 +18,18 @@ class AIServiceV2:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_weekly_plan",
-                    "description": "Get the user's weekly workout plan for a specific day or all days",
+                    "name": "compare_workout_to_plan",
+                    "description": "Use to answer any question that compares actual performance to planned workouts (followed the plan, vs/versus, compliance, differences). Returns plan + actual + diff.",
                     "parameters": {
                         "type": "object",
                         "properties": {
+                            "date": {
+                                "type": "string",
+                                "description": "Calendar date in YYYY-MM-DD format"
+                            },
                             "day": {
-                                "type": "string", 
-                                "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "all"],
-                                "description": "Day of the week to get plan for, or 'all' for entire week"
+                                "type": "string",
+                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
                             }
                         }
                     }
@@ -35,28 +38,39 @@ class AIServiceV2:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_workout_history",
-                    "description": "Get user's workout history with optional filtering",
+                    "name": "get_logs_by_day_or_date",
+                    "description": "Retrieve actual logged workouts for a specific calendar date or most recent matching weekday.",
                     "parameters": {
                         "type": "object",
                         "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
                             "date": {
                                 "type": "string",
-                                "description": "Specific date (YYYY-MM-DD) to get workouts for"
-                            },
-                            "exercise": {
-                                "type": "string",
-                                "description": "Specific exercise name to filter by"
-                            },
-                            "days_back": {
-                                "type": "integer",
-                                "default": 7,
-                                "description": "Number of days back to look (default 7)"
+                                "description": "Calendar date in YYYY-MM-DD format (optional)"
                             },
                             "limit": {
                                 "type": "integer",
-                                "default": 10,
-                                "description": "Maximum number of workout entries to return"
+                                "default": 100,
+                                "description": "Maximum number of workouts to return"
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weekly_plan",
+                    "description": "Retrieve planned exercises; pass day to get a slice or omit for full plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
                             }
                         }
                     }
@@ -66,211 +80,30 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_user_profile",
-                    "description": "Get user's profile information and preferences",
+                    "description": "User goal/level and latest plan philosophy (newest first).",
                     "parameters": {
                         "type": "object",
                         "properties": {}
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_training_philosophy",
-                    "description": "Get the user's current training philosophy and approach",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_progression_data",
-                    "description": "Get progression data for specific exercises or overall progress",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "exercise": {
-                                "type": "string",
-                                "description": "Specific exercise to get progression for"
-                            },
-                            "weeks_back": {
-                                "type": "integer",
-                                "default": 4,
-                                "description": "Number of weeks to analyze for progression"
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "log_workout",
-                    "description": "Log a completed workout for the user",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "exercise_name": {
-                                "type": "string",
-                                "description": "Name of the exercise performed"
-                            },
-                            "sets": {
-                                "type": "integer",
-                                "description": "Number of sets completed"
-                            },
-                            "reps": {
-                                "type": "string",
-                                "description": "Reps performed (can be range like '8-12' or specific like '10')"
-                            },
-                            "weight": {
-                                "type": "string",
-                                "description": "Weight used (e.g. '185lbs', 'bodyweight')"
-                            },
-                            "notes": {
-                                "type": "string",
-                                "description": "Optional notes about the workout"
-                            },
-                            "date": {
-                                "type": "string",
-                                "description": "Date of workout (YYYY-MM-DD), defaults to today"
-                            }
-                        },
-                        "required": ["exercise_name", "sets", "reps", "weight"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "modify_weekly_plan",
-                    "description": "Add, update, or remove exercises from the weekly plan",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "action": {
-                                "type": "string",
-                                "enum": ["add", "update", "remove"],
-                                "description": "Action to perform on the plan"
-                            },
-                            "day": {
-                                "type": "string",
-                                "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
-                                "description": "Day of the week to modify"
-                            },
-                            "exercise_name": {
-                                "type": "string",
-                                "description": "Name of the exercise"
-                            },
-                            "sets": {
-                                "type": "integer",
-                                "description": "Number of sets (for add/update)"
-                            },
-                            "reps": {
-                                "type": "string",
-                                "description": "Rep range (for add/update)"
-                            },
-                            "weight": {
-                                "type": "string",
-                                "description": "Weight target (for add/update)"
-                            },
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Explanation for the change"
-                            }
-                        },
-                        "required": ["action", "day", "exercise_name"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_training_philosophy",
-                    "description": "Update the user's training philosophy and approach",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "core_philosophy": {
-                                "type": "string",
-                                "description": "The foundational training approach and principles"
-                            },
-                            "current_priorities": {
-                                "type": "string",
-                                "description": "Specific current focuses and priorities for this training phase"
-                            },
-                            "reasoning": {
-                                "type": "string",
-                                "description": "Explanation for the philosophy update"
-                            }
-                        },
-                        "required": ["core_philosophy"]
                     }
                 }
             }
         ]
 
     def get_ai_response(self, message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
-        """Get AI response using function calling for precise intent detection"""
-        MAX_TOOL_CALLS = 5  # Prevent infinite loops
-        MAX_ITERATIONS = 3  # Limit conversation iterations
+        """Get AI response using function calling with guardrails"""
+        MAX_TOOL_CALLS = 5
 
         try:
             # Build conversation messages
             messages = [
                 {
                     "role": "system", 
-                    "content": """You are an expert personal trainer AI assistant built into a fitness app. 
-
-You have access to various tools to help users with their fitness journey. When users ask questions or make requests, use the appropriate tools to get the information you need, then provide helpful responses.
-
-Key principles:
-- Always use tools to get current data before making recommendations
-- Be encouraging and motivational
-- Provide specific, actionable advice
-- If logging workouts, confirm the details with the user
-- For plan modifications, explain your reasoning
-- Use the user's actual data to give personalized advice
-- IMPORTANT: Only call tools when necessary. Don't call the same tool repeatedly.
-
-DATE HANDLING:
-- When users mention dates like "August 14th", convert to current year format (2025-08-14)
-- For workout history queries, use the exact date they specify
-
-TOOL USAGE GUIDELINES - READ CAREFULLY:
-
-**STEP 1: DETECT COMPARISON KEYWORDS**
-If the user query contains ANY of these words/phrases, you MUST call BOTH tools:
-- "compare" / "comparison" 
-- "vs" / "versus"
-- "plan" mentioned with performance/history
-- "follow" + "plan"
-- "against my plan"
-- "how does it compare"
-
-**STEP 2: MANDATORY DUAL TOOL RULE**
-When comparison keywords are detected, you MUST call EXACTLY TWO tools in this order:
-1. get_workout_history (to get what they actually did)
-2. get_weekly_plan (to get what was planned)
-
-**COMPARISON QUERY EXAMPLES (require BOTH tools):**
-- "how did I perform on [date] and how does it compare to my plan" 
-- "how does my workout compare to my plan"
-- "did I follow my plan on [date]"
-- "how did I do vs my plan"
-- Any mention of actual performance + plan = BOTH TOOLS REQUIRED
-
-**SINGLE TOOL PATTERNS:**
-- "show me my weekly plan" → get_weekly_plan ONLY
-- "what did I do on [date]" → get_workout_history ONLY  
-- "show my history" → get_workout_history ONLY
-
-**CRITICAL: NO DUPLICATE FUNCTIONS**
-- Never call the same function twice in one response
-
-When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
+                    "content": """You are a coaching assistant inside a fitness app.
+Ground all factual answers in tool results. 
+For history/plan/comparison questions, call the appropriate tool(s) first.
+If tools return no data, say so plainly. Do not invent.
+When the user suggests a goal change, propose an update (JSON), do not write.
+Prefer concise, actionable answers citing dates and exact numbers."""
                 }
             ]
 
@@ -283,95 +116,81 @@ When users mention workouts they've completed, use the log_workout tool. When th
             # Add current message
             messages.append({"role": "user", "content": message})
 
-            # Make the API call with tools
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=messages,
-                tools=self.tools,
-                tool_choice="auto",  # Let AI decide which tools to use
-                temperature=0.7,
-                max_tokens=1000
-            )
+            # Planner loop with guardrails
+            seen = set()  # (tool_name, json.dumps(sorted(args.items())))
+            tool_results_for_response = []
 
-            response_message = response.choices[0].message
-            tool_calls = response_message.tool_calls
-
-            # If AI wants to use tools, execute them
-            if tool_calls:
-                print(f"🎯 User query: '{message}'")
-                print(f"🤖 AI planned {len(tool_calls)} tool calls: {[tc.function.name for tc in tool_calls]}")
-                print(f"🔍 Tool call details: {[(tc.function.name, json.loads(tc.function.arguments)) for tc in tool_calls]}")
-                
-                # SAFEGUARD: Check for too many tool calls
-                if len(tool_calls) > MAX_TOOL_CALLS:
-                    return {
-                        'response': f"I'm trying to call too many tools at once ({len(tool_calls)}). Let me simplify my response.",
-                        'tools_used': [],
-                        'tool_results': [],
-                        'success': False,
-                        'error': 'Too many tool calls attempted'
-                    }
-
-                # Add the AI's response with tool calls to the conversation
-                messages.append(response_message)
-
-                # Track which tools we've called to prevent ALL duplicates
-                functions_called = set()
-                tool_results_for_response = []
-
-                # Execute each tool call
-                for tool_call in tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-
-                    # STRICT SAFEGUARD: Prevent calling the same FUNCTION twice (regardless of args)
-                    if function_name in functions_called:
-                        print(f"⚠️ BLOCKED duplicate function call: {function_name} - already called this function")
-                        print(f"   Args would have been: {function_args}")
-                        continue
-                    
-                    functions_called.add(function_name)
-                    print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
-
-                    # Execute the function
-                    tool_result = self._execute_tool(function_name, function_args)
-                    tool_results_for_response.append(tool_result)
-
-                    # Add tool result to conversation
-                    messages.append({
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "name": function_name,
-                        "content": json.dumps(tool_result)
-                    })
-
-                # Get final response from AI after processing tool results
-                final_response = self.client.chat.completions.create(
+            for i in range(MAX_TOOL_CALLS):
+                response = self.client.chat.completions.create(
                     model="gpt-4",
                     messages=messages,
-                    tools=self.tools,  # Required when using tool_choice
+                    tools=self.tools,
+                    tool_choice="auto",
                     temperature=0.7,
-                    max_tokens=1000,
-                    tool_choice="none"  # SAFEGUARD: Force AI to respond, no more tools
+                    max_tokens=1000
                 )
 
-                ai_response = final_response.choices[0].message.content
+                response_message = response.choices[0].message
+                tool_calls = response_message.tool_calls
 
-                return {
-                    'response': ai_response,
-                    'tools_used': list(functions_called),  # Only show actually executed functions
-                    'tool_results': tool_results_for_response,
-                    'success': True
-                }
+                if tool_calls:
+                    print(f"🎯 User query: '{message}'")
+                    print(f"🤖 AI planned {len(tool_calls)} tool calls: {[tc.function.name for tc in tool_calls]}")
 
-            else:
-                # No tools needed, return direct response
-                return {
-                    'response': response_message.content,
-                    'tools_used': [],
-                    'tool_results': [],
-                    'success': True
-                }
+                    # Add the AI's response with tool calls to the conversation
+                    messages.append(response_message)
+
+                    # Execute each tool call
+                    for tool_call in tool_calls:
+                        function_name = tool_call.function.name
+                        function_args = json.loads(tool_call.function.arguments)
+
+                        # Create stable key for duplicate detection
+                        stable_args_key = json.dumps(sorted(function_args.items()))
+                        key = (function_name, stable_args_key)
+
+                        # Check for duplicate consecutive calls
+                        if key in seen:
+                            print(f"⚠️ BLOCKED duplicate tool call: {function_name} with same args")
+                            messages.append({
+                                "role": "assistant",
+                                "content": "Tool already called with same arguments; please proceed to answer."
+                            })
+                            continue
+
+                        seen.add(key)
+                        print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
+
+                        # Execute the function
+                        tool_result = self._execute_tool(function_name, function_args)
+                        tool_results_for_response.append(tool_result)
+
+                        # Add tool result to conversation
+                        messages.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": function_name,
+                            "content": json.dumps(tool_result)
+                        })
+
+                    continue  # Continue the loop to get final response
+                else:
+                    # No more tools needed, return final response
+                    return {
+                        'response': response_message.content,
+                        'tools_used': [name for name, _ in seen],
+                        'tool_results': tool_results_for_response,
+                        'success': True
+                    }
+
+            # Safety fallback if we hit max tool calls
+            return {
+                'response': "I tried multiple times to gather data. Here's what I have so far... Please ask a more specific question if you need additional details.",
+                'tools_used': [name for name, _ in seen],
+                'tool_results': tool_results_for_response,
+                'success': True,
+                'warning': 'Hit max tool call limit'
+            }
 
         except Exception as e:
             print(f"⚠️ AI Service V2 error: {str(e)}")
@@ -385,106 +204,25 @@ When users mention workouts they've completed, use the log_workout tool. When th
 
     def _execute_tool(self, function_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a tool function and return the result"""
-        import time
-        start_time = time.time()
-        TOOL_TIMEOUT = 10  # 10 second timeout per tool
-
         try:
-            if function_name == "get_weekly_plan":
-                return self._get_weekly_plan(args.get('day', 'all'))
-
-            elif function_name == "get_workout_history":
-                # Adjust date parameter for the specific query type
-                if 'date' in args and args['date'] and not args['date'].startswith("2025"): # Assuming current year is 2025
-                    # Attempt to parse and reformat if it looks like a month/day
-                    try:
-                        # Extract month and day from the input string if it's not already YYYY-MM-DD
-                        if '/' in args['date'] or ' ' in args['date']:
-                            # Try parsing common formats if they exist and don't look like YYYY-MM-DD
-                            parts = args['date'].split() # e.g., "August 14th"
-                            if len(parts) >= 2:
-                                month_str = parts[0]
-                                day_str = "".join(filter(str.isdigit, parts[1]))
-                                
-                                # Convert month name to number
-                                month_map = {
-                                    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-                                    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
-                                }
-                                month = month_map.get(month_str.lower())
-                                day = int(day_str)
-
-                                if month and day:
-                                    args['date'] = f"2025-{month:02d}-{day:02d}" # Use current year (2025)
-                                else:
-                                     # If parsing fails, use original but log a warning, or default to days_back
-                                    print(f"Warning: Could not parse date '{args['date']}'. Using default date handling.")
-                                    # Fallback to days_back if date parsing fails and no specific date is provided
-                                    if 'date' not in args or not args['date']:
-                                        args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
-                            else:
-                                # If parsing fails, use original but log a warning, or default to days_back
-                                print(f"Warning: Could not parse date '{args['date']}'. Using default date handling.")
-                                # Fallback to days_back if date parsing fails and no specific date is provided
-                                if 'date' not in args or not args['date']:
-                                    args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
-                        else: # If it's not YYYY-MM-DD and not containing '/' or ' ', assume it's something else
-                            print(f"Warning: Unexpected date format '{args['date']}'. Using default date handling.")
-                            if 'date' not in args or not args['date']:
-                                args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
-
-                    except Exception as date_err:
-                        print(f"Error parsing date '{args['date']}': {date_err}. Using default date handling.")
-                        # Fallback to days_back if date parsing fails and no specific date is provided
-                        if 'date' not in args or not args['date']:
-                            args['date'] = (datetime.now() - timedelta(days=args.get('days_back', 7))).strftime('%Y-%m-%d')
-
-                return self._get_workout_history(
+            if function_name == "compare_workout_to_plan":
+                return self._compare_workout_to_plan(
                     date=args.get('date'),
-                    exercise=args.get('exercise'),
-                    days_back=args.get('days_back', 7),
-                    limit=args.get('limit', 10)
+                    day=args.get('day')
                 )
+
+            elif function_name == "get_logs_by_day_or_date":
+                return self._get_logs_by_day_or_date(
+                    day=args.get('day'),
+                    date=args.get('date'),
+                    limit=args.get('limit', 100)
+                )
+
+            elif function_name == "get_weekly_plan":
+                return self._get_weekly_plan(args.get('day'))
 
             elif function_name == "get_user_profile":
                 return self._get_user_profile()
-
-            elif function_name == "get_training_philosophy":
-                return self._get_training_philosophy()
-
-            elif function_name == "get_progression_data":
-                return self._get_progression_data(
-                    exercise=args.get('exercise'),
-                    weeks_back=args.get('weeks_back', 4)
-                )
-
-            elif function_name == "log_workout":
-                return self._log_workout(
-                    exercise_name=args['exercise_name'],
-                    sets=args['sets'],
-                    reps=args['reps'],
-                    weight=args['weight'],
-                    notes=args.get('notes', ''),
-                    date=args.get('date', datetime.now().strftime('%Y-%m-%d'))
-                )
-
-            elif function_name == "modify_weekly_plan":
-                return self._modify_weekly_plan(
-                    action=args['action'],
-                    day=args['day'],
-                    exercise_name=args['exercise_name'],
-                    sets=args.get('sets'),
-                    reps=args.get('reps'),
-                    weight=args.get('weight'),
-                    reasoning=args.get('reasoning', '')
-                )
-
-            elif function_name == "update_training_philosophy":
-                return self._update_training_philosophy(
-                    core_philosophy=args['core_philosophy'],
-                    current_priorities=args.get('current_priorities', ''),
-                    reasoning=args.get('reasoning', '')
-                )
 
             else:
                 return {"error": f"Unknown function: {function_name}"}
@@ -492,19 +230,178 @@ When users mention workouts they've completed, use the log_workout tool. When th
         except Exception as e:
             return {"error": f"Tool execution failed: {str(e)}"}
 
-        finally:
-            # SAFEGUARD: Check if tool took too long
-            execution_time = time.time() - start_time
-            if execution_time > TOOL_TIMEOUT:
-                print(f"⚠️ Tool {function_name} took {execution_time:.2f}s (timeout: {TOOL_TIMEOUT}s)")
-                return {"error": f"Tool execution timeout after {execution_time:.2f}s"}
+    def _compare_workout_to_plan(self, date: str = None, day: str = None) -> Dict[str, Any]:
+        """Composite tool to compare actual performance to planned workouts"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
 
-    def _get_weekly_plan(self, day: str) -> Dict[str, Any]:
+        # Determine the target date and day
+        target_date = date
+        target_day = day
+
+        if date:
+            # Convert date to day of week
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d')
+                target_day = date_obj.strftime('%A').lower()
+            except:
+                pass
+        elif day:
+            # Find most recent matching day
+            cursor.execute('''
+                SELECT date_logged FROM workouts 
+                WHERE strftime('%w', date_logged) = ? 
+                ORDER BY date_logged DESC LIMIT 1
+            ''', (str(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].index(day.lower())),))
+            result = cursor.fetchone()
+            if result:
+                target_date = result[0]
+
+        # Get planned exercises
+        plan = []
+        if target_day:
+            cursor.execute('''
+                SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order
+                FROM weekly_plan
+                WHERE day_of_week = ?
+                ORDER BY exercise_order
+            ''', (target_day,))
+
+            for row in cursor.fetchall():
+                plan.append({
+                    'exercise': row[0],
+                    'sets': row[1],
+                    'reps': row[2],
+                    'weight': row[3],
+                    'order': row[4]
+                })
+
+        # Get actual workouts
+        actual = []
+        if target_date:
+            cursor.execute('''
+                SELECT exercise_name, sets, reps, weight, notes
+                FROM workouts
+                WHERE date_logged = ?
+                ORDER BY id
+            ''', (target_date,))
+
+            for row in cursor.fetchall():
+                actual.append({
+                    'exercise': row[0],
+                    'sets': row[1],
+                    'reps': row[2],
+                    'weight': row[3],
+                    'notes': row[4] or ''
+                })
+
+        # Calculate diff
+        diff = []
+        plan_exercises = {ex['exercise'].lower(): ex for ex in plan}
+        actual_exercises = {ex['exercise'].lower(): ex for ex in actual}
+
+        # Check planned exercises
+        for planned in plan:
+            ex_name = planned['exercise'].lower()
+            if ex_name in actual_exercises:
+                actual_ex = actual_exercises[ex_name]
+                if (str(planned['sets']) == str(actual_ex['sets']) and 
+                    planned['reps'] == actual_ex['reps'] and 
+                    planned['weight'] == actual_ex['weight']):
+                    diff.append({
+                        'exercise': planned['exercise'],
+                        'status': 'matched',
+                        'details': 'Exactly as planned'
+                    })
+                else:
+                    diff.append({
+                        'exercise': planned['exercise'],
+                        'status': 'modified',
+                        'details': f"Plan: {planned['sets']}x{planned['reps']}@{planned['weight']}, Actual: {actual_ex['sets']}x{actual_ex['reps']}@{actual_ex['weight']}"
+                    })
+            else:
+                diff.append({
+                    'exercise': planned['exercise'],
+                    'status': 'missing',
+                    'details': 'Not performed'
+                })
+
+        # Check for extra exercises
+        for actual_ex in actual:
+            if actual_ex['exercise'].lower() not in plan_exercises:
+                diff.append({
+                    'exercise': actual_ex['exercise'],
+                    'status': 'extra',
+                    'details': f"Not in plan: {actual_ex['sets']}x{actual_ex['reps']}@{actual_ex['weight']}"
+                })
+
+        conn.close()
+
+        return {
+            "criteria": {"date": target_date, "day": target_day},
+            "plan": plan,
+            "actual": actual,
+            "diff": diff
+        }
+
+    def _get_logs_by_day_or_date(self, day: str = None, date: str = None, limit: int = 100) -> Dict[str, Any]:
+        """Get workout logs by day or date"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        if date:
+            cursor.execute('''
+                SELECT exercise_name, sets, reps, weight, notes, date_logged
+                FROM workouts
+                WHERE date_logged = ?
+                ORDER BY id
+                LIMIT ?
+            ''', (date, limit))
+        elif day:
+            # Get most recent workouts for the specified day
+            day_num = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].index(day.lower())
+            cursor.execute('''
+                SELECT exercise_name, sets, reps, weight, notes, date_logged
+                FROM workouts
+                WHERE strftime('%w', date_logged) = ?
+                ORDER BY date_logged DESC, id DESC
+                LIMIT ?
+            ''', (str(day_num), limit))
+        else:
+            cursor.execute('''
+                SELECT exercise_name, sets, reps, weight, notes, date_logged
+                FROM workouts
+                ORDER BY date_logged DESC, id DESC
+                LIMIT ?
+            ''', (limit,))
+
+        workouts = []
+        for row in cursor.fetchall():
+            workouts.append({
+                'exercise': row[0],
+                'sets': row[1],
+                'reps': row[2],
+                'weight': row[3],
+                'notes': row[4] or '',
+                'date': row[5]
+            })
+
+        conn.close()
+        return {"workouts": workouts, "total_found": len(workouts)}
+
+    def _get_weekly_plan(self, day: str = None) -> Dict[str, Any]:
         """Get weekly plan data"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        if day == 'all':
+        if day:
+            cursor.execute('''
+                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
+                FROM weekly_plan
+                WHERE day_of_week = ?
+                ORDER BY exercise_order
+            ''', (day,))
+        else:
             cursor.execute('''
                 SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
                 FROM weekly_plan
@@ -519,19 +416,9 @@ When users mention workouts they've completed, use the log_workout tool. When th
                         WHEN 'sunday' THEN 7
                     END, exercise_order
             ''')
-        else:
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
-                FROM weekly_plan
-                WHERE day_of_week = ?
-                ORDER BY exercise_order
-            ''', (day,))
-
-        results = cursor.fetchall()
-        conn.close()
 
         plan_data = []
-        for row in results:
+        for row in cursor.fetchall():
             plan_data.append({
                 'day': row[0],
                 'exercise': row[1],
@@ -542,63 +429,19 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 'notes': row[6] or ''
             })
 
+        conn.close()
         return {"plan": plan_data, "total_exercises": len(plan_data)}
 
-    def _get_workout_history(self, date: str = None, exercise: str = None, days_back: int = 7, limit: int = 10) -> Dict[str, Any]:
-        """Get workout history with optional filtering"""
+    def _get_user_profile(self) -> Dict[str, Any]:
+        """Get user profile and latest plan philosophy"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        query = "SELECT exercise_name, sets, reps, weight, date_logged, notes FROM workouts WHERE 1=1"
-        params = []
-
-        if date:
-            query += " AND date_logged = ?"
-            params.append(date)
-        else:
-            cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-            query += " AND date_logged >= ?"
-            params.append(cutoff_date)
-
-        if exercise:
-            query += " AND LOWER(exercise_name) LIKE LOWER(?)"
-            params.append(f"%{exercise}%")
-
-        query += " ORDER BY date_logged DESC, id DESC LIMIT ?"
-        params.append(limit)
-
-        cursor.execute(query, params)
-        results = cursor.fetchall()
-        conn.close()
-
-        workouts = []
-        for row in results:
-            workouts.append({
-                'exercise': row[0],
-                'sets': row[1],
-                'reps': row[2],
-                'weight': row[3],
-                'date': row[4],
-                'notes': row[5] or ''
-            })
-
-        return {"workouts": workouts, "total_found": len(workouts)}
-
-    def _get_user_profile(self) -> Dict[str, Any]:
-        """Get user profile and preferences"""
+        # Get user profile
         profile = self.user.get_profile()
         ai_prefs = self.user.get_ai_preferences()
 
-        return {
-            "profile": profile,
-            "ai_preferences": ai_prefs
-        }
-
-    def _get_training_philosophy(self) -> Dict[str, Any]:
-        """Get current training philosophy"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-
+        # Get latest plan philosophy
         cursor.execute('''
             SELECT plan_philosophy, progression_strategy, weekly_structure, special_considerations
             FROM plan_context
@@ -607,182 +450,20 @@ When users mention workouts they've completed, use the log_workout tool. When th
             LIMIT 1
         ''')
 
+        philosophy = {}
         result = cursor.fetchone()
-        conn.close()
-
         if result:
-            return {
+            philosophy = {
                 "core_philosophy": result[0] or '',
                 "current_priorities": result[1] or '',
                 "weekly_structure": result[2] or '',
                 "special_considerations": result[3] or ''
             }
 
-        return {"message": "No training philosophy set yet"}
-
-    def _get_progression_data(self, exercise: str = None, weeks_back: int = 4) -> Dict[str, Any]:
-        """Get progression data for exercises"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-
-        cutoff_date = (datetime.now() - timedelta(weeks=weeks_back)).strftime('%Y-%m-%d')
-
-        if exercise:
-            cursor.execute('''
-                SELECT date_logged, weight, sets, reps
-                FROM workouts
-                WHERE LOWER(exercise_name) LIKE LOWER(?) AND date_logged >= ?
-                ORDER BY date_logged ASC
-            ''', (f"%{exercise}%", cutoff_date))
-        else:
-            cursor.execute('''
-                SELECT exercise_name, MAX(date_logged) as latest_date, weight, sets, reps
-                FROM workouts
-                WHERE date_logged >= ?
-                GROUP BY exercise_name
-                ORDER BY latest_date DESC
-            ''', (cutoff_date,))
-
-        results = cursor.fetchall()
-        conn.close()
-
-        progression_data = []
-        for row in results:
-            if exercise:
-                progression_data.append({
-                    'date': row[0],
-                    'weight': row[1],
-                    'sets': row[2],
-                    'reps': row[3]
-                })
-            else:
-                progression_data.append({
-                    'exercise': row[0],
-                    'latest_date': row[1],
-                    'weight': row[2],
-                    'sets': row[3],
-                    'reps': row[4]
-                })
-
-        return {"progression_data": progression_data}
-
-    def _log_workout(self, exercise_name: str, sets: int, reps: str, weight: str, notes: str = '', date: str = None) -> Dict[str, Any]:
-        """Log a workout entry"""
-        if not date:
-            date = datetime.now().strftime('%Y-%m-%d')
-
-        try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
-
-            # Check if this exact workout was already logged today to prevent duplicates
-            cursor.execute('''
-                SELECT COUNT(*) FROM workouts 
-                WHERE LOWER(exercise_name) = LOWER(?) AND sets = ? AND reps = ? AND weight = ? AND date_logged = ?
-            ''', (exercise_name, sets, reps, weight, date))
-
-            existing_count = cursor.fetchone()[0]
-
-            if existing_count > 0:
-                print(f"⚠️ Duplicate workout detected for {exercise_name} {sets}x{reps}@{weight} on {date}")
-                return {
-                    "success": False,
-                    "error": "Duplicate workout detected",
-                    "message": f"This exact workout for {exercise_name} was already logged today"
-                }
-
-            # Insert workout using the same method as the main app
-            cursor.execute('''
-                INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (exercise_name, sets, reps, weight, notes, date, False))
-
-            workout_id = cursor.lastrowid
-            print(f"✅ V2 AI Service logged workout ID {workout_id}: {exercise_name} {sets}x{reps}@{weight}")
-
-            # Clear newly_added flag if this exercise was recently added to plan
-            cursor.execute('''
-                UPDATE weekly_plan 
-                SET newly_added = FALSE 
-                WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
-            ''', (exercise_name,))
-
-            conn.commit()
-            conn.close()
-
-            return {
-                "success": True,
-                "workout_id": workout_id,
-                "message": f"Logged {exercise_name}: {sets}x{reps}@{weight} on {date}"
-            }
-
-        except Exception as e:
-            print(f"❌ V2 AI Service workout logging error: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Database error: {str(e)}",
-                "message": f"Failed to log {exercise_name}"
-            }
-
-    def _modify_weekly_plan(self, action: str, day: str, exercise_name: str, sets: int = None, reps: str = None, weight: str = None, reasoning: str = '') -> Dict[str, Any]:
-        """Modify the weekly plan"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-
-        if action == "add":
-            # Get next order for the day
-            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
-            next_order = cursor.fetchone()[0]
-
-            cursor.execute('''
-                INSERT INTO weekly_plan
-                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'ai_v2', TRUE, ?)
-            ''', (day, exercise_name, sets or 3, reps or '8-12', weight or 'bodyweight', next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
-
-            message = f"Added {exercise_name} to {day}: {sets or 3}x{reps or '8-12'}@{weight or 'bodyweight'}"
-
-        elif action == "update":
-            cursor.execute('''
-                UPDATE weekly_plan
-                SET target_sets = COALESCE(?, target_sets),
-                    target_reps = COALESCE(?, target_reps),
-                    target_weight = COALESCE(?, target_weight),
-                    notes = ?
-                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
-            ''', (sets, reps, weight, reasoning, day, exercise_name))
-
-            message = f"Updated {exercise_name} on {day}"
-
-        elif action == "remove":
-            cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
-            message = f"Removed {exercise_name} from {day}"
-
-        rows_affected = cursor.rowcount
-        conn.commit()
         conn.close()
 
         return {
-            "success": rows_affected > 0,
-            "message": message,
-            "rows_affected": rows_affected
-        }
-
-    def _update_training_philosophy(self, core_philosophy: str, current_priorities: str = '', reasoning: str = '') -> Dict[str, Any]:
-        """Update training philosophy"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            INSERT OR REPLACE INTO plan_context
-            (user_id, plan_philosophy, progression_strategy, created_by_ai, creation_reasoning, created_date, updated_date)
-            VALUES (1, ?, ?, TRUE, ?, ?, ?)
-        ''', (core_philosophy, current_priorities, reasoning, datetime.now().strftime('%Y-%m-%d'), datetime.now().strftime('%Y-%m-%d')))
-
-        conn.commit()
-        conn.close()
-
-        return {
-            "success": True,
-            "message": "Training philosophy updated successfully"
+            "profile": profile,
+            "ai_preferences": ai_prefs,
+            "philosophy": philosophy
         }
