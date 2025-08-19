@@ -8,13 +8,13 @@
 </div>
 
 <div class="row">
-    <div class="col-md-8 mx-auto">
-        <div class="card" style="height: 600px;">
+    <div class="col-12">
+        <div class="card" style="height: 80vh;">
             <div class="card-header bg-primary text-white">
                 <h6 class="mb-0"><i class="fas fa-robot me-2"></i>Personal Trainer AI</h6>
             </div>
             <div class="card-body d-flex flex-column">
-                <div id="chatMessages" class="flex-grow-1 overflow-auto mb-3" style="max-height: 450px;">
+                <div id="chatMessages" class="flex-grow-1 overflow-auto mb-3" style="max-height: calc(80vh - 200px);">
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle me-2"></i>
                         Ask me anything about your workouts, nutrition, progression, or fitness goals!
@@ -22,9 +22,12 @@
                     </div>
                 </div>
 
-                <form id="chatForm" class="d-flex gap-2">
-                    <input type="text" id="messageInput" class="form-control" 
-                           placeholder="Ask about workouts, progression, nutrition..." required>
+                <form id="chatForm" class="d-flex gap-2 align-items-end">
+                    <textarea id="messageInput" class="form-control auto-expand" 
+                              placeholder="Ask about workouts, progression, nutrition..." 
+                              rows="1" 
+                              style="resize: none; min-height: 38px; max-height: 120px;" 
+                              required></textarea>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-paper-plane"></i>
                     </button>
@@ -78,24 +81,36 @@ const chatMessages = document.getElementById('chatMessages');
 let chatHistory = [];
 let conversationHistory = '';
 
-// Load conversation from localStorage on page load
-window.addEventListener('load', function() {
-    loadConversationFromStorage();
-});
+// Auto-expand textarea functionality
+function autoExpandTextarea(textarea) {
+    textarea.style.height = 'auto';
+    const scrollHeight = textarea.scrollHeight;
+    const maxHeight = 120; // max-height from CSS
+    const minHeight = 38;  // min-height from CSS
+    
+    if (scrollHeight > maxHeight) {
+        textarea.style.height = maxHeight + 'px';
+        textarea.style.overflowY = 'auto';
+    } else {
+        textarea.style.height = Math.max(scrollHeight, minHeight) + 'px';
+        textarea.style.overflowY = 'hidden';
+    }
+}
 
-// Auto-save input as user types
+// Add event listeners for textarea auto-expansion
 messageInput.addEventListener('input', function() {
+    autoExpandTextarea(this);
+    
+    // Existing auto-save functionality
     const existing = localStorage.getItem('aiChatConversation');
     
     if (existing) {
-        // Update existing conversation data
         try {
             const data = JSON.parse(existing);
             data.currentInput = messageInput.value;
             data.timestamp = Date.now();
             localStorage.setItem('aiChatConversation', JSON.stringify(data));
         } catch (e) {
-            // If parsing fails, create new data
             const conversationData = {
                 messages: chatMessages.innerHTML,
                 history: conversationHistory,
@@ -105,7 +120,6 @@ messageInput.addEventListener('input', function() {
             localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
         }
     } else {
-        // Create new conversation data just for the input
         const conversationData = {
             messages: chatMessages.innerHTML,
             history: conversationHistory,
@@ -115,6 +129,21 @@ messageInput.addEventListener('input', function() {
         localStorage.setItem('aiChatConversation', JSON.stringify(conversationData));
     }
 });
+
+// Handle Enter key (submit on Enter, new line on Shift+Enter)
+messageInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event('submit'));
+    }
+});
+
+// Load conversation from localStorage on page load
+window.addEventListener('load', function() {
+    loadConversationFromStorage();
+});
+
+
 
 // Save conversation to localStorage
 function saveConversationToStorage() {
@@ -201,6 +230,8 @@ chatForm.addEventListener('submit', function(e) {
     // Add user message
     addMessage(message, 'user');
     messageInput.value = '';
+    // Reset textarea height
+    autoExpandTextarea(messageInput);
 
     // Update conversation history
     conversationHistory += `User: ${message}\n\n`;
