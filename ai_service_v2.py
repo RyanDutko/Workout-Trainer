@@ -155,6 +155,27 @@ class AIServiceV2:
                         "required": ["day", "exercise_name"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "remove_exercise_from_plan",
+                    "description": "Remove an exercise from a specific day in the weekly plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
+                            "exercise_name": {
+                                "type": "string",
+                                "description": "Name of the exercise to remove"
+                            }
+                        },
+                        "required": ["day", "exercise_name"]
+                    }
+                }
             }
         ]
 
@@ -318,6 +339,12 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
                     sets=args.get('sets'),
                     reps=args.get('reps'),
                     weight=args.get('weight')
+                )
+
+            elif function_name == "remove_exercise_from_plan":
+                return self._remove_exercise_from_plan(
+                    day=args.get('day'),
+                    exercise_name=args.get('exercise_name')
                 )
 
             else:
@@ -653,3 +680,41 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
         except Exception as e:
             conn.close()
             return {"success": False, "error": f"Failed to update exercise: {str(e)}"}
+
+    def _remove_exercise_from_plan(self, day: str, exercise_name: str) -> Dict[str, Any]:
+        """Remove an exercise from the weekly plan"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Check if exercise exists first
+            cursor.execute('''
+                SELECT exercise_name FROM weekly_plan
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (day.lower(), exercise_name))
+            
+            if not cursor.fetchone():
+                conn.close()
+                return {"success": False, "error": f"Exercise '{exercise_name}' not found on {day.title()}"}
+
+            # Remove the exercise
+            cursor.execute('''
+                DELETE FROM weekly_plan
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (day.lower(), exercise_name))
+
+            conn.commit()
+            conn.close()
+
+            return {
+                "success": True,
+                "message": f"Removed {exercise_name} from {day.title()}",
+                "exercise_removed": {
+                    "day": day.lower(),
+                    "exercise": exercise_name
+                }
+            }
+
+        except Exception as e:
+            conn.close()
+            return {"success": False, "error": f"Failed to remove exercise: {str(e)}"}
