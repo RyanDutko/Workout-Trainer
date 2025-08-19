@@ -1,0 +1,356 @@
+
+import sqlite3
+import json
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+
+class Database:
+    def __init__(self, db_path: str = 'workout_logs.db'):
+        self.db_path = db_path
+        self.init_database()
+    
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute('PRAGMA journal_mode = WAL')
+        return conn
+    
+    def init_database(self):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Users table - extensible profile
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_data TEXT NOT NULL DEFAULT '{}',
+                ai_preferences TEXT NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Training plans - flexible JSON structure
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS training_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                plan_data TEXT NOT NULL DEFAULT '{}',
+                philosophy TEXT,
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Workouts - flexible exercise data
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workouts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                date_logged DATE NOT NULL,
+                exercise_data TEXT NOT NULL DEFAULT '{}',
+                performance_notes TEXT,
+                ai_analysis TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # AI conversations - structured interaction history
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                conversation_type TEXT NOT NULL,
+                user_message TEXT NOT NULL,
+                ai_response TEXT NOT NULL,
+                context_data TEXT DEFAULT '{}',
+                actions_taken TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Exercise library - AI-enhanced exercise database
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS exercises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                category TEXT,
+                muscle_groups TEXT DEFAULT '[]',
+                equipment TEXT DEFAULT '[]',
+                ai_metadata TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create default user if none exists
+        cursor.execute('SELECT COUNT(*) FROM users')
+        if cursor.fetchone()[0] == 0:
+            cursor.execute('''
+                INSERT INTO users (profile_data, ai_preferences) 
+                VALUES ('{}', '{"tone": "motivational", "detail_level": "concise"}')
+            ''')
+        
+        conn.commit()
+        conn.close()
+
+class User:
+    def __init__(self, db: Database, user_id: int = 1):
+        self.db = db
+        self.user_id = user_id
+    
+    def get_profile(self) -> Dict[str, Any]:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT profile_data FROM users WHERE id = ?', (self.user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return json.loads(result[0]) if result else {}
+    
+    def update_profile(self, profile_data: Dict[str, Any]):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE users SET profile_data = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (json.dumps(profile_data), self.user_id))
+        conn.commit()
+        conn.close()
+    
+    def get_ai_preferences(self) -> Dict[str, Any]:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT ai_preferences FROM users WHERE id = ?', (self.user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return json.loads(result[0]) if result else {}
+
+class TrainingPlan:
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def get_active_plan(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, plan_data, philosophy FROM training_plans 
+            WHERE user_id = ? AND is_active = TRUE
+            ORDER BY created_at DESC LIMIT 1
+        ''', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'id': result[0],
+                'name': result[1],
+                'plan_data': json.loads(result[2]),
+                'philosophy': result[3]
+            }
+        return None
+    
+    def save_plan(self, user_id: int, name: str, plan_data: Dict[str, Any], philosophy: str = None):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        # Deactivate current plans
+        cursor.execute('UPDATE training_plans SET is_active = FALSE WHERE user_id = ?', (user_id,))
+        
+        # Insert new plan
+        cursor.execute('''
+            INSERT INTO training_plans (user_id, name, plan_data, philosophy, is_active)
+            VALUES (?, ?, ?, ?, TRUE)
+        ''', (user_id, name, json.dumps(plan_data), philosophy))
+        
+        conn.commit()
+        conn.close()
+
+class Workout:
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def log_workout(self, user_id: int, date: str, exercises: List[Dict[str, Any]], notes: str = None):
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        # Flexible exercise structure that can handle any complexity
+        exercise_data = {
+            'exercises': exercises,  # Each exercise can have its own structure
+            'notes': notes,
+            'logged_at': datetime.now().isoformat(),
+            'workout_type': self._detect_workout_type(exercises)
+        }
+        
+        cursor.execute('''
+            INSERT INTO workouts (user_id, date_logged, exercise_data, performance_notes)
+            VALUES (?, ?, ?, ?)
+        ''', (user_id, date, json.dumps(exercise_data), notes))
+        
+        workout_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return workout_id
+    
+    def _detect_workout_type(self, exercises: List[Dict[str, Any]]) -> str:
+        """Detect if this is a simple, complex, or circuit workout"""
+
+
+class WorkoutTemplateGenerator:
+    """Generate workout logging templates based on exercise structure"""
+    
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def generate_logging_template(self, exercise_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate appropriate logging interface based on exercise type"""
+        
+        exercise_type = exercise_data.get('type', 'simple')
+        
+        if exercise_type == 'simple':
+            return {
+                'template_type': 'simple',
+                'fields': [
+                    {'name': 'sets_completed', 'type': 'number', 'placeholder': exercise_data.get('sets', 3)},
+                    {'name': 'reps_per_set', 'type': 'list', 'sets': exercise_data.get('sets', 3)},
+                    {'name': 'weight_used', 'type': 'text', 'placeholder': exercise_data.get('weight', 'bodyweight')}
+                ]
+            }
+        
+        elif exercise_type == 'rounds':
+            movements = exercise_data.get('movements', [])
+            return {
+                'template_type': 'rounds',
+                'total_rounds': exercise_data.get('total_rounds', 2),
+                'movements': [
+                    {
+                        'name': movement.get('name', ''),
+                        'planned_reps': movement.get('reps', ''),
+                        'planned_weight': movement.get('weight', ''),
+                        'input_fields': {
+                            'actual_reps': {'type': 'number', 'per_round': True},
+                            'actual_weight': {'type': 'text', 'per_round': True}
+                        }
+                    } for movement in movements
+                ]
+            }
+        
+        elif exercise_type == 'circuit':
+            return {
+                'template_type': 'circuit',
+                'circuit_rounds': exercise_data.get('circuit_rounds', 3),
+                'movements': exercise_data.get('movements', []),
+                'timing': exercise_data.get('timing', 'reps_based')  # or 'time_based'
+            }
+        
+        else:
+            # Custom template generation
+            return {
+                'template_type': 'custom',
+                'structure': exercise_data.get('structure', {}),
+                'fields': self._generate_custom_fields(exercise_data)
+            }
+    
+    def _generate_custom_fields(self, exercise_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate input fields for completely custom exercise structures"""
+        # AI can analyze the structure and create appropriate fields
+        return [
+            {'name': 'performance_notes', 'type': 'textarea', 'placeholder': 'Describe how you performed this exercise'},
+            {'name': 'intensity', 'type': 'slider', 'min': 1, 'max': 10},
+            {'name': 'custom_data', 'type': 'json', 'structure': exercise_data.get('structure', {})}
+        ]
+
+
+        for exercise in exercises:
+            if exercise.get('type') in ['rounds', 'circuit', 'complex', 'superset']:
+                return 'complex'
+        return 'simple'
+    
+    def create_exercise_structure(self, exercise_type: str, name: str, **kwargs) -> Dict[str, Any]:
+        """Create flexible exercise structures for any workout style"""
+        
+        if exercise_type == 'simple':
+            return {
+                'name': name,
+                'type': 'simple',
+                'sets': kwargs.get('sets', 3),
+                'reps': kwargs.get('reps', '8-12'),
+                'weight': kwargs.get('weight', 'bodyweight'),
+                'rest': kwargs.get('rest', '60s')
+            }
+        
+        elif exercise_type == 'rounds':
+            return {
+                'name': name,
+                'type': 'rounds',
+                'total_rounds': kwargs.get('rounds', 2),
+                'movements': kwargs.get('movements', []),
+                'rest_between_rounds': kwargs.get('rest', '2min'),
+                'structure': 'rounds'  # e.g., "2 rounds of: 10 slow curls + 15 fast curls + 10 hammer curls"
+            }
+        
+        elif exercise_type == 'circuit':
+            return {
+                'name': name,
+                'type': 'circuit',
+                'movements': kwargs.get('movements', []),
+                'circuit_rounds': kwargs.get('rounds', 3),
+                'rest_between_circuits': kwargs.get('rest', '90s'),
+                'structure': 'circuit'
+            }
+        
+        elif exercise_type == 'superset':
+            return {
+                'name': name,
+                'type': 'superset',
+                'exercises': kwargs.get('exercises', []),
+                'sets': kwargs.get('sets', 3),
+                'rest_between_supersets': kwargs.get('rest', '90s'),
+                'structure': 'superset'
+            }
+        
+        elif exercise_type == 'tempo':
+            return {
+                'name': name,
+                'type': 'tempo',
+                'sets': kwargs.get('sets', 3),
+                'reps': kwargs.get('reps', 8),
+                'weight': kwargs.get('weight', '135lbs'),
+                'tempo': kwargs.get('tempo', '3-1-2-1'),  # eccentric-pause-concentric-pause
+                'rest': kwargs.get('rest', '90s')
+            }
+        
+        else:
+            # Completely custom structure
+            return {
+                'name': name,
+                'type': 'custom',
+                'structure': kwargs.get('structure', {}),
+                'description': kwargs.get('description', '')
+            }
+    
+    def get_recent_workouts(self, user_id: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, date_logged, exercise_data, performance_notes, ai_analysis
+            FROM workouts WHERE user_id = ?
+            ORDER BY date_logged DESC, created_at DESC
+            LIMIT ?
+        ''', (user_id, limit))
+        
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'id': row[0],
+                'date': row[1],
+                'exercises': json.loads(row[2]),
+                'notes': row[3],
+                'ai_analysis': row[4]
+            })
+        
+        conn.close()
+        return results
