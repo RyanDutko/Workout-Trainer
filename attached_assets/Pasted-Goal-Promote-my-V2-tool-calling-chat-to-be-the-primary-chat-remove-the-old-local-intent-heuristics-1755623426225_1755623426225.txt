@@ -1,0 +1,195 @@
+Goal: Promote my V2 tool-calling chat to be the primary chat, remove the old local intent heuristics, and harden day/date parsing. Make small, auditable diffs only. Show unified diffs.
+
+0) Constraints (please follow exactly)
+
+Do not refactor unrelated code.
+
+Keep table schemas unchanged.
+
+Keep current personality/content rules.
+
+Prefer same-file edits unless a new helper is clearly warranted.
+
+Show unified diffs for each file you touch.
+
+1) Route main chat to V2 tools
+
+In app.py (or the Flask file that serves /chat or /chat_stream), replace the legacy chat handler so it calls my V2 tool-calling service (currently used in my V2 test route).
+
+Keep streaming behavior if it exists; otherwise return the full final message.
+
+Add a short debug print: MAIN_CHAT: using V2 tool calling.
+
+Acceptance:
+
+When I use the normal chat UI, the console logs show the V2 tool loop (tool calls + results), not the legacy function.
+
+2) Disable local “intent pre-detection” and context heuristics
+
+Anywhere we pre-score intent (keywords, “include conversation context” toggles, or day detection in Flask), bypass that logic for the main chat.
+
+The model must decide which tool(s) to call; do not pre-shape or block it.
+
+Keep the code behind a flag so we can re-enable if needed. Example:
+
+ENABLE_LEGACY_INTENT = False
+if ENABLE_LEGACY_INTENT:
+    # old heuristics (unchanged)
+    ...
+else:
+    # skip legacy shaping; pass raw user text + tools to V2
+
+
+Acceptance:
+
+No legacy intent logs appear during a main chat request. Only V2 tool loop logs.
+
+3) Tighten day/date resolution inside tools
+
+Please harden the tools that accept day and/or date with these rules:
+
+Rules
+
+Accept explicit date (YYYY-MM-DD) or weekday day (e.g., “tuesday”).
+
+If both provided, prefer date.
+
+If only day provided, resolve it to the most recent past occurrence of that weekday (including today if it matches).
+
+If neither is present, return a friendly structured error to the model (don’t crash).
+
+Use timezone America/Detroit for “today/now”.
+
+Use SQLite’s weekday mapping (strftime('%w'), Sunday=0..Saturday=6) consistently.
+
+Implementation notes
+
+Add a small helper inside the tools module (or near handlers):
+
+from datetime import datetime, timedelta, timezone
+import zoneinfo
+
+DETROIT_TZ = zoneinfo.ZoneInfo("America/Detroit")
+
+def resolve_date_or_day(date_str: str | None, day_str: str | None) -> tuple[str | None, str | None]:
+    """
+    Returns (resolved_date_yyyy_mm_dd, normalized_day_lower) or (None, None) if unresolvable.
+    Preference: explicit date_str if valid; else resolve day_str to most recent past weekday.
+    """
+    # 1) explicit date
+    if date_str:
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            return d.isoformat(), d.strftime("%A").lower()
+        except ValueError:
+            pass  # fall through to day logic
+
+    # 2) resolve weekday
+    if day_str:
+        day_l = day_str.strip().lower()
+        weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+        if day_l in weekdays:
+            today = datetime.now(DETROIT_TZ).date()
+            target_idx = weekdays.index(day_l)
+            today_idx = int(datetime.now(DETROIT_TZ).strftime("%w"))  # 0=Sun..6=Sat
+            delta = (today_idx - target_idx) % 7
+            # use today if same weekday; otherwise go back to last occurrence
+            resolved = today if delta == 0 else (today - timedelta(days=delta))
+            return resolved.isoformat(), day_l
+
+    return None, None
+
+
+In get_logs_by_day_or_date (or similar), call this helper first and log:
+
+RESOLVE: date=..., day=...
+
+Use the resolved date for the SQL query.
+
+For “day” queries where you want “most recent matching day across history” instead of only exact date_logged, you can still query by weekday via strftime('%w', date_logged), but prefer the resolved date path first for precision.
+
+SQL reminder
+
+If you still support weekday-wide queries:
+
+-- day number via Python: weekdays.index(day) where Sunday=0
+SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+FROM workouts
+WHERE strftime('%w', date_logged) = ?
+ORDER BY date_logged DESC, id ASC
+LIMIT 100;
+
+
+For exact date:
+
+SELECT exercise_name, sets, reps, weight, date_logged, notes, substitution_reason
+FROM workouts
+WHERE date_logged = ?
+ORDER BY id ASC
+LIMIT 100;
+
+
+Validation
+
+If both date and day are missing, return:
+
+{"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
+
+
+Acceptance:
+
+Query “what did I do last Tuesday?” resolves to the correct calendar date in console logs and returns real entries.
+
+Query “show my plan for tuesday” resolves the weekday properly for plan slice.
+
+Query “what did I do on 2025-08-05?” uses the explicit date and echoes the same in the final answer.
+
+4) Tool descriptions (keep system prompt short)
+
+Keep the system prompt minimal. Put “when to use” guidance into tool descriptions.
+
+Update descriptions to be explicit and action-oriented, e.g.:
+
+compare_workout_to_plan: “Use for any question that compares actual performance to planned workouts (followed plan, vs/versus, compliance). Returns plan + actual + diff.”
+
+get_logs_by_day_or_date: “Retrieve actual logged workouts for a specific date or for the most recent past occurrence of a weekday.”
+
+get_weekly_plan: “Return plan for a given weekday or the entire week.”
+
+get_user_profile: “Return user goal/level and latest plan philosophy.”
+
+Acceptance:
+
+Multi-tool queries (“did I follow my plan on 2025-08-05?”) either call the composite tool or a clean pair of tools without duplicates. No long system prompt needed.
+
+5) Leave guardrails in the planner loop
+
+Keep MAX_TOOL_CALLS=5 and the duplicate-call block (same tool + identical args → short-circuit).
+
+If cap reached, return a friendly fallback message.
+
+Acceptance:
+
+No infinite loops; duplicate calls are prevented with a console note.
+
+6) Final smoke tests (please run & show console)
+
+“What did I do last Tuesday?”
+
+Console shows RESOLVE: date=YYYY-MM-DD, day=tuesday.
+
+Returns actual logs for that resolved date.
+
+“Show my plan for Tuesday.”
+
+Returns plan slice; no history tools called.
+
+“Did I follow my plan on 2025-08-05?”
+
+Uses comparison (composite or pair), and the final answer cites the exact date and mismatches.
+
+“I want to focus more on legs.”
+
+No writes; returns a small proposal JSON (or text block) for confirmation.
+
+If anything is unclear, please ask one clarifying question and then proceed with the smallest viable diffs.
