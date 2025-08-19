@@ -1,0 +1,94 @@
+Goal: Add generic conversation memory that feels like a real assistant without massive prompts. Implement 4 layers: short-term window, pinned facts, semantic recall, and sticky context. Keep diffs small. Show unified diffs only.
+
+0) constraints
+
+do not refactor unrelated code or routes.
+
+keep tool-calling v2 as the chat engine.
+
+add only what’s needed; tiny, auditable changes.
+
+1) short-term window (always included)
+
+add a ConversationStore with:
+
+append_turn(user_text, assistant_text)
+
+get_recent_window(max_turns=6) → returns the last N pairs as a compact array.
+
+in the chat route (v2), before sending to OpenAI, append:
+
+the recent window as assistant-only context (1 compact block), e.g.
+
+[RECENT TURNS]
+- U: ...
+- A: ...
+- U: ...
+- A: ...
+
+
+keep this under ~1–2k tokens.
+
+after the model returns final text, call append_turn() with the new pair.
+
+2) pinned facts (long-lived memory)
+
+create a pinned_facts table: (user_id, fact_key, fact_value, updated_at).
+
+expose tool get_pinned_facts({}) that returns a small dict of key facts.
+description: “Return durable user facts (goals, injuries, equipment, schedule, nutrition prefs). Use when advice depends on user constraints.”
+
+optionally expose tool set_pinned_fact({key, value}) but do not auto-write; return as a proposal first unless the user explicitly confirms.
+
+3) semantic recall (episodic)
+
+store each user+assistant message into conversations(user_id, ts, role, text, embedding) (embedding optional first).
+
+add tool search_conversation({query, max_items=3}) that returns the most relevant short snippets (you can stub embeddings now: keyword search, upgrade later).
+
+description: “Use to recall older discussion relevant to the query (e.g., injuries, substitutions, constraints).”
+
+4) sticky context (last tool criteria)
+
+after any tool that resolves concrete parameters (date/day/exercise), save to conversation_state (or similar) like:
+{ "last_logs_query": { "date": "...", "day": "..." }, "last_plan_slice": { "day": "..." } }
+
+expose tool get_last_query_context({}) returning those fields.
+description: “Use for parameterless follow-ups like ‘compare that to my plan’.”
+
+in tools like compare_workout_to_plan, if args are missing, auto-load from this store; if empty, return a gentle error so the model asks for specifics.
+
+5) keep system prompt short; put usage hints in tool descriptions
+
+don’t bloat system prompt. add a tiny line:
+“You have tools to fetch pinned facts, recent context, and older snippets. Use them when unsure; don’t guess.”
+
+6) guardrails
+
+keep MAX_TOOL_CALLS=5 and duplicate-call prevention.
+
+cap get_recent_window at 6 turns by default to control tokens.
+
+cap search_conversation at 3 snippets, each <400 chars.
+
+7) acceptance tests (please run + show console)
+
+Follow-up without params
+
+U: “show me last Thursday logs” → logs tool resolves date.
+
+U: “how does that compare to my plan?” → compare tool auto-loads last date from sticky context (or calls get_last_query_context) and returns plan vs actual.
+
+Recall prior topic
+
+U: “my left shoulder was bugging me recently—what did we decide to do about it?”
+
+Model calls search_conversation (or get_pinned_facts if shoulder is pinned) and cites the prior advice.
+
+Use pinned facts
+
+U: “remind me my current goal and level” → model calls get_pinned_facts and answers from facts, not memory dump.
+
+No infinite loop
+
+Force a case with missing params; planner hits the cap politely and asks for the needed info.
