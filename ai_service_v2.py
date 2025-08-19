@@ -238,15 +238,21 @@ Key principles:
 DATE HANDLING:
 - When users mention dates like "August 14th", convert to current year format (2025-08-14)
 - For workout history queries, use the exact date they specify
-- If they ask about performance vs plan, call BOTH get_workout_history AND get_weekly_plan
 
-TOOL USAGE GUIDELINES:
-- For "how did I perform on [date]": use get_workout_history with that specific date
-- For "how does it compare to my plan": use get_weekly_plan to get the planned workout  
-- For performance comparisons: ALWAYS call BOTH get_workout_history AND get_weekly_plan
-- When user asks about performance vs plan, you MUST call both tools in the same response
-- Don't call the same tool multiple times with the same arguments
+TOOL USAGE GUIDELINES - READ CAREFULLY:
+- For queries asking about performance on a date: use get_workout_history with that date
+- For queries asking about plans: use get_weekly_plan
+- **CRITICAL**: If the user asks ANYTHING about comparing performance to plan (like "how does it compare to my plan"), you MUST call BOTH tools:
+  1. get_workout_history (to get what they actually did)
+  2. get_weekly_plan (to get what was planned)
+- Don't call the same tool multiple times with identical arguments
 - Each tool call should have a distinct purpose
+
+COMPARISON QUERY PATTERNS (require BOTH tools):
+- "how did I perform... and how does it compare to my plan"
+- "how does my workout compare to my plan"
+- "did I follow my plan on [date]"
+- Any question about actual vs planned workouts
 
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
@@ -276,6 +282,10 @@ When users mention workouts they've completed, use the log_workout tool. When th
 
             # If AI wants to use tools, execute them
             if tool_calls:
+                print(f"🎯 User query: '{message}'")
+                print(f"🤖 AI planned {len(tool_calls)} tool calls: {[tc.function.name for tc in tool_calls]}")
+                print(f"🔍 Tool call details: {[(tc.function.name, json.loads(tc.function.arguments)) for tc in tool_calls]}")
+                
                 # SAFEGUARD: Check for too many tool calls
                 if len(tool_calls) > MAX_TOOL_CALLS:
                     return {
