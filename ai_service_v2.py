@@ -242,9 +242,11 @@ DATE HANDLING:
 
 TOOL USAGE GUIDELINES:
 - For "how did I perform on [date]": use get_workout_history with that specific date
-- For "how does it compare to my plan": use get_weekly_plan to get the planned workout
-- For performance comparisons: call both tools to compare actual vs planned
-- Don't call the same tool multiple times with different dates unless specifically asked
+- For "how does it compare to my plan": use get_weekly_plan to get the planned workout  
+- For performance comparisons: ALWAYS call BOTH get_workout_history AND get_weekly_plan
+- When user asks about performance vs plan, you MUST call both tools in the same response
+- Don't call the same tool multiple times with the same arguments
+- Each tool call should have a distinct purpose
 
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
@@ -296,13 +298,15 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     function_args = json.loads(tool_call.function.arguments)
 
                     # SAFEGUARD: Prevent calling the same tool with same args repeatedly
+                    # But allow different tools to be called
                     tool_signature = f"{function_name}:{json.dumps(function_args, sort_keys=True)}"
                     if tool_signature in tools_called:
-                        print(f"⚠️ Skipping duplicate tool call: {function_name}")
+                        print(f"⚠️ Skipping duplicate tool call: {function_name} with same args")
                         continue
                     tools_called.add(tool_signature)
 
                     print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
+                    print(f"🔍 Tool calls planned: {[tc.function.name for tc in tool_calls]}")
 
                     # Execute the function
                     tool_result = self._execute_tool(function_name, function_args)
