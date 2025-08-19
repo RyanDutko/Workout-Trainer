@@ -4,6 +4,38 @@ from typing import Dict, List, Any, Optional
 from openai import OpenAI
 from models import Database, User, TrainingPlan, Workout
 from datetime import datetime, timedelta
+import zoneinfo
+
+# Detroit timezone for consistent date resolution
+DETROIT_TZ = zoneinfo.ZoneInfo("America/Detroit")
+
+def resolve_date_or_day(date_str: str = None, day_str: str = None) -> tuple[str, str]:
+    """
+    Returns (resolved_date_yyyy_mm_dd, normalized_day_lower) or (None, None) if unresolvable.
+    Preference: explicit date_str if valid; else resolve day_str to most recent past weekday.
+    """
+    # 1) explicit date
+    if date_str:
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            return d.isoformat(), d.strftime("%A").lower()
+        except ValueError:
+            pass  # fall through to day logic
+
+    # 2) resolve weekday
+    if day_str:
+        day_l = day_str.strip().lower()
+        weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+        if day_l in weekdays:
+            today = datetime.now(DETROIT_TZ).date()
+            target_idx = weekdays.index(day_l)
+            today_idx = int(datetime.now(DETROIT_TZ).strftime("%w"))  # 0=Sun..6=Sat
+            delta = (today_idx - target_idx) % 7
+            # use today if same weekday; otherwise go back to last occurrence
+            resolved = today if delta == 0 else (today - timedelta(days=delta))
+            return resolved.isoformat(), day_l
+
+    return None, None
 
 class AIServiceV2:
     def __init__(self, db: Database):
@@ -19,7 +51,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "compare_workout_to_plan",
-                    "description": "Use to answer any question that compares actual performance to planned workouts (followed the plan, vs/versus, compliance, differences). Returns plan + actual + diff.",
+                    "description": "Use for any question that compares actual performance to planned workouts (followed plan, vs/versus, compliance). Returns plan + actual + diff.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -39,7 +71,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_logs_by_day_or_date",
-                    "description": "Retrieve actual logged workouts for a specific calendar date or most recent matching weekday.",
+                    "description": "Retrieve actual logged workouts for a specific date or for the most recent past occurrence of a weekday.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -64,7 +96,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_weekly_plan",
-                    "description": "Retrieve planned exercises; pass day to get a slice or omit for full plan.",
+                    "description": "Return plan for a given weekday or the entire week.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -80,7 +112,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_user_profile",
-                    "description": "User goal/level and latest plan philosophy (newest first).",
+                    "description": "Return user goal/level and latest plan philosophy.",
                     "parameters": {
                         "type": "object",
                         "properties": {}
@@ -199,10 +231,7 @@ CURRENT YEAR: {current_year}
 Ground all factual answers in tool results. 
 For history/plan/comparison questions, call the appropriate tool(s) first.
 If tools return no data, say so plainly. Do not invent.
-When the user suggests a goal change, propose an update (JSON), do not write.
-Prefer concise, actionable answers citing dates and exact numbers.
-
-IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday", use the current year ({current_year}) unless explicitly stated otherwise."""
+Prefer concise, actionable answers citing dates and exact numbers."""
                 }
             ]
 
@@ -355,30 +384,17 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
 
     def _compare_workout_to_plan(self, date: str = None, day: str = None) -> Dict[str, Any]:
         """Composite tool to compare actual performance to planned workouts"""
+        resolved_date, resolved_day = resolve_date_or_day(date, day)
+        print(f"RESOLVE: date={resolved_date}, day={resolved_day}")
+        
+        if not resolved_date and not resolved_day:
+            return {"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
+        
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        # Determine the target date and day
-        target_date = date
-        target_day = day
-
-        if date:
-            # Convert date to day of week
-            try:
-                date_obj = datetime.strptime(date, '%Y-%m-%d')
-                target_day = date_obj.strftime('%A').lower()
-            except:
-                pass
-        elif day:
-            # Find most recent matching day
-            cursor.execute('''
-                SELECT date_logged FROM workouts 
-                WHERE strftime('%w', date_logged) = ? 
-                ORDER BY date_logged DESC LIMIT 1
-            ''', (str(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].index(day.lower())),))
-            result = cursor.fetchone()
-            if result:
-                target_date = result[0]
+        target_date = resolved_date
+        target_day = resolved_day
 
         # Get planned exercises
         plan = []
@@ -469,25 +485,32 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
 
     def _get_logs_by_day_or_date(self, day: str = None, date: str = None, limit: int = 100) -> Dict[str, Any]:
         """Get workout logs by day or date"""
+        resolved_date, resolved_day = resolve_date_or_day(date, day)
+        print(f"RESOLVE: date={resolved_date}, day={resolved_day}")
+        
+        if not resolved_date and not resolved_day:
+            return {"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
+        
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
-        if date:
+        if resolved_date:
+            # Use exact date
             cursor.execute('''
                 SELECT exercise_name, sets, reps, weight, notes, date_logged
                 FROM workouts
                 WHERE date_logged = ?
-                ORDER BY id
+                ORDER BY id ASC
                 LIMIT ?
-            ''', (date, limit))
-        elif day:
-            # Get most recent workouts for the specified day
-            day_num = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].index(day.lower())
+            ''', (resolved_date, limit))
+        elif resolved_day:
+            # Query by weekday pattern for historical data
+            day_num = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].index(resolved_day)
             cursor.execute('''
                 SELECT exercise_name, sets, reps, weight, notes, date_logged
                 FROM workouts
                 WHERE strftime('%w', date_logged) = ?
-                ORDER BY date_logged DESC, id DESC
+                ORDER BY date_logged DESC, id ASC
                 LIMIT ?
             ''', (str(day_num), limit))
         else:
@@ -517,6 +540,15 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
+        if day:
+            # Normalize day to lowercase
+            day = day.strip().lower()
+            weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
+            if day not in weekdays:
+                return {"error": "invalid_day", "hint": "use weekday name like 'tuesday'"}
+                
+            print(f"RESOLVE: day={day}")
+            
         if day:
             cursor.execute('''
                 SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes

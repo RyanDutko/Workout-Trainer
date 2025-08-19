@@ -19,6 +19,9 @@ try:
 except ImportError:
     ai_service_v2 = None
 
+# Feature flag for legacy intent detection
+ENABLE_LEGACY_INTENT = False # Set to True to re-enable legacy intent analysis
+
 # Database initialization
 def get_db_connection():
     """Get a database connection with proper timeout and thread safety"""
@@ -346,7 +349,7 @@ def init_db():
 
         for day, exercise, sets, reps, weight, order in sample_plan:
             cursor.execute('''
-                INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, order_index)
+                INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, exercise_order)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (day, exercise, sets, reps, weight, order))
 
@@ -891,74 +894,74 @@ def remove_text_and_cleanup(original_text, target_text):
 def should_include_conversation_context(message, query_intent):
     """Determine if recent conversation context is needed for this message"""
     message_lower = message.lower()
-    
+
     # Extract intent string if it's in dict format
     actual_intent = query_intent
     if isinstance(query_intent, dict):
         actual_intent = query_intent.get('intent', 'general')
-    
+
     # Always include context for these scenarios
     context_needed_scenarios = [
         # Follow-up responses and corrections
         message_lower.strip() in ['yes', 'no', 'confirm', 'cancel', 'go ahead', 'do it', 'make the change'],
-        
+
         # References that need context
         any(ref in message_lower for ref in ['it', 'that', 'this exercise', 'the one', 'instead', 'other']),
-        
+
         # Continuation words
         any(word in message_lower for word in ['also', 'additionally', 'but', 'however', 'actually', 'wait']),
-        
+
         # Negation/correction phrases
         any(phrase in message_lower for phrase in ['no not', 'i meant', 'actually i', 'correction', 'change that']),
-        
+
         # Plan modification intents (need context for what was discussed)
         actual_intent == 'plan_modification',
-        
+
         # Multi-intent scenarios
         actual_intent == 'multi_intent',
-        
+
         # Questions about suggestions or recommendations (clearly follow-ups)
         any(phrase in message_lower for phrase in ['is this smart', 'is that good', 'does that make sense', 'should i', 'would that work']),
-        
+
         # Exercise-related questions with day references (likely plan follow-ups)
         ('i already' in message_lower and any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
-        
+
         # Short messages that likely need context
         len(message.strip()) < 20 and not message_lower.strip() in ['hello', 'hi', 'help', 'thanks', 'thank you']
     ]
-    
+
     # Skip context for these scenarios (standalone queries)
     context_not_needed_scenarios = [
         # Simple greetings
         message_lower.strip() in ['hello', 'hi', 'hey', 'thanks', 'thank you'],
-        
+
         # Complete standalone questions that don't reference previous suggestions
         (message_lower.startswith('what ') and len(message) > 30 and 'is this' not in message_lower),
         (message_lower.startswith('how ') and len(message) > 30 and 'is this' not in message_lower),
         (message_lower.startswith('show me') and len(message) > 20 and 'is this' not in message_lower),
-        
+
         # Historical queries (they build their own context)
         actual_intent == 'historical',
     ]
-    
+
     # Check if context is explicitly not needed
     if any(context_not_needed_scenarios):
         return False
-    
+
     # Check if context is needed
     if any(context_needed_scenarios):
         return True
-    
+
     # CRITICAL: For "general" intent messages that mention exercises and days, likely need context
     if actual_intent == 'general':
         # If message mentions exercises AND days AND seems like a follow-up question
         mentions_exercise = any(ex in message_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder', 'workout'])
         mentions_days = any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
         seems_like_question = any(word in message_lower for word in ['?', 'smart', 'good', 'right', 'correct', 'okay', 'should', 'would'])
-        
+
         if mentions_exercise and mentions_days and seems_like_question:
             return True
-    
+
     # Default: include context for shorter unclear messages
     return len(message.strip()) < 50
 
@@ -966,9 +969,9 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
     """Parse conversation to detect AI preference changes"""
     try:
         combined_text = f"{user_request} {ai_response}".lower()
-        
+
         preference_updates = {}
-        
+
         # Look for tone updates
         if 'change tone to' in combined_text or 'tone to' in combined_text:
             tone_keywords = ['casual', 'formal', 'motivational', 'friendly', 'professional']
@@ -976,16 +979,16 @@ def parse_preference_updates_from_conversation(ai_response, user_request):
                 if tone in combined_text:
                     preference_updates['grok_tone'] = tone
                     break
-        
+
         # Look for detail level updates
         if 'more detailed' in combined_text or 'brief' in combined_text or 'concise' in combined_text:
             if 'more detailed' in combined_text:
                 preference_updates['grok_detail_level'] = 'detailed'
             elif 'brief' in combined_text or 'concise' in combined_text:
                 preference_updates['grok_detail_level'] = 'brief'
-        
+
         return preference_updates if preference_updates else None
-        
+
     except Exception as e:
         print(f"Error parsing preference updates: {e}")
         return None
@@ -1022,7 +1025,7 @@ def parse_philosophy_update_from_conversation(ai_response, user_request):
                             'comprehensive_removal': True,
                             'target_text': target_text,
                             'changes_made': changes_made,
-                            'reasoning': f"✅ COMPLETED: Removed all mentions of '{target_text}' from {len(changes_made)} locations in your plan",
+                            'reasoning': f"✅ COMPLETED: Removed all mentions of '{target_text}' from {len(changes_made)} locations in your training plan",
                             'success_message': f"Successfully removed '{target_text}' from {len(changes_made)} places in your training plan!"
                         }
                     else:
@@ -1108,7 +1111,7 @@ Make sure to provide complete, updated versions of both sections, not just ackno
                     # Parse the natural language philosophy into new 2-field structure
                     extracted_data = {}
 
-                    # Split content into core philosophy (foundational) and current priorities (specific)
+                    # Split content into core philosophy (foundational) vs current priorities (specific)
                     # Look for structural/foundational elements vs specific current focuses
                     core_parts = []
                     priority_parts = []
@@ -1208,90 +1211,6 @@ Make sure to provide complete, updated versions of both sections, not just ackno
 
                 print(f"🧠 Successfully parsed philosophy update - Core: {len(extracted_data.get('plan_philosophy', ''))} chars, Priorities: {len(extracted_data.get('progression_strategy', ''))} chars")
                 return extracted_data
-
-            else:
-                print(f"⚠️ No existing philosophy found to rewrite")
-                return None
-
-        # Legacy logic for responses that already contain philosophy content
-        grok_update_indicators = [
-            "i'll update your philosophy",
-            "here's your updated",
-            "your new philosophy",
-            "updated approach",
-            "revised philosophy",
-            "modified approach",
-            "new training philosophy",
-            "updated training approach"
-        ]
-
-        grok_is_updating = any(indicator in ai_response_lower for indicator in grok_update_indicators)
-
-        philosophy_content_indicators = [
-            "training philosophy:",
-            "approach:",
-            "philosophy is",
-            "training approach",
-            "focus on",
-            "emphasize",
-            "prioritize"
-        ]
-
-        has_philosophy_content = any(indicator in ai_response_lower for indicator in philosophy_content_indicators)
-
-        # Only proceed with legacy parsing if Grok provided substantial content
-        if grok_is_updating or has_philosophy_content:
-
-            # Use Grok's response as the new philosophy if it contains substantial content
-            if len(ai_response) > 100 and has_philosophy_content:
-                # Try to extract structured philosophy from Grok's response
-                philosophy_sections = {}
-
-                # Look for specific philosophy elements in Grok's response
-                response_lines = ai_response.split('\n')
-                current_section = None
-                current_content = []
-
-                for line in response_lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    # Check for section headers
-                    if any(header in line.lower() for header in ['philosophy:', 'approach:', 'strategy:', 'considerations:']):
-                        # Save previous section
-                        if current_section and current_content:
-                            philosophy_sections[current_section] = ' '.join(current_content)
-
-                        # Start new section
-                        if 'philosophy' in line.lower():
-                            current_section = 'plan_philosophy'
-                        elif 'strategy' in line.lower() or 'progression' in line.lower():
-                            current_section = 'progression_strategy'
-                        elif 'consideration' in line.lower():
-                            current_section = 'special_considerations'
-                        else:
-                            current_section = 'plan_philosophy'  # default
-
-                        current_content = [line.split(':', 1)[-1].strip()] if ':' in line else []
-                    else:
-                        # Add to current section
-                        if current_section:
-                            current_content.append(line)
-
-                # Save last section
-                if current_section and current_content:
-                    philosophy_sections[current_section] = ' '.join(current_content)
-
-                # If we didn't find structured sections, use the whole response as philosophy
-                if not philosophy_sections:
-                    philosophy_sections['plan_philosophy'] = ai_response.strip()
-
-                # Add reasoning
-                philosophy_sections['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
-
-                print(f"🧠 Detected philosophy update request with substantial AI content")
-                return philosophy_sections
 
         # No philosophy update detected
         return None
@@ -1549,8 +1468,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
     from context_builders.plan import build_plan_context
     from context_builders.progression import build_progression_context
     from context_builders.general import build_general_context
-    
-    
+
+
 
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
     print(f"🔍 Intent: {query_intent}")
@@ -1569,7 +1488,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         'modify my plan', 'change my plan', 'update my plan',
         'weekly plan', 'thursday plan', 'monday plan', 'tuesday plan'
     ]
-    
+
     if any(indicator in prompt_lower for indicator in plan_modification_indicators):
         print(f"🎯 Detected plan modification request - routing to plan context")
         return build_plan_context()
@@ -1585,7 +1504,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         # Questions about exercise placement
         (any(ex in prompt_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder']) and '?' in prompt and any(day in prompt_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']))
     ]
-    
+
     if any(plan_followup_indicators):
         print(f"🎯 Detected plan-related follow-up question - routing to plan context")
         return build_plan_context()
@@ -1595,7 +1514,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         'what did i do', 'show me what i did', 'my workout on', 'what i did on',
         'show me my logs', 'recent workout', 'my recent', 'last workout'
     ]
-    
+
     if any(indicator in prompt_lower for indicator in historical_indicators):
         print(f"🎯 Detected historical request - routing to historical context")
         return build_historical_context(prompt)
@@ -1690,7 +1609,7 @@ def get_grok_response_with_context(prompt, user_background=None, conversation_co
         # Add conversation context if available
         if conversation_context:
             context_prompt += f"\n\n=== RECENT CONVERSATION ===\n{conversation_context}\n"
-        
+
         # Build final prompt with critical instruction right before user message
         full_prompt = context_prompt + f"\n\n🚫 CRITICAL INSTRUCTION: The above context data is for reference only. DO NOT reference any workout data, fitness context, or app information unless the user specifically asks about their data. Respond ONLY to this user message:\n\n{prompt}"
 
@@ -2201,20 +2120,20 @@ def chat_v2_test():
     """Test endpoint for V2 AI service with function calling"""
     if not ai_service_v2:
         return jsonify({'error': 'V2 AI service not available'})
-    
+
     user_message = request.form.get('message', '')
-    
+
     try:
         # Test the V2 AI service
         result = ai_service_v2.get_ai_response(user_message)
-        
+
         return jsonify({
             'success': True,
             'response': result.get('response', ''),
             'tools_used': result.get('tools_used', []),
             'tool_results': result.get('tool_results', [])
         })
-    
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -2250,19 +2169,29 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # Analyze query intent first (needed for smart context detection)
-            query_intent = analyze_query_intent(message, None)
+            # Bypass legacy intent detection when flag is disabled
+            if ENABLE_LEGACY_INTENT:
+                # Legacy intent detection and context heuristics
+                query_intent = analyze_query_intent(message, None)
+                conversation_context = None
+                if conv_history and len(conv_history.strip()) > 0 and should_include_conversation_context(message, query_intent):
+                    messages = conv_history.strip().split('\n\n')
+                    recent_messages = messages[-6:]
+                    conversation_context = '\n\n'.join(recent_messages)
+                response = get_grok_response_with_context(message, user_background, conversation_context)
+            else:
+                # Skip legacy shaping; let V2 decide what tools to call
+                # Mock response for V2 functionality (replace with actual V2 call if available)
+                # For now, this path should ideally be handled by V2 service directly
+                # If V2 is not available, this would be an error condition or fallback
+                if ai_service_v2:
+                    # Use V2 service directly for tool-calling
+                    response = ai_service_v2.get_ai_response(message, user_background=user_background, conversation_context=conv_history)
+                else:
+                    response = "V2 AI service is not available. Please enable it or fix the import."
+                    print("Error: V2 AI service not available and ENABLE_LEGACY_INTENT is False.")
 
-            # Smart conversation context detection - only send when relevant
-            conversation_context = None
-            if conv_history and len(conv_history.strip()) > 0 and should_include_conversation_context(message, query_intent):
-                # Get last few exchanges for context (both user and AI messages)
-                messages = conv_history.strip().split('\n\n')
-                recent_messages = messages[-6:]  # Last 3 complete user-AI exchanges
-                conversation_context = '\n\n'.join(recent_messages)
-            
-            # Pass conversation context to AI
-            response = get_grok_response_with_context(message, user_background, conversation_context)
+
             print(f"AI response received: {len(response)} characters")  # Debug log
 
             # Stream the response
@@ -2280,11 +2209,19 @@ def chat_stream():
                 # Generate session ID for conversation grouping
                 session_id = str(uuid.uuid4())[:8]
 
-                # Use the intent analysis we already performed
-                detected_intent = query_intent['intent']
-                confidence_score = query_intent['confidence']
-                potential_actions = query_intent.get('actions', [])
-                detected_entities = query_intent.get('entities', [])
+                # Use the intent analysis we already performed IF legacy intent is enabled
+                detected_intent = 'general' # Default to general if legacy is disabled
+                confidence_score = 0.1
+                potential_actions = []
+                detected_entities = {}
+
+                if ENABLE_LEGACY_INTENT:
+                    query_intent_obj = analyze_query_intent(message, None) # Recalculate if needed
+                    detected_intent = query_intent_obj.get('intent', 'general')
+                    confidence_score = query_intent_obj.get('confidence', 0.1)
+                    potential_actions = query_intent_obj.get('actions', [])
+                    detected_entities = query_intent_obj.get('entities', [])
+
 
                 # Extract exercise mentions
                 exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back', 'shoulder']
@@ -4243,17 +4180,17 @@ def debug_newly_added():
         cursor = conn.cursor()
 
         # Get all exercises from weekly plan
-        plan_exercises = []
+        exercises = []
         try:
             cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan ORDER BY day_of_week, exercise_order')
-            plan_exercises = cursor.fetchall()
+            exercises = cursor.fetchall()
         except sqlite3.OperationalError as e:
-            print(f"Error fetching plan exercises: {e}")
+            print(f"Error fetching exercises for fix_newly_added: {e}")
 
 
         # For each exercise, check if it has any logs
         results = []
-        for exercise_name, newly_added, date_added, created_by in plan_exercises:
+        for exercise_name, newly_added, date_added, created_by in exercises:
             log_count = 0
             try:
                 cursor.execute('SELECT COUNT(*) FROM workouts WHERE LOWER(exercise_name) = LOWER(?)', (exercise_name,))
@@ -4292,17 +4229,17 @@ def debug_duplicate_workouts():
             WHERE date_logged = ?
             ORDER BY id DESC
         ''', (today,))
-        
+
         today_workouts = cursor.fetchall()
-        
+
         # Check for exact duplicates
         duplicates = []
         seen = set()
-        
+
         for workout in today_workouts:
             workout_id, exercise, sets, reps, weight, date, notes = workout
             workout_key = f"{exercise.lower()}_{sets}_{reps}_{weight}_{date}"
-            
+
             if workout_key in seen:
                 duplicates.append({
                     'id': workout_id,
@@ -4315,9 +4252,9 @@ def debug_duplicate_workouts():
                 })
             else:
                 seen.add(workout_key)
-        
+
         conn.close()
-        
+
         return jsonify({
             'today_workouts': [{
                 'id': w[0], 'exercise': w[1], 'sets': w[2], 
