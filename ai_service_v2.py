@@ -309,6 +309,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
                 final_response = self.client.chat.completions.create(
                     model="gpt-4",
                     messages=messages,
+                    tools=self.tools,  # Required when using tool_choice
                     temperature=0.7,
                     max_tokens=1000,
                     tool_choice="none"  # SAFEGUARD: Force AI to respond, no more tools
