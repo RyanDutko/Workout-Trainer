@@ -11,6 +11,14 @@ import uuid
 
 app = Flask(__name__)
 
+# Import V2 AI service for testing
+try:
+    from ai_service_v2 import AIServiceV2
+    from models import Database
+    ai_service_v2 = AIServiceV2(Database())
+except ImportError:
+    ai_service_v2 = None
+
 # Database initialization
 def get_db_connection():
     """Get a database connection with proper timeout and thread safety"""
@@ -1542,13 +1550,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
     from context_builders.progression import build_progression_context
     from context_builders.general import build_general_context
     
-    # Import V2 AI service for testing
-    try:
-        from ai_service_v2 import AIServiceV2
-        from models import Database
-        ai_service_v2 = AIServiceV2(Database())
-    except ImportError:
-        ai_service_v2 = None
+    
 
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
     print(f"🔍 Intent: {query_intent}")
