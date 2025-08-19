@@ -2181,12 +2181,18 @@ def chat_stream():
                 response = get_grok_response_with_context(message, user_background, conversation_context)
             else:
                 # Skip legacy shaping; let V2 decide what tools to call
-                # Mock response for V2 functionality (replace with actual V2 call if available)
-                # For now, this path should ideally be handled by V2 service directly
-                # If V2 is not available, this would be an error condition or fallback
                 if ai_service_v2:
                     # Use V2 service directly for tool-calling
-                    response = ai_service_v2.get_ai_response(message, user_background=user_background, conversation_context=conv_history)
+                    # Convert conversation history to the format V2 expects
+                    conversation_history_list = []
+                    if conv_history and len(conv_history.strip()) > 0:
+                        # Parse conversation history if needed
+                        # For now, pass the raw conversation context
+                        pass
+                    
+                    print("MAIN_CHAT: using V2 tool calling")
+                    result = ai_service_v2.get_ai_response(message, conversation_history_list)
+                    response = result.get('response', 'No response from AI service')
                 else:
                     response = "V2 AI service is not available. Please enable it or fix the import."
                     print("Error: V2 AI service not available and ENABLE_LEGACY_INTENT is False.")
