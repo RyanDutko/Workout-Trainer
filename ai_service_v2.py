@@ -3,6 +3,7 @@ import json
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
 from models import Database, User, TrainingPlan, Workout
+from conversation_store import ConversationStore
 from datetime import datetime, timedelta
 import zoneinfo
 
@@ -44,6 +45,7 @@ class AIServiceV2:
         self.user = User(db)
         self.training_plan = TrainingPlan(db)
         self.workout = Workout(db)
+        self.conversation_store = ConversationStore(db.db_path)
 
         # Define the tools/functions that the AI can call
         self.tools = [
@@ -208,6 +210,50 @@ class AIServiceV2:
                         "required": ["day", "exercise_name"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_pinned_facts",
+                    "description": "Return durable user facts (goals, injuries, equipment, schedule, nutrition prefs). Use when advice depends on user constraints.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_conversation",
+                    "description": "Use to recall older discussion relevant to the query (e.g., injuries, substitutions, constraints).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Search query for relevant conversation history"
+                            },
+                            "max_items": {
+                                "type": "integer",
+                                "default": 3,
+                                "description": "Maximum number of conversation snippets to return"
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_last_query_context",
+                    "description": "Use for parameterless follow-ups like 'compare that to my plan'.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
             }
         ]
 
@@ -220,18 +266,28 @@ class AIServiceV2:
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             current_year = datetime.now().year
 
-            messages = [
-                {
-                    "role": "system", 
-                    "content": f"""You are a coaching assistant inside a fitness app.
+            # Get recent conversation window
+            recent_context = self.conversation_store.get_recent_window(max_turns=6)
+            
+            system_content = f"""You are a coaching assistant inside a fitness app.
 
 CURRENT DATE/TIME: {current_datetime}
 CURRENT YEAR: {current_year}
+
+You have tools to fetch pinned facts, recent context, and older snippets. Use them when unsure; don't guess.
 
 Ground all factual answers in tool results. 
 For history/plan/comparison questions, call the appropriate tool(s) first.
 If tools return no data, say so plainly. Do not invent.
 Prefer concise, actionable answers citing dates and exact numbers."""
+
+            if recent_context:
+                system_content += f"\n\n{recent_context}"
+
+            messages = [
+                {
+                    "role": "system", 
+                    "content": system_content
                 }
             ]
 
@@ -303,7 +359,9 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
                     continue  # Continue the loop to get final response
                 else:
-                    # No more tools needed, return final response
+                    # No more tools needed, save conversation turn and return final response
+                    self.conversation_store.append_turn(message, response_message.content)
+                    
                     return {
                         'response': response_message.content,
                         'tools_used': [name for name, _ in seen],
@@ -376,6 +434,18 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     exercise_name=args.get('exercise_name')
                 )
 
+            elif function_name == "get_pinned_facts":
+                return self._get_pinned_facts()
+
+            elif function_name == "search_conversation":
+                return self._search_conversation(
+                    query=args.get('query'),
+                    max_items=args.get('max_items', 3)
+                )
+
+            elif function_name == "get_last_query_context":
+                return self._get_last_query_context()
+
             else:
                 return {"error": f"Unknown function: {function_name}"}
 
@@ -386,6 +456,28 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         """Composite tool to compare actual performance to planned workouts"""
         resolved_date, resolved_day = resolve_date_or_day(date, day)
         print(f"RESOLVE: date={resolved_date}, day={resolved_day}")
+        
+        # Auto-load from sticky context if parameters missing
+        if not resolved_date and not resolved_day:
+            try:
+                context = self.conversation_store.get_last_query_context()
+                
+                # Try last comparison context first
+                if "last_comparison" in context:
+                    last_comp = context["last_comparison"]
+                    resolved_date = last_comp.get("date")
+                    resolved_day = last_comp.get("day")
+                # Fall back to last logs query
+                elif "last_logs_query" in context:
+                    last_logs = context["last_logs_query"]
+                    resolved_date = last_logs.get("date")
+                    resolved_day = last_logs.get("day")
+                
+                if resolved_date or resolved_day:
+                    print(f"AUTO-LOADED from context: date={resolved_date}, day={resolved_day}")
+                    
+            except Exception as e:
+                print(f"Failed to auto-load context: {e}")
         
         if not resolved_date and not resolved_day:
             return {"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
@@ -476,6 +568,13 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
         conn.close()
 
+        # Save sticky context for follow-ups
+        if target_date or target_day:
+            self.conversation_store.save_query_context("last_comparison", {
+                "date": target_date,
+                "day": target_day
+            })
+
         return {
             "criteria": {"date": target_date, "day": target_day},
             "plan": plan,
@@ -533,6 +632,14 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             })
 
         conn.close()
+
+        # Save sticky context for follow-ups
+        if resolved_date or resolved_day:
+            self.conversation_store.save_query_context("last_logs_query", {
+                "date": resolved_date,
+                "day": resolved_day
+            })
+
         return {"workouts": workouts, "total_found": len(workouts)}
 
     def _get_weekly_plan(self, day: str = None) -> Dict[str, Any]:
@@ -585,6 +692,13 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             })
 
         conn.close()
+
+        # Save sticky context for follow-ups
+        if day:
+            self.conversation_store.save_query_context("last_plan_slice", {
+                "day": day
+            })
+
         return {"plan": plan_data, "total_exercises": len(plan_data)}
 
     def _get_user_profile(self) -> Dict[str, Any]:
@@ -750,3 +864,27 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         except Exception as e:
             conn.close()
             return {"success": False, "error": f"Failed to remove exercise: {str(e)}"}
+
+    def _get_pinned_facts(self) -> Dict[str, Any]:
+        """Get pinned user facts"""
+        try:
+            facts = self.conversation_store.get_pinned_facts()
+            return {"facts": facts, "total_facts": len(facts)}
+        except Exception as e:
+            return {"error": f"Failed to get pinned facts: {str(e)}"}
+
+    def _search_conversation(self, query: str, max_items: int = 3) -> Dict[str, Any]:
+        """Search conversation history for relevant snippets"""
+        try:
+            results = self.conversation_store.search_conversation(query, max_items)
+            return {"results": results, "query": query, "total_found": len(results)}
+        except Exception as e:
+            return {"error": f"Failed to search conversation: {str(e)}"}
+
+    def _get_last_query_context(self) -> Dict[str, Any]:
+        """Get last query context for follow-ups"""
+        try:
+            context = self.conversation_store.get_last_query_context()
+            return {"context": context}
+        except Exception as e:
+            return {"error": f"Failed to get last query context: {str(e)}"}

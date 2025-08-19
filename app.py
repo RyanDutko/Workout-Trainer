@@ -15,6 +15,7 @@ app = Flask(__name__)
 try:
     from ai_service_v2 import AIServiceV2
     from models import Database
+    from conversation_store import ConversationStore
     ai_service_v2 = AIServiceV2(Database())
 except ImportError:
     ai_service_v2 = None
