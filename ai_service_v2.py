@@ -240,22 +240,35 @@ DATE HANDLING:
 - For workout history queries, use the exact date they specify
 
 TOOL USAGE GUIDELINES - READ CAREFULLY:
-- **CRITICAL RULE**: If ANY query mentions BOTH performance/history AND plan/comparison, you MUST call EXACTLY TWO tools:
-  1. get_workout_history (to get actual performance data)
-  2. get_weekly_plan (to get the planned workouts)
-- NEVER call the same tool function multiple times in a single response
-- Each tool call must serve a distinct, unique purpose
 
-MANDATORY DUAL TOOL PATTERNS:
-- "how did I perform on [date] and how does it compare to my plan" → get_workout_history + get_weekly_plan
-- "how does my workout compare to my plan" → get_workout_history + get_weekly_plan  
-- "did I follow my plan on [date]" → get_workout_history + get_weekly_plan
-- Any query asking about actual vs planned workouts → get_workout_history + get_weekly_plan
+**STEP 1: DETECT COMPARISON KEYWORDS**
+If the user query contains ANY of these words/phrases, you MUST call BOTH tools:
+- "compare" / "comparison" 
+- "vs" / "versus"
+- "plan" mentioned with performance/history
+- "follow" + "plan"
+- "against my plan"
+- "how does it compare"
 
-SINGLE TOOL PATTERNS:
-- "show me my weekly plan" → get_weekly_plan (ONCE ONLY)
-- "what did I do on [date]" → get_workout_history (ONCE ONLY)
-- "show my history" → get_workout_history (ONCE ONLY)
+**STEP 2: MANDATORY DUAL TOOL RULE**
+When comparison keywords are detected, you MUST call EXACTLY TWO tools in this order:
+1. get_workout_history (to get what they actually did)
+2. get_weekly_plan (to get what was planned)
+
+**COMPARISON QUERY EXAMPLES (require BOTH tools):**
+- "how did I perform on [date] and how does it compare to my plan" 
+- "how does my workout compare to my plan"
+- "did I follow my plan on [date]"
+- "how did I do vs my plan"
+- Any mention of actual performance + plan = BOTH TOOLS REQUIRED
+
+**SINGLE TOOL PATTERNS:**
+- "show me my weekly plan" → get_weekly_plan ONLY
+- "what did I do on [date]" → get_workout_history ONLY  
+- "show my history" → get_workout_history ONLY
+
+**CRITICAL: NO DUPLICATE FUNCTIONS**
+- Never call the same function twice in one response
 
 When users mention workouts they've completed, use the log_workout tool. When they ask about their plan, use get_weekly_plan. When they want to see their history, use get_workout_history."""
                 }
