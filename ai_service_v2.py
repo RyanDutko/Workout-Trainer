@@ -301,6 +301,7 @@ When users mention workouts they've completed, use the log_workout tool. When th
 
                 # Track which tools we've called to prevent duplicates
                 tools_called = set()
+                tool_results_for_response = []
 
                 # Execute each tool call
                 for tool_call in tool_calls:
@@ -308,18 +309,17 @@ When users mention workouts they've completed, use the log_workout tool. When th
                     function_args = json.loads(tool_call.function.arguments)
 
                     # SAFEGUARD: Prevent calling the same tool with same args repeatedly
-                    # But allow different tools to be called
                     tool_signature = f"{function_name}:{json.dumps(function_args, sort_keys=True)}"
                     if tool_signature in tools_called:
-                        print(f"⚠️ Skipping duplicate tool call: {function_name} with same args")
+                        print(f"⚠️ Skipping duplicate tool call: {function_name} with args {function_args}")
                         continue
                     tools_called.add(tool_signature)
 
                     print(f"🔧 AI is calling tool: {function_name} with args: {function_args}")
-                    print(f"🔍 Tool calls planned: {[tc.function.name for tc in tool_calls]}")
 
                     # Execute the function
                     tool_result = self._execute_tool(function_name, function_args)
+                    tool_results_for_response.append(tool_result)
 
                     # Add tool result to conversation
                     messages.append({
@@ -343,8 +343,8 @@ When users mention workouts they've completed, use the log_workout tool. When th
 
                 return {
                     'response': ai_response,
-                    'tools_used': [tc.function.name for tc in tool_calls],
-                    'tool_results': [self._execute_tool(tc.function.name, json.loads(tc.function.arguments)) for tc in tool_calls],
+                    'tools_used': list(tools_called),  # Only show actually executed tools
+                    'tool_results': tool_results_for_response,
                     'success': True
                 }
 
