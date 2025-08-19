@@ -586,24 +586,40 @@ When users mention workouts they've completed, use the log_workout tool. When th
         if not date:
             date = datetime.now().strftime('%Y-%m-%d')
         
-        workout_id = self.workout.log_workout(
-            user_id=1,
-            date=date,
-            exercises=[{
-                'name': exercise_name,
-                'sets': sets,
-                'reps': reps,
-                'weight': weight,
-                'notes': notes
-            }],
-            notes=notes
-        )
-        
-        return {
-            "success": True,
-            "workout_id": workout_id,
-            "message": f"Logged {exercise_name}: {sets}x{reps}@{weight} on {date}"
-        }
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Insert workout using the same method as the main app
+            cursor.execute('''
+                INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (exercise_name, sets, reps, weight, notes, date, False))
+            
+            workout_id = cursor.lastrowid
+            
+            # Clear newly_added flag if this exercise was recently added to plan
+            cursor.execute('''
+                UPDATE weekly_plan 
+                SET newly_added = FALSE 
+                WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
+            ''', (exercise_name,))
+            
+            conn.commit()
+            conn.close()
+            
+            return {
+                "success": True,
+                "workout_id": workout_id,
+                "message": f"Logged {exercise_name}: {sets}x{reps}@{weight} on {date}"
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Database error: {str(e)}",
+                "message": f"Failed to log {exercise_name}"
+            }
     
     def _modify_weekly_plan(self, action: str, day: str, exercise_name: str, sets: int = None, reps: str = None, weight: str = None, reasoning: str = '') -> Dict[str, Any]:
         """Modify the weekly plan"""
