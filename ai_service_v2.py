@@ -86,6 +86,75 @@ class AIServiceV2:
                         "properties": {}
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_exercise_to_plan",
+                    "description": "Add a new exercise to a specific day in the weekly plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
+                            "exercise_name": {
+                                "type": "string",
+                                "description": "Name of the exercise to add"
+                            },
+                            "sets": {
+                                "type": "integer",
+                                "description": "Number of sets",
+                                "default": 3
+                            },
+                            "reps": {
+                                "type": "string", 
+                                "description": "Number of reps (can be range like '8-12')",
+                                "default": "8-12"
+                            },
+                            "weight": {
+                                "type": "string",
+                                "description": "Weight to use (e.g. '25lbs', 'bodyweight')",
+                                "default": "bodyweight"
+                            }
+                        },
+                        "required": ["day", "exercise_name"]
+                    }
+                }
+            },
+            {
+                "type": "function", 
+                "function": {
+                    "name": "update_exercise_in_plan",
+                    "description": "Update an existing exercise in the weekly plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
+                            "exercise_name": {
+                                "type": "string",
+                                "description": "Name of the exercise to update"
+                            },
+                            "sets": {
+                                "type": "integer",
+                                "description": "Number of sets"
+                            },
+                            "reps": {
+                                "type": "string",
+                                "description": "Number of reps"
+                            },
+                            "weight": {
+                                "type": "string", 
+                                "description": "Weight to use"
+                            }
+                        },
+                        "required": ["day", "exercise_name"]
+                    }
+                }
             }
         ]
 
@@ -232,6 +301,24 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
 
             elif function_name == "get_user_profile":
                 return self._get_user_profile()
+
+            elif function_name == "add_exercise_to_plan":
+                return self._add_exercise_to_plan(
+                    day=args.get('day'),
+                    exercise_name=args.get('exercise_name'),
+                    sets=args.get('sets', 3),
+                    reps=args.get('reps', '8-12'),
+                    weight=args.get('weight', 'bodyweight')
+                )
+
+            elif function_name == "update_exercise_in_plan":
+                return self._update_exercise_in_plan(
+                    day=args.get('day'),
+                    exercise_name=args.get('exercise_name'),
+                    sets=args.get('sets'),
+                    reps=args.get('reps'),
+                    weight=args.get('weight')
+                )
 
             else:
                 return {"error": f"Unknown function: {function_name}"}
@@ -476,3 +563,93 @@ IMPORTANT: When interpreting relative dates like "august 14th" or "last Tuesday"
             "ai_preferences": ai_prefs,
             "philosophy": philosophy
         }
+
+    def _add_exercise_to_plan(self, day: str, exercise_name: str, sets: int = 3, reps: str = "8-12", weight: str = "bodyweight") -> Dict[str, Any]:
+        """Add a new exercise to the weekly plan"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Get next order for the day
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day.lower(),))
+            next_order = cursor.fetchone()[0]
+
+            # Insert the new exercise
+            cursor.execute('''
+                INSERT INTO weekly_plan
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, 'ai_v2', TRUE, ?)
+            ''', (day.lower(), exercise_name, sets, reps, weight, next_order, datetime.now().strftime('%Y-%m-%d')))
+
+            conn.commit()
+            conn.close()
+
+            return {
+                "success": True,
+                "message": f"Added {exercise_name} to {day.title()}: {sets}x{reps}@{weight}",
+                "exercise_added": {
+                    "day": day.lower(),
+                    "exercise": exercise_name,
+                    "sets": sets,
+                    "reps": reps,
+                    "weight": weight,
+                    "order": next_order
+                }
+            }
+
+        except Exception as e:
+            conn.close()
+            return {"success": False, "error": f"Failed to add exercise: {str(e)}"}
+
+    def _update_exercise_in_plan(self, day: str, exercise_name: str, sets: int = None, reps: str = None, weight: str = None) -> Dict[str, Any]:
+        """Update an existing exercise in the weekly plan"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Build update query dynamically based on provided parameters
+            update_fields = []
+            update_values = []
+
+            if sets is not None:
+                update_fields.append("target_sets = ?")
+                update_values.append(sets)
+            if reps is not None:
+                update_fields.append("target_reps = ?")
+                update_values.append(reps)
+            if weight is not None:
+                update_fields.append("target_weight = ?")
+                update_values.append(weight)
+
+            if not update_fields:
+                return {"success": False, "error": "No fields to update"}
+
+            update_values.extend([day.lower(), exercise_name])
+
+            cursor.execute(f'''
+                UPDATE weekly_plan
+                SET {', '.join(update_fields)}
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', update_values)
+
+            if cursor.rowcount > 0:
+                conn.commit()
+                conn.close()
+                return {
+                    "success": True,
+                    "message": f"Updated {exercise_name} on {day.title()}",
+                    "exercise_updated": {
+                        "day": day.lower(),
+                        "exercise": exercise_name,
+                        "sets": sets,
+                        "reps": reps,
+                        "weight": weight
+                    }
+                }
+            else:
+                conn.close()
+                return {"success": False, "error": f"Exercise '{exercise_name}' not found on {day.title()}"}
+
+        except Exception as e:
+            conn.close()
+            return {"success": False, "error": f"Failed to update exercise: {str(e)}"}
