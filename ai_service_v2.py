@@ -474,7 +474,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     resolved_day = last_logs.get("day")
                 
                 if resolved_date or resolved_day:
-                    print(f"AUTO-LOADED from context: date={resolved_date}, day={resolved_day}")
+                    print(f"CTX_LOAD for compare_workout_to_plan → date={resolved_date}, day={resolved_day}")
                     
             except Exception as e:
                 print(f"Failed to auto-load context: {e}")
@@ -568,6 +568,8 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
         conn.close()
 
+        print(f"TOOL_RESULT_LEN(compare_workout_to_plan) plan={len(plan)} actual={len(actual)} diff={len(diff)}")
+
         # Save sticky context for follow-ups
         if target_date or target_day:
             self.conversation_store.save_query_context("last_comparison", {
@@ -639,8 +641,15 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 "date": resolved_date,
                 "day": resolved_day
             })
+            print(f"CTX_SAVE last_logs_query date={resolved_date}, day={resolved_day}")
 
-        return {"workouts": workouts, "total_found": len(workouts)}
+        print(f"TOOL_RESULT_LEN(get_logs_by_day_or_date)={len(workouts)}")
+
+        return {
+            "criteria": {"date": resolved_date, "day": resolved_day},
+            "workouts": workouts, 
+            "total_found": len(workouts)
+        }
 
     def _get_weekly_plan(self, day: str = None) -> Dict[str, Any]:
         """Get weekly plan data"""
