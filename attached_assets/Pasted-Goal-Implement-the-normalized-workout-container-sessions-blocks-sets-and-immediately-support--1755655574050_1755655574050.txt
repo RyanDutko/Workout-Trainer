@@ -1,0 +1,213 @@
+Goal: Implement the normalized workout container (sessions → blocks → sets) and immediately support a “circuit with rounds” block type, including the concrete Bicep Finisher Rounds example. Keep V2 tool-calling intact. Small, auditable diffs only. Show unified diffs.
+(Foundation is per the design I previously shared.)
+
+0) Constraints
+
+Do not refactor unrelated routes or UI screens.
+
+Keep legacy workouts reads (adapter fallback).
+
+Prefer same-file helpers unless a tiny workout_normalizer.py is clearly warranted.
+
+Add clear console prints for debugging (NORMALIZE…, TOOL_RESULT_LEN…, CTX_SAVE/LOAD).
+
+1) Create normalized tables (sessions/blocks/sets)
+
+Add these tables if missing (SQLite):
+
+CREATE TABLE IF NOT EXISTS workout_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL DEFAULT 1,
+  date TEXT NOT NULL,                -- YYYY-MM-DD
+  notes TEXT,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_date ON workout_sessions(user_id, date);
+
+CREATE TABLE IF NOT EXISTS workout_blocks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  block_type TEXT NOT NULL,          -- 'single' | 'superset' | 'circuit' | 'emom' | 'amrap' | 'interval'
+  label TEXT,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY(session_id) REFERENCES workout_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_session ON workout_blocks(session_id);
+
+CREATE TABLE IF NOT EXISTS workout_sets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  block_id INTEGER NOT NULL,
+  set_index INTEGER NOT NULL DEFAULT 0,
+  data_json TEXT NOT NULL,           -- payload varies by type
+  status TEXT NOT NULL DEFAULT 'completed',  -- 'planned' | 'completed' | 'modified' | 'skipped'
+  FOREIGN KEY(block_id) REFERENCES workout_blocks(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sets_block ON workout_sets(block_id);
+
+
+No migrations of old data yet—legacy table remains for reads. (We’ll adapt it.)
+
+2) Add a normalizer (one function)
+
+Add normalize_session(date_or_id) that returns a flat list of comparable rows:
+
+{
+  "exercise": "Incline DB Press",
+  "block_type": "single|superset|circuit|emom|amrap|interval",
+  "member_idx": 0,                // for multi-member blocks; else null
+  "set_idx": 0,                   // 0-based within that member
+  "kind": "standard|dropset|time|distance|rest_pause|…",
+  "reps": 12, "weight": 60,
+  "left_weight": null, "right_weight": null,
+  "time_sec": null, "distance_m": null,
+  "drops": [], "mini_sets": [],
+  "status": "planned|completed|modified|skipped",
+  "notes": null
+}
+
+
+Read workout_blocks.meta_json to understand rounds, rest, etc.
+
+Read workout_sets.data_json and map to fields above.
+
+Legacy adapter: if normalized tables don’t have a session for that date, adapt each legacy row as “single block + single standard set”.
+
+Debug: print(f"NORMALIZE rows={len(rows)} for date={...}").
+
+3) Implement circuit with rounds support (v1 of “complex”)
+
+Minimum required now: circuits with fixed rounds and members (sub-exercises).
+
+Plan representation (returned by get_weekly_plan)
+A circuit block has:
+
+{
+  "block_type": "circuit",
+  "label": "Bicep Finisher Rounds",
+  "order_index": 99,
+  "meta_json": { "rounds": 2, "rest_between_rounds_sec": 90 },
+  "members": [
+    { "exercise": "DB Bicep Curl",  "reps": 10, "weight": 20, "tempo": "slow" },
+    { "exercise": "DB Bicep Curl",  "reps": 15, "weight": 15, "tempo": "fast" },
+    { "exercise": "DB Hammer Curl", "reps": 10, "weight": 15, "tempo": "slow" }
+  ]
+}
+
+
+Plan normalization: expand to planned sets:
+
+for r in 0..rounds-1:
+  for member_idx, m in enumerate(members):
+    yield {block_type:"circuit", member_idx, set_idx:r, exercise:m.exercise,
+           reps:m.reps, weight:m.weight, tempo:m.tempo, status:"planned"}
+
+
+Actual logging shape (workout_sets.data_json):
+
+{ "exercise":"DB Bicep Curl","reps":10,"weight":20,"tempo":"slow",
+  "member_idx":0,"set_idx":0,"notes":"" }
+
+4) Logging UI (non-breaking)
+
+When the user taps Begin logging:
+
+If the block is single: render your current reps × weight UI (unchanged).
+
+If the block is circuit:
+
+Render a card titled with label (e.g., “Bicep Finisher Rounds”).
+
+Show Rounds = meta_json.rounds sections.
+
+Within each round, render each member row with:
+
+exercise name, reps input, weight input (tempo read-only for now),
+
+a “Planned (Round N)” button to autofill all member rows for that round.
+
+On save, insert a workout_session (if needed), a workout_block (circuit), and 1 workout_set per row (member_idx, set_idx).
+
+Fallback for unknown types: render as stacked standard sets.
+
+Keep the rest of the UI flow unchanged; this only adds a template for circuit.
+
+5) Tools (read-first; composite compare)
+
+get_session(date) → return normalized actual (use new tables; fallback to legacy adapter).
+
+get_weekly_plan(day?) → include normalized planned sets as above for circuit.
+
+compare_workout_to_plan(date?, day?) (composite):
+
+Resolve {date, day} (use your resolver).
+
+Normalize actual via get_session(date).
+
+Normalize plan slice for day.
+
+Diff by (block order, member_idx, set_idx, exercise):
+
+exact match → matched
+
+plan row missing in actual → missing
+
+actual extra row → extra
+
+any field delta (reps/weight/tempo) → modified with details
+
+Return:
+
+{
+  "criteria": {"date":"YYYY-MM-DD","day":"thursday"},
+  "plan": [...],
+  "actual": [...],
+  "diff": [...]
+}
+
+
+Tool logs:
+TOOL_RESULT_LEN(get_weekly_plan)=...
+TOOL_RESULT_LEN(get_session)=...
+TOOL_RESULT_LEN(compare_workout_to_plan) plan=.. actual=.. diff=..
+
+6) Make the finisher addable by AI immediately
+
+When the user asks the assistant to “add Bicep Finisher Rounds to Thursday”, the plan write path should accept a circuit block payload (as above) and store it (same table you currently use for weekly plan; if your plan is a table per day/exercise, store block_type, meta_json, and a members JSON field).
+
+If your current plan storage is too flat, create a lightweight plan-normalizer (like the session normalizer) that can read either legacy plan rows or new block style.
+
+Do not rip out the old plan yet—just allow adding this block style alongside it and normalize both styles for tools.
+
+7) Acceptance tests (please run & show console)
+
+Plan fetch
+
+“Show my plan for Thursday” → includes a circuit block with rounds=2 and 3 members.
+
+Logging
+
+Begin logging → circuit renders as 2 rounds × 3 rows; “Planned (Round 1)” autofills; save; tweak one rep in Round 2; save.
+
+Compare
+
+“How does that compare to my plan?” → compare_workout_to_plan returns a diff showing the modified row(s).
+
+Legacy compatibility
+
+“What did I do last Tuesday?” → still works via legacy adapter path.
+
+Console should show:
+
+NORMALIZE rows=<n> for date=...
+
+TOOL_RESULT_LEN(compare_workout_to_plan) plan=<n> actual=<m> diff=<k>
+
+8) Leave planner & guardrails unchanged
+
+Keep MAX_TOOL_CALLS and duplicate-call prevention as-is.
+
+Keep the short system prompt; tool descriptions carry usage hints.
+
+If anything is unclear, please ask one clarifying question and proceed with the smallest viable diffs.
