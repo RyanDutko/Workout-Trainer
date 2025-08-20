@@ -148,16 +148,28 @@ function displayPlannedWorkouts(date) {
     card.className = "bg-gray-50 border rounded p-3";
     
     let description = "";
+    let exerciseName = "";
+    
     if (exercise.type === "simple") {
-      const sets = exercise.planned_sets || 1;
-      description = `${sets} set${sets > 1 ? 's' : ''}`;
+      exerciseName = exercise.title;
+      const sets = exercise.planned_sets || exercise.sets || 1;
+      const reps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
+      const weight = exercise.members?.[0]?.planned_weight || exercise.weight || '';
+      description = `${sets} sets x ${reps} @ ${weight}`;
     } else if (exercise.rounds && exercise.rounds.length > 0) {
+      exerciseName = exercise.title;
       description = `${exercise.rounds.length} round${exercise.rounds.length > 1 ? 's' : ''}`;
+    } else {
+      exerciseName = exercise.exercise_name || exercise.title || 'Exercise';
+      const sets = exercise.sets || 1;
+      const reps = exercise.reps || '';
+      const weight = exercise.weight || '';
+      description = `${sets} sets x ${reps} @ ${weight}`;
     }
 
     card.innerHTML = `
       <div class="flex items-center justify-between">
-        <span class="font-medium">${exercise.title}</span>
+        <span class="font-medium">${exerciseName}</span>
         <span class="text-sm text-gray-600">${description}</span>
       </div>
     `;
@@ -190,15 +202,18 @@ function displayCurrentExercise() {
   $("progressPercent").textContent = Math.round((currentIndex / totalExercises) * 100) + "%";
   $("progressBar").style.width = (currentIndex / totalExercises) * 100 + "%";
   
-  // Update exercise info
-  $("exerciseTitle").textContent = exercise.title;
-  $("exerciseType").textContent = exercise.type === "simple" ? "Simple" : "Complex";
+  // Update exercise info - handle both formats
+  const exerciseName = exercise.title || exercise.exercise_name || 'Exercise';
+  const exerciseType = exercise.type === "simple" || exercise.block_type === "single" ? "Simple" : "Complex";
+  
+  $("exerciseTitle").textContent = exerciseName;
+  $("exerciseType").textContent = exerciseType;
   
   // Clear previous data
   $("exerciseNotes").value = workoutData[currentIndex]?.notes || "";
   
   // Show appropriate interface
-  if (exercise.type === "simple") {
+  if (exercise.type === "simple" || exercise.block_type === "single") {
     displaySimpleInterface(exercise);
   } else {
     displayComplexInterface(exercise);
@@ -216,8 +231,10 @@ function displaySimpleInterface(exercise) {
   const container = $("setsContainer");
   container.innerHTML = "";
   
-  const plannedSets = exercise.planned_sets || 1;
-  const member = exercise.members?.[0] || {};
+  // Handle both old and new exercise formats
+  const plannedSets = exercise.planned_sets || exercise.sets || 1;
+  const plannedReps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
+  const plannedWeight = exercise.members?.[0]?.planned_weight || exercise.weight || '';
   
   for (let setNum = 1; setNum <= plannedSets; setNum++) {
     const setDiv = document.createElement("div");
@@ -231,7 +248,7 @@ function displaySimpleInterface(exercise) {
         <label class="block text-xs text-gray-600 mb-1">Reps</label>
         <input type="number" 
                class="w-full border rounded px-2 py-1" 
-               placeholder="${member.planned_reps || ''}"
+               placeholder="${plannedReps}"
                value="${existingData.reps || ''}"
                onchange="updateSetData(${setNum - 1}, 'reps', this.value)">
       </div>
@@ -239,7 +256,7 @@ function displaySimpleInterface(exercise) {
         <label class="block text-xs text-gray-600 mb-1">Weight</label>
         <input type="text" 
                class="w-full border rounded px-2 py-1" 
-               placeholder="${member.planned_weight || ''}"
+               placeholder="${plannedWeight}"
                value="${existingData.weight || ''}"
                onchange="updateSetData(${setNum - 1}, 'weight', this.value)">
       </div>

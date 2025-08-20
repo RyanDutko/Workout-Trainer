@@ -1935,16 +1935,12 @@ def logging_template():
             else:
                 # simple block
                 plan_json.append({
-                    "block_id": f"BLK-{row_id}",
-                    "type": "simple",
-                    "title": exercise_name,
-                    "planned_sets": int(sets or 0),
-                    "members": [{
-                        "name": exercise_name,
-                        "input_id": f"BLK-{row_id}.S0",
-                        "planned_reps": reps,
-                        "planned_weight": weight
-                    }]
+                    'id': f"block_{row_id}",
+                    'block_type': 'single',
+                    'exercise_name': exercise_name,
+                    'sets': sets,
+                    'reps': reps,
+                    'weight': weight
                 })
 
         # Generate the template
