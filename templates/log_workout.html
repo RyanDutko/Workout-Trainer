@@ -26,6 +26,7 @@
                                 <p class="mt-2 mb-0">Loading your workout template...</p>
                             </div>
                         </div>
+                        <div id="templateError" class="hidden text-red-600 text-sm"></div>
 
                         <!-- Submit Button -->
                         <div class="row mt-4">
@@ -66,18 +67,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function loadWorkoutTemplate() {
     const today = new Date().toISOString().split('T')[0];
+    loadTemplate(today);
+}
 
-    fetch(`/logging_template?date=${today}`)
-        .then(response => response.json())
-        .then(data => {
-            workoutTemplate = data;
-            renderDynamicLoggingUI(data);
-            document.getElementById('submitBtn').disabled = false;
-        })
-        .catch(error => {
-            console.error('Error loading template:', error);
-            renderFallbackUI();
-        });
+async function loadTemplate(dateStr) {
+    try {
+        const resp = await fetch(`/logging_template?date=${encodeURIComponent(dateStr)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        // accept either shape
+        const tpl = data.template || { date: data.date, blocks: data.blocks };
+        if (!tpl || !Array.isArray(tpl.blocks)) throw new Error("Bad template payload");
+        renderDynamicLoggingUI(tpl); // your existing renderer that builds inputs
+        document.getElementById('templateError')?.classList.add('hidden');
+        document.getElementById('submitBtn').disabled = false; // Enable submit button once template is loaded
+    } catch (err) {
+        console.error("Template load failed:", err);
+        const el = document.getElementById('templateError');
+        if (el) {
+            el.textContent = "Template loading failed";
+            el.classList.remove('hidden');
+        }
+        renderFallbackUI(); // Render manual logging UI on error
+    }
 }
 
 function renderDynamicLoggingUI(template) {

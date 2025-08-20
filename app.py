@@ -789,7 +789,7 @@ Extract the philosophy content after the colon (:) in the user's message and str
         print(f"Error building philosophy update context: {e}")
         return prompt
 
-def build_smart_context(prompt, query_intent, user_background=None):
+def build_smart_context(prompt, user_background=None, conversation_context=None):
     """Route to appropriate context builder based on query intent"""
     from context_builders.historical import build_historical_context
     from context_builders.plan import build_plan_context
@@ -799,13 +799,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
 
 
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
-    print(f"🔍 Intent: {query_intent}")
     print(f"🔍 Prompt: '{prompt}'")
-
-    # Extract the actual intent string if it's in a dict format
-    actual_intent = query_intent
-    if isinstance(query_intent, dict):
-        actual_intent = query_intent.get('intent', 'general')
 
     prompt_lower = prompt.lower()
 
@@ -853,11 +847,16 @@ def build_smart_context(prompt, query_intent, user_background=None):
         return build_philosophy_update_context(prompt)
 
     # FALLBACK: Use original intent detection
+    # Analyze query intent and build appropriate context
+    query_intent = analyze_query_intent(prompt)
+    actual_intent = query_intent.get('intent', 'general')
+
+
     if actual_intent == 'historical':
         return build_historical_context(prompt)
     elif actual_intent == 'progression':
         return build_progression_context()
-    elif actual_intent in ['plan_modification', 'plan_discussion']:
+    elif actual_intent == 'plan_modification' or actual_intent == 'plan_discussion':
         return build_plan_context()
     elif actual_intent == 'philosophy_update':
         return build_philosophy_update_context(prompt)
@@ -919,7 +918,7 @@ def get_grok_response_with_context(prompt, user_background=None, conversation_co
 
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
-        context_info = build_smart_context(prompt, query_intent, user_background)
+        context_info = build_smart_context(prompt, user_background, conversation_context)
 
         # Add AI preferences to context
         if ai_preferences:
@@ -3472,7 +3471,7 @@ def debug_newly_added():
         # Get all exercises from weekly plan
         exercises = []
         try:
-            cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan ORDER BY day_of_week, exercise_order')
+            cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan')
             exercises = cursor.fetchall()
         except sqlite3.OperationalError as e:
             print(f"Error fetching exercises for fix_newly_added: {e}")
