@@ -1,0 +1,415 @@
+Please apply only the changes below. Keep everything else as-is.
+
+1) app.py — ensure logging table exists, enrich /logging_template, and add /log_from_template
+
+(a) Imports & table creation (near top-level init/startup code):
+
+from datetime import datetime
+import json
+
+def ensure_logging_tables():
+    conn = get_db_connection()
+    c = conn.cursor()
+    # Main logs table (one row per input_id on a given date)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS workout_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            block_id INTEGER NOT NULL,
+            block_type TEXT NOT NULL,
+            member_idx INTEGER NOT NULL,
+            round_index INTEGER,
+            actual_reps INTEGER,
+            actual_weight TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(date, block_id, member_idx, round_index)
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+# Call this once during startup (right after app/DB bootstrap):
+ensure_logging_tables()
+
+
+(b) Enrich existing /logging_template so single blocks include planned_sets:
+Find your /logging_template route and in the simple block builder, add planned_sets: t_sets. The block should look like this (only show the simple part you’re changing):
+
+            else:
+                # simple block
+                blocks.append({
+                    "block_id": f"BLK-{row_id}",
+                    "type": "simple",
+                    "title": name,
+                    "planned_sets": int(t_sets or 0),
+                    "members": [{
+                        "name": name,
+                        "input_id": f"BLK-{row_id}.S0",
+                        "planned_reps": t_reps,
+                        "planned_weight": t_weight
+                    }]
+                })
+
+
+(c) Add /log_from_template endpoint
+
+@app.route('/log_from_template', methods=['POST'])
+def log_from_template():
+    try:
+        payload = request.get_json(force=True) or {}
+        date_str = payload.get("date")
+        entries  = payload.get("entries") or []
+        block_notes = payload.get("block_notes") or []  # [{block_id, notes}]
+
+        # Basic date sanity
+        try:
+            _ = datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": "Invalid or missing date"}), 400
+
+        def parse_input_id(s: str):
+            # "BLK-109.S0"  (single → member_idx = set index, round_index = NULL)
+            # "BLK-109.R2.1" (rounds → round_index=2, member_idx=1)
+            if not s or not s.startswith("BLK-") or "." not in s:
+                raise ValueError("Bad input_id")
+            rest = s[4:]              # "109.S0" or "109.R2.1"
+            blk, seg = rest.split(".", 1)
+            block_id = int(blk)
+            if seg.startswith("S"):
+                # S{idx}
+                member_idx = int(seg[1:])
+                return block_id, None, member_idx, "single"
+            if seg.startswith("R"):
+                rpart, mpart = seg.split(".", 1)  # "R2", "1"
+                round_index = int(rpart[1:])
+                member_idx  = int(mpart)
+                return block_id, round_index, member_idx, "circuit"
+            raise ValueError("Bad input_id segment")
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        saved = 0
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Upsert each entry
+        for e in entries:
+            iid = e.get("input_id")
+            reps = e.get("actual_reps")
+            wt   = e.get("actual_weight")
+            if not iid:
+                continue
+            try:
+                block_id, round_idx, member_idx, block_type = parse_input_id(iid)
+            except Exception:
+                continue
+
+            # SQLite UPSERT with unique(date, block_id, member_idx, round_index)
+            c.execute("""
+                INSERT INTO workout_logs
+                  (date, block_id, block_type, member_idx, round_index,
+                   actual_reps, actual_weight, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, block_id, member_idx, round_index)
+                DO UPDATE SET
+                  actual_reps=excluded.actual_reps,
+                  actual_weight=excluded.actual_weight,
+                  updated_at=excluded.updated_at
+            """, (
+                date_str, block_id, block_type, int(member_idx),
+                round_idx if round_idx is not None else None,
+                reps if reps not in ("", None) else None,
+                wt if wt not in ("", None) else None,
+                None,
+                now_ts, now_ts
+            ))
+            saved += 1
+
+        # Optional: block-level notes
+        for bn in block_notes:
+            try:
+                block_id = int(bn.get("block_id"))
+            except Exception:
+                continue
+            note_text = (bn.get("notes") or "").strip()
+            if not note_text:
+                continue
+            # store note once using member_idx= -1 and round_index = NULL
+            c.execute("""
+                INSERT INTO workout_logs
+                  (date, block_id, block_type, member_idx, round_index,
+                   actual_reps, actual_weight, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, block_id, member_idx, round_index)
+                DO UPDATE SET
+                  notes=excluded.notes,
+                  updated_at=excluded.updated_at
+            """, (
+                date_str, block_id, "meta", -1, None,
+                None, None, note_text, now_ts, now_ts
+            ))
+
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "saved": saved}), 200
+    except Exception as e:
+        print("/log_from_template error:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+2) templates/log_workout.html — restore 2-step flow (preview → logger)
+
+Replace the whole file with this minimal template (adjust styling classes to your setup if needed):
+
+{% extends "base.html" %}
+{% block content %}
+<div class="container mx-auto p-4">
+  <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
+
+  <div class="mb-4 flex items-center gap-2">
+    <label for="logDate" class="font-medium">Date:</label>
+    <input id="logDate" type="date" class="border px-2 py-1 rounded">
+    <button id="loadDayBtn" class="bg-blue-600 text-white px-3 py-1 rounded">Load Day</button>
+  </div>
+
+  <div id="viewPreview" class="mb-6 hidden">
+    <h2 class="text-xl font-semibold mb-2">Planned for <span id="previewDate"></span></h2>
+    <div id="previewList" class="space-y-2"></div>
+    <button id="beginBtn" class="mt-4 bg-green-600 text-white px-4 py-2 rounded">Begin logging</button>
+  </div>
+
+  <div id="viewLogger" class="hidden">
+    <div class="flex items-baseline gap-2 mb-2">
+      <h2 id="blockTitle" class="text-xl font-semibold"></h2>
+      <span id="blockPlan" class="text-sm text-gray-600"></span>
+    </div>
+    <div id="blockBody" class="space-y-3"></div>
+    <div class="mt-2">
+      <label class="block text-sm font-medium mb-1">Notes (for this block)</label>
+      <textarea id="blockNotes" rows="3" class="w-full border rounded p-2"></textarea>
+    </div>
+    <div class="mt-4 flex justify-between">
+      <button id="prevBtn" class="border px-4 py-2 rounded">Back</button>
+      <button id="saveNextBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Log &amp; continue</button>
+    </div>
+  </div>
+
+  <div id="msg" class="mt-4 text-sm"></div>
+  <div id="templateError" class="hidden text-red-600 text-sm mt-2"></div>
+</div>
+
+<script>
+let template = null;     // { date, blocks: [...] }
+let mode = "preview";    // "preview" | "active"
+let cursor = 0;          // index of current block
+let draft = {};          // input_id -> { reps, weight }
+let notesDraft = {};     // block_id -> notes
+
+function $(id){ return document.getElementById(id); }
+function show(id){ $(id).classList.remove('hidden'); }
+function hide(id){ $(id).classList.add('hidden'); }
+
+async function fetchTemplate(dateStr) {
+  const resp = await fetch(`/logging_template?date=${encodeURIComponent(dateStr)}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  const tpl = data.template || { date: data.date, blocks: data.blocks };
+  if (!tpl || !Array.isArray(tpl.blocks)) throw new Error("Bad template payload");
+  return tpl;
+}
+
+function renderPreview() {
+  $("previewDate").textContent = template.date;
+  const list = $("previewList");
+  list.innerHTML = "";
+  template.blocks.forEach((b) => {
+    const el = document.createElement("div");
+    el.className = "border rounded p-2";
+    if (b.type === "simple") {
+      el.textContent = `${b.title} — ${b.planned_sets || 1} sets`;
+    } else {
+      const rounds = (b.rounds || []).length || 1;
+      el.textContent = `${b.title} — ${rounds} rounds`;
+    }
+    list.appendChild(el);
+  });
+  show("viewPreview");
+}
+
+function inputRow(label, inputId, plannedReps, plannedWeight) {
+  const row = document.createElement("div");
+  row.className = "grid grid-cols-3 gap-2 items-center";
+  const lab = document.createElement("div");
+  lab.textContent = label;
+  const reps = document.createElement("input");
+  reps.type = "number";
+  reps.min = "0";
+  reps.placeholder = plannedReps ?? "";
+  reps.className = "border p-1 rounded";
+  reps.dataset.inputId = inputId;
+  reps.dataset.field = "reps";
+
+  const wt = document.createElement("input");
+  wt.type = "text";
+  wt.placeholder = plannedWeight ?? "";
+  wt.className = "border p-1 rounded";
+  wt.dataset.inputId = inputId;
+  wt.dataset.field = "weight";
+
+  reps.addEventListener("input", syncDraft);
+  wt.addEventListener("input", syncDraft);
+
+  row.appendChild(lab);
+  row.appendChild(reps);
+  row.appendChild(wt);
+  return row;
+}
+
+function syncDraft(e){
+  const iid = e.target.dataset.inputId;
+  const field = e.target.dataset.field;
+  draft[iid] = draft[iid] || {};
+  if (field === "reps") draft[iid].reps = e.target.value === "" ? null : Number(e.target.value);
+  if (field === "weight") draft[iid].weight = e.target.value;
+}
+
+function renderBlock() {
+  const b = template.blocks[cursor];
+  $("blockTitle").textContent = b.title;
+  $("blockBody").innerHTML = "";
+  $("blockNotes").value = notesDraft[b.block_id || b.title] || "";
+
+  if (b.type === "simple") {
+    // Expand N sets from planned_sets (default 1)
+    const sets = Math.max(1, Number(b.planned_sets || 1));
+    $("blockPlan").textContent = `Plan: ${sets} set${sets>1?"s":""}`; 
+    // Build S0..S{N-1} input rows
+    for (let s = 0; s < sets; s++) {
+      const baseId = (b.block_id || "").replace("BLK-","") || "0";
+      const iid = `BLK-${baseId}.S${s}`;
+      const row = inputRow(`Set ${s+1}`, iid, (b.members?.[0]?.planned_reps ?? ""), (b.members?.[0]?.planned_weight ?? ""));
+      $("blockBody").appendChild(row);
+    }
+  } else {
+    const rounds = b.rounds || [];
+    $("blockPlan").textContent = `Plan: ${rounds.length || 1} round${rounds.length>1?"s":""}`;
+
+    rounds.forEach((r) => {
+      const det = document.createElement("details");
+      const sum = document.createElement("summary");
+      sum.textContent = `Round ${r.round_index}`;
+      det.appendChild(sum);
+
+      (r.members || []).forEach((m, i) => {
+        const row = inputRow(m.name || `Movement ${i+1}`, m.input_id, m.planned_reps, m.planned_weight);
+        row.classList.add("ml-4");
+        det.appendChild(row);
+      });
+      $("blockBody").appendChild(det);
+    });
+  }
+
+  $("prevBtn").disabled = (cursor === 0);
+  $("saveNextBtn").textContent = (cursor === template.blocks.length - 1) ? "Save day" : "Log & continue";
+}
+
+async function saveCurrentAndNext() {
+  const b = template.blocks[cursor];
+  const entries = [];
+  // Gather entries for this block
+  if (b.type === "simple") {
+    const sets = Math.max(1, Number(b.planned_sets || 1));
+    const baseId = (b.block_id || "").replace("BLK-","") || "0";
+    for (let s = 0; s < sets; s++) {
+      const iid = `BLK-${baseId}.S${s}`;
+      const d = draft[iid] || {};
+      if (d.reps != null || (d.weight && d.weight !== "")) {
+        entries.push({ input_id: iid, actual_reps: d.reps, actual_weight: d.weight });
+      }
+    }
+  } else {
+    (b.rounds || []).forEach((r) => {
+      (r.members || []).forEach((m) => {
+        const d = draft[m.input_id] || {};
+        if (d.reps != null || (d.weight && d.weight !== "")) {
+          entries.push({ input_id: m.input_id, actual_reps: d.reps, actual_weight: d.weight });
+        }
+      });
+    });
+  }
+
+  const blockIdKey = b.block_id || b.title; // prefer numeric id when present
+  const block_notes = [{
+    block_id: Number((b.block_id || "BLK-0").replace("BLK-","")) || 0,
+    notes: $("blockNotes").value || ""
+  }];
+
+  const body = {
+    date: $("logDate").value,
+    entries,
+    block_notes
+  };
+
+  $("msg").textContent = "Saving…";
+  const resp = await fetch("/log_from_template", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.success) {
+    $("msg").textContent = "Save failed: " + (data.error || resp.status);
+    return;
+  }
+  $("msg").textContent = `Saved ${data.saved} input(s).`;
+
+  // Advance
+  if (cursor < template.blocks.length - 1) {
+    cursor++;
+    renderBlock();
+  } else {
+    // Finished the day
+   mode = "preview";
+    hide("viewLogger");
+    show("viewPreview");
+  }
+}
+
+// Wire up UI
+window.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().slice(0,10);
+  $("logDate").value = today;
+
+  $("loadDayBtn").addEventListener("click", async () => {
+    try {
+      template = await fetchTemplate($("logDate").value);
+      hide("viewLogger");
+      show("viewPreview");
+      renderPreview();
+      $("templateError").classList.add("hidden");
+      $("msg").textContent = "";
+    } catch (e) {
+      $("templateError").textContent = "Template loading failed";
+      $("templateError").classList.remove("hidden");
+    }
+  });
+
+  $("beginBtn").addEventListener("click", () => {
+    if (!template || !template.blocks || template.blocks.length === 0) return;
+    cursor = 0;
+    hide("viewPreview");
+    show("viewLogger");
+    renderBlock();
+  });
+
+  $("prevBtn").addEventListener("click", () => {
+    if (cursor > 0) {
+      cursor--;
+      renderBlock();
+    }
+  });
+  $("saveNextBtn").addEventListener("click", saveCurrentAndNext);
+});
+</script>
+{% endblock %}
