@@ -1,0 +1,78 @@
+Make the following minimal changes. Don’t refactor unrelated code.
+
+1) ai_service_v2.py — ensure commit_plan_update writes rounds to DB for circuit/rounds
+
+In the commit_plan_update handler, inside the action == "add_block" path, when we persist to weekly_plan:
+
+If normalized_block["block_type"] is "circuit" or "rounds", do ALL of the following before writing:
+
+nb = proposal.get("normalized_block", {})
+block_type = (nb.get("block_type") or "single").lower()
+label      = nb.get("label") or nb.get("exercise") or "Block"
+rounds     = int(nb.get("rounds") or 1)
+members    = nb.get("members") or []
+meta       = (nb.get("meta_json") or nb.get("meta") or {}).copy()
+meta["rounds"] = rounds
+
+
+When inserting/updating the row in weekly_plan, set these columns explicitly:
+
+exercise_name = label
+
+block_type = block_type # "circuit" or "rounds"
+
+target_sets = rounds # helps template fallback
+
+target_reps = ''
+
+target_weight = ''
+
+meta_json = json.dumps(meta)
+
+members_json = json.dumps(members)
+
+keep exercise_order logic as you have it
+
+Example (adapt to your existing insert/update function calls):
+
+import json
+
+if block_type in ("circuit", "rounds"):
+    # build meta with rounds
+    nb = proposal.get("normalized_block", {})
+    label   = nb.get("label") or nb.get("exercise") or "Block"
+    rounds  = int(nb.get("rounds") or 1)
+    members = nb.get("members") or []
+    meta    = (nb.get("meta_json") or nb.get("meta") or {}).copy()
+    meta["rounds"] = rounds
+
+    # INSERT or UPDATE weekly_plan row
+    cursor.execute(
+        """
+        INSERT INTO weekly_plan
+            (day_of_week, exercise_name, target_sets, target_reps, target_weight,
+             block_type, meta_json, members_json, exercise_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            day.lower(),
+            label,
+            rounds,             # target_sets
+            "",                 # target_reps
+            "",                 # target_weight
+            block_type,         # circuit/rounds
+            json.dumps(meta),
+            json.dumps(members),
+            order_index or 999  # or your existing ordering
+        )
+    )
+    conn.commit()
+    wrote = True
+    # ...
+
+
+When building the updated_plan payload (what you return to the client), make sure you map the DB row back to include "meta": { "rounds": <int>, ... } and "members": [...] so console logs reflect the saved rounds. (If you already have a hydrator, ensure it carries meta_json.rounds through.)
+
+2) No other changes
+
+Leave the /logging_template route and the “complex→circuit” normalization as they are.
