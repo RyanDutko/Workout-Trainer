@@ -4120,15 +4120,15 @@ def logging_template():
 
         # Get weekly plan for this day, including circuit blocks
         cursor.execute('''
-            SELECT id, exercise_name, sets, reps, weight, exercise_order, notes,
+            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
                    COALESCE(block_type, 'simple') as block_type,
                    COALESCE(meta_json, '{}') as meta_json,
                    COALESCE(members_json, '[]') as members_json,
-                   COALESCE(label, exercise_name) as label
+                   COALESCE(exercise_name, exercise_name) as label
             FROM weekly_plan 
             WHERE day_of_week = ? 
             ORDER BY exercise_order
-        ''', (day_name,))
+        ''', (day_name.lower(),))
 
         plan_exercises = cursor.fetchall()
         conn.close()
@@ -4140,7 +4140,7 @@ def logging_template():
         }
 
         for exercise in plan_exercises:
-            exercise_id, exercise_name, sets, reps, weight, order, notes, block_type, meta_json, members_json, label = exercise
+            exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json, label = exercise
 
             try:
                 meta = json.loads(meta_json) if meta_json else {}
@@ -4151,7 +4151,7 @@ def logging_template():
 
             if block_type in ['circuit', 'rounds']:
                 # Circuit/rounds block
-                rounds = meta.get('rounds', sets or 1)
+                rounds = meta.get('rounds', target_sets or 1)
 
                 block = {
                     "block_id": exercise_id,
@@ -4176,9 +4176,9 @@ def logging_template():
                     "block_id": exercise_id,
                     "type": "simple",
                     "title": exercise_name,
-                    "planned_sets": sets,
-                    "planned_reps": reps,
-                    "planned_weight": weight,
+                    "planned_sets": target_sets,
+                    "planned_reps": target_reps,
+                    "planned_weight": target_weight,
                     "notes": notes
                 })
 
