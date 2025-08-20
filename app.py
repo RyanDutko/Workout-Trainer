@@ -4273,34 +4273,40 @@ def get_day_progression_status(date):
 @app.route('/logging_template')
 def logging_template():
     """Generate dynamic workout logging template"""
-    # Force JSON content type to prevent HTML error pages
-    from flask import make_response
-    
     try:
         date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        print(f"📅 Loading template for date: {date}")
         
         # Get the day of week for the requested date
         try:
             day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-        except ValueError:
-            return make_response(jsonify({"error": "Invalid date format", "date": date, "blocks": []}), 400)
+            print(f"📆 Day name: {day_name}")
+        except ValueError as e:
+            print(f"❌ Invalid date format: {e}")
+            return jsonify({"error": "Invalid date format", "date": date, "blocks": []}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
 
-        # Get weekly plan for this day
-        cursor.execute('''
-            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
-                   COALESCE(block_type, 'single') as block_type,
-                   COALESCE(meta_json, '{}') as meta_json,
-                   COALESCE(members_json, '[]') as members_json
-            FROM weekly_plan 
-            WHERE day_of_week = ? 
-            ORDER BY exercise_order
-        ''', (day_name.lower(),))
+            # Get weekly plan for this day
+            cursor.execute('''
+                SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
+                       COALESCE(block_type, 'single') as block_type,
+                       COALESCE(meta_json, '{}') as meta_json,
+                       COALESCE(members_json, '[]') as members_json
+                FROM weekly_plan 
+                WHERE day_of_week = ? 
+                ORDER BY exercise_order
+            ''', (day_name.lower(),))
 
-        plan_exercises = cursor.fetchall()
-        conn.close()
+            plan_exercises = cursor.fetchall()
+            print(f"🔍 Found {len(plan_exercises)} exercises for {day_name}")
+            conn.close()
+
+        except Exception as db_error:
+            print(f"❌ Database error: {db_error}")
+            return jsonify({"error": "Database error", "date": date, "blocks": []}), 500
 
         template = {
             "date": date,
@@ -4310,86 +4316,96 @@ def logging_template():
 
         # If no exercises found, return empty template
         if not plan_exercises:
-            return make_response(jsonify(template), 200)
+            print(f"ℹ️ No exercises found for {day_name}")
+            return jsonify(template), 200
 
         # Process exercises
         for exercise in plan_exercises:
-            exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
-
             try:
-                meta = json.loads(meta_json) if meta_json else {}
-                members = json.loads(members_json) if members_json else []
-            except json.JSONDecodeError:
-                meta = {}
-                members = []
+                exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
+                print(f"⚙️ Processing: {exercise_name} (type: {block_type})")
 
-            if block_type in ['circuit', 'rounds']:
-                # Circuit/rounds block
-                rounds_count = meta.get('rounds', target_sets or 1)
-                
-                block = {
-                    "block_id": exercise_id,
-                    "type": "rounds",
-                    "title": exercise_name,
-                    "rounds": []
-                }
-                
-                for round_idx in range(rounds_count):
-                    round_data = {
-                        "round_index": round_idx + 1,
-                        "members": []
+                try:
+                    meta = json.loads(meta_json) if meta_json else {}
+                    members = json.loads(members_json) if members_json else []
+                except json.JSONDecodeError as je:
+                    print(f"⚠️ JSON decode error for {exercise_name}: {je}")
+                    meta = {}
+                    members = []
+
+                if block_type in ['circuit', 'rounds']:
+                    # Circuit/rounds block
+                    rounds_count = meta.get('rounds', target_sets or 1)
+                    
+                    block = {
+                        "block_id": exercise_id,
+                        "type": "rounds",
+                        "title": exercise_name,
+                        "rounds": []
                     }
                     
-                    for member in members:
-                        weight_str = str(member.get('weight', ''))
-                        weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
-                        
-                        round_data["members"].append({
-                            "name": member.get('exercise', ''),
-                            "input_id": f"{exercise_id}.{round_idx + 1}.{member.get('exercise', '')}",
-                            "planned_reps": member.get('reps', ''),
-                            "planned_weight": {"unit": "lb", "value": weight_value},
-                            "tempo": member.get('tempo', '')
-                        })
-                    
-                    block["rounds"].append(round_data)
-
-                template["blocks"].append(block)
-            else:
-                # Simple exercise block
-                weight_str = str(target_weight or '')
-                weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
-                sets_count = target_sets or 3
-                
-                block_data = {
-                    "block_id": exercise_id,
-                    "type": "simple",
-                    "title": exercise_name,
-                    "planned_sets": target_sets,
-                    "planned_reps": target_reps,
-                    "planned_weight": target_weight,
-                    "sets": [
-                        {
-                            "set_number": i + 1,
-                            "input_id": f"{exercise_id}.set.{i + 1}",
-                            "planned_reps": target_reps,
-                            "planned_weight": {"unit": "lb", "value": weight_value}
+                    for round_idx in range(rounds_count):
+                        round_data = {
+                            "round_index": round_idx + 1,
+                            "members": []
                         }
-                        for i in range(sets_count)
-                    ]
-                }
-                template["blocks"].append(block_data)
+                        
+                        for member in members:
+                            weight_str = str(member.get('weight', ''))
+                            weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
+                            
+                            round_data["members"].append({
+                                "name": member.get('exercise', ''),
+                                "input_id": f"{exercise_id}.{round_idx + 1}.{member.get('exercise', '')}",
+                                "planned_reps": member.get('reps', ''),
+                                "planned_weight": {"unit": "lb", "value": weight_value},
+                                "tempo": member.get('tempo', '')
+                            })
+                        
+                        block["rounds"].append(round_data)
 
-        return make_response(jsonify(template), 200)
+                    template["blocks"].append(block)
+                else:
+                    # Simple exercise block
+                    weight_str = str(target_weight or '')
+                    weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
+                    sets_count = target_sets or 3
+                    
+                    block_data = {
+                        "block_id": exercise_id,
+                        "type": "simple",
+                        "title": exercise_name,
+                        "planned_sets": target_sets,
+                        "planned_reps": target_reps,
+                        "planned_weight": target_weight,
+                        "sets": [
+                            {
+                                "set_number": i + 1,
+                                "input_id": f"{exercise_id}.set.{i + 1}",
+                                "planned_reps": target_reps,
+                                "planned_weight": {"unit": "lb", "value": weight_value}
+                            }
+                            for i in range(sets_count)
+                        ]
+                    }
+                    template["blocks"].append(block_data)
+
+            except Exception as exercise_error:
+                print(f"❌ Error processing exercise {exercise_name}: {exercise_error}")
+                continue  # Skip this exercise and continue with others
+
+        print(f"✅ Template ready with {len(template['blocks'])} blocks")
+        return jsonify(template), 200
 
     except Exception as e:
-        # Always return JSON even on error
+        print(f"❌ Critical error in logging_template: {e}")
+        # Always return JSON even on critical error
         error_response = {
             "error": str(e), 
             "date": request.args.get('date', datetime.now().strftime('%Y-%m-%d')), 
             "blocks": []
         }
-        return make_response(jsonify(error_response), 500)
+        return jsonify(error_response), 500
 
 if __name__ == '__main__':
     init_db()
