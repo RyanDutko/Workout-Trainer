@@ -1,0 +1,133 @@
+Goal: Upgrade the logging UI for complex blocks (e.g., block_type="circuit") so users can log each round × member with planned autofill—no parsing of “10/15/10” strings. Keep everything else unchanged. Small diffs only. Show unified diffs.
+
+0) Constraints
+
+Do not change DB schema (use workout_sessions/blocks/sets we already have).
+
+Do not change V2 planner or tools routing.
+
+Minimal edits to the logging template + one small JS snippet + server POST handler tweaks.
+
+Show unified diffs for each file you touch.
+
+1) Render complex blocks as a grid (rounds × members)
+
+In the logging view/template (the page shown after “Begin logging”):
+
+When block.block_type == "circuit", render a card with:
+
+Title = block.label (e.g., “Bicep Finisher Rounds”)
+
+Subtitle = Rounds: <meta_json.rounds> • Members: len(block.members)
+
+For each round r (0..rounds-1), render a sub-section/table:
+
+Columns: Exercise | Planned | Reps (input) | Weight (input) | Notes (optional)
+Rows: one per member m (0..len(members)-1), using planned values from members[m].
+
+Add a “Planned (Round r+1)” button that autofills that round’s input fields to the planned reps/weights.
+
+Each input must have a structured name so the server can read it unambiguously:
+
+name="circuit[{{block.id}}][{{r}}][{{m}}][reps]"
+name="circuit[{{block.id}}][{{r}}][{{m}}][weight]"
+name="circuit[{{block.id}}][{{r}}][{{m}}][notes]"
+
+
+Also include hidden fields for exercise/tempo to avoid string lookups:
+
+<input type="hidden" name="circuit[{{block.id}}][{{r}}][{{m}}][exercise]" value="{{ member.exercise }}">
+<input type="hidden" name="circuit[{{block.id}}][{{r}}][{{m}}][tempo]" value="{{ member.tempo or '' }}">
+
+
+For simple blocks (block_type=="single"), leave the current UI untouched.
+
+Acceptance: When a circuit block is present, the page shows two rounds × three rows for your finisher, with planned values visible and inputs per row.
+
+2) Small JS to handle “Planned (Round N)” autofill
+
+Add a tiny inline <script> or a small JS file used by this page:
+
+A function fillPlanned(blockId, roundIndex) that:
+
+Finds all inputs with names starting circuit[blockId][roundIndex].
+
+For each row, sets reps and weight to the Planned values stored in data-planned-reps / data-planned-weight attributes on the inputs (add those attributes when rendering).
+
+Prevent slashes in number inputs by using <input type="number"> and step="1"/step="0.5" as appropriate.
+
+Acceptance: Clicking “Planned (Round 1)” fills all three rows for Round 1.
+
+3) Server: parse posted circuit data and write sets
+
+In the POST handler that currently saves logged sets:
+
+Detect if request.form contains any circuit[...] keys.
+
+For each block_id / round / member triple, extract:
+
+exercise, reps, weight, notes, tempo (if present)
+
+Insert one workout_set per row with data_json:
+
+{
+  "exercise": "...",
+  "reps": <int>,
+  "weight": <float or int>,
+  "tempo": "slow|fast|''",
+  "member_idx": <int>,
+  "set_idx": <round index>,
+  "notes": "...",
+  "status": "completed"
+}
+
+
+under the correct workout_block (block_type: "circuit"), creating the workout_session and workout_block if they don’t already exist for that date.
+
+Keep existing simple-exercise save logic unchanged.
+
+Console logs to add:
+
+LOG_UI_PARSE circuit block=<block_id> round=<r> member=<m> reps=<...> weight=<...>
+
+After insert: DB_WRITE circuit set_id=<id> block=<block_id> r=<r> m=<m>
+
+Acceptance: Submitting the circuit form writes 6 sets (2 rounds × 3 members) into workout_sets and shows the debug logs above.
+
+4) Show planned values in the UI
+
+In the circuit rows, display a Planned column using the member’s reps/weight (e.g., 10 @ 20 lb, 15 @ 15 lb) so the user can sanity-check at a glance.
+
+Add data-planned-reps / data-planned-weight on the respective inputs so the JS autofill can read them.
+
+Acceptance: Users can see the planned reps/weight for each row, matching what the assistant added to the plan.
+
+5) Post-save confirmation
+
+After successful save:
+
+Show a small toast or inline message: Saved: Bicep Finisher Rounds • Round 1 & 2.
+
+Optionally call your sticky context save: CTX_SAVE last_logged_block=circuit rounds=2 members=3.
+
+6) Tests to run (and show console)
+
+Add “Bicep Finisher Rounds” to Thursday (already in your plan now).
+
+Begin logging for Thursday → circuit renders as 2 × 3 grid with planned values.
+
+Click “Planned (Round 1)”, tweak a rep in Round 2, submit.
+
+Console shows LOG_UI_PARSE … and DB_WRITE … lines for 6 rows.
+
+“How does that compare to my plan?” → diff shows any modified row(s).
+
+7) Nice-to-haves (later, not now)
+
+Add a per-round notes textarea that saves to workout_blocks.meta_json.round_notes[r].
+
+Render tempo as a small pill; later support full tempo strings (e.g., 3-1-X-1).
+
+Add client-side validation: prevent negative reps/weights; enforce integers for reps.
+
+If anything is unclear, please ask one clarifying question and proceed with the smallest viable diffs.
