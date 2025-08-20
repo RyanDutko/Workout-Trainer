@@ -160,6 +160,16 @@ function renderSingleSimpleBlock(block) {
 
     html += `
                 </div>
+                
+                <!-- Quick Actions Bar -->
+                <div class="mt-3 mb-4">
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4" onclick="fillAsPlanned('simple')">
+                            <i class="fas fa-magic"></i> As Planned
+                        </button>
+                    </div>
+                </div>
+                
                 <div class="mt-4">
                     <label class="form-label">Exercise Notes</label>
                     <textarea class="form-control" rows="2" id="exerciseNotes" 
@@ -231,6 +241,15 @@ function renderSingleRoundsBlock(block) {
     });
 
     html += `
+                <!-- Quick Actions Bar -->
+                <div class="mt-3 mb-4">
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4" onclick="fillAsPlanned('rounds')">
+                            <i class="fas fa-magic"></i> As Planned
+                        </button>
+                    </div>
+                </div>
+                
                 <div class="mt-4">
                     <label class="form-label">Exercise Notes</label>
                     <textarea class="form-control" rows="2" id="exerciseNotes" 
@@ -273,6 +292,61 @@ function updateSubmitButton() {
     } else {
         submitBtnText.innerHTML = '<i class="fas fa-arrow-right"></i> Log & Continue';
     }
+}
+
+function fillAsPlanned(blockType) {
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+    
+    if (blockType === 'simple') {
+        // Fill simple exercise fields with planned values
+        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
+        
+        repsInputs.forEach((input, idx) => {
+            const plannedReps = currentBlock.sets[idx]?.planned_reps || currentBlock.planned_reps;
+            if (plannedReps) {
+                input.value = plannedReps;
+            }
+        });
+        
+        weightInputs.forEach((input, idx) => {
+            const plannedWeight = currentBlock.sets[idx]?.planned_weight?.value || currentBlock.planned_weight;
+            if (plannedWeight) {
+                input.value = plannedWeight;
+            }
+        });
+    } else if (blockType === 'rounds') {
+        // Fill rounds/circuit fields with planned values
+        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
+        
+        repsInputs.forEach(input => {
+            const plannedReps = input.getAttribute('placeholder');
+            if (plannedReps) {
+                input.value = plannedReps;
+            }
+        });
+        
+        weightInputs.forEach(input => {
+            const plannedWeight = input.getAttribute('placeholder');
+            if (plannedWeight) {
+                input.value = plannedWeight;
+            }
+        });
+    }
+    
+    // Add visual feedback
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i> Applied!';
+    button.classList.remove('btn-outline-primary');
+    button.classList.add('btn-success');
+    
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.classList.remove('btn-success');
+        button.classList.add('btn-outline-primary');
+    }, 1500);
 }
 
 function renderFallbackUI() {
