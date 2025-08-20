@@ -1859,26 +1859,21 @@ def history():
 
 @app.route('/weekly_plan')
 def weekly_plan():
-    """Display the weekly workout plan"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Pull a superset of columns and coalesce legacy names so this works on old DBs too
     cursor.execute("""
         SELECT
             id,
             day_of_week,
             exercise_name,
-            COALESCE(target_sets, sets) AS sets,
-            COALESCE(target_reps, reps) AS reps,
-            COALESCE(target_weight, weight) AS weight,
-            COALESCE(exercise_order, order_index) AS ord,
-            COALESCE(notes, "") AS notes,
-            COALESCE(newly_added, 0) AS newly_added,
-            COALESCE(progression_notes, "") AS progression_notes,
-            COALESCE(block_type, 'single') AS block_type,
-            COALESCE(meta_json, '{}') AS meta_json,
-            COALESCE(members_json, '[]') AS members_json
+            COALESCE(target_sets, 0)      AS t_sets,
+            COALESCE(target_reps, '')     AS t_reps,
+            COALESCE(target_weight, '')   AS t_weight,
+            COALESCE(exercise_order, 999) AS ord,
+            COALESCE(block_type, 'single')  AS block_type,
+            COALESCE(meta_json, '{}')       AS meta_json,
+            COALESCE(members_json, '[]')    AS members_json
         FROM weekly_plan
         ORDER BY day_of_week, ord
     """)
@@ -1889,14 +1884,14 @@ def weekly_plan():
 
     plan_by_day = {}
     for row in rows:
-        (row_id, day, exercise_name, sets, reps, weight, ord_idx, notes,
-         newly_added, progression_notes, block_type, meta_json, members_json) = row
+        (row_id, day, exercise_name, t_sets, t_reps, t_weight, ord_idx,
+         block_type, meta_json, members_json) = row
 
         if day not in plan_by_day:
             plan_by_day[day] = []
 
-        if block_type == 'circuit':
-            # Parse circuit metadata
+        if (block_type or '').lower() == 'circuit':
+            # Parse circuit metadata safely
             try:
                 meta = json.loads(meta_json) if meta_json else {}
             except Exception:
@@ -1906,47 +1901,46 @@ def weekly_plan():
             except Exception:
                 members = []
 
-            # Optional: prebuild a "sets" list so UI can show round-by-round if desired
-            rounds = int(meta.get('rounds', 1)) if str(meta.get('rounds', 1)).isdigit() else 1
+            # Round-expanded sets (optional for UI)
+            try:
+                rounds = int(meta.get('rounds', 1))
+            except Exception:
+                rounds = 1
+            rounds = max(1, rounds)
+
             circuit_sets = []
-            for round_idx in range(rounds):
-                for member_idx, member in enumerate(members):
+            for r in range(rounds):
+                for mi, m in enumerate(members):
                     circuit_sets.append({
-                        'exercise': member.get('exercise', ''),
+                        'exercise': m.get('exercise', ''),
                         'block_type': 'circuit',
-                        'member_idx': member_idx,
-                        'set_idx': round_idx,
-                        'reps': member.get('reps'),
-                        'weight': member.get('weight'),
-                        'tempo': member.get('tempo'),
+                        'member_idx': mi,
+                        'set_idx': r,
+                        'reps': m.get('reps'),
+                        'weight': m.get('weight'),
+                        'tempo': m.get('tempo'),
                         'status': 'planned'
                     })
 
             plan_by_day[day].append({
                 'id': row_id,
                 'block_type': 'circuit',
-                'label': exercise_name,         # block title (e.g., "Bicep Finisher Rounds")
+                'label': exercise_name,   # block title
                 'order_index': ord_idx,
-                'meta': meta,                   # includes rounds
-                'members': members,             # array of { exercise, reps, weight, tempo }
-                'sets': circuit_sets,           # round-expanded if you want to show it
-                'notes': notes or "",
-                'newly_added': bool(newly_added),
-                'progression_notes': progression_notes or ""
+                'meta': meta,             # includes rounds
+                'members': members,       # [{exercise, reps, weight, ...}]
+                'sets': circuit_sets
             })
         else:
             # Simple exercise
             plan_by_day[day].append({
                 'id': row_id,
                 'block_type': 'single',
-                'exercise': exercise_name,      # name string for simple item
-                'sets': sets,
-                'reps': reps,
-                'weight': weight,
-                'order': ord_idx,
-                'notes': notes or "",
-                'newly_added': bool(newly_added),
-                'progression_notes': progression_notes or ""
+                'exercise': exercise_name,
+                'sets': t_sets,
+                'reps': t_reps,
+                'weight': t_weight,
+                'order': ord_idx
             })
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
