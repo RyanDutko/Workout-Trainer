@@ -204,58 +204,69 @@ class WorkoutTemplateGenerator:
     def __init__(self, db: Database):
         self.db = db
 
-    def generate_logging_template(self, exercise_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate appropriate logging interface based on exercise type"""
-
-        exercise_type = exercise_data.get('type', 'simple')
-
-        if exercise_type == 'simple':
-            return {
-                'template_type': 'simple',
-                'fields': [
-                    {'name': 'sets_completed', 'type': 'number', 'placeholder': exercise_data.get('sets', 3)},
-                    {'name': 'reps_per_set', 'type': 'list', 'sets': exercise_data.get('sets', 3)},
-                    {'name': 'weight_used', 'type': 'text', 'placeholder': exercise_data.get('weight', 'bodyweight')}
-                ]
-            }
-
-        elif exercise_type == 'rounds':
-            movements = exercise_data.get('movements', [])
-            return {
-                'template_type': 'rounds',
-                'total_rounds': exercise_data.get('total_rounds', 2),
-                'movements': [
-                    {
-                        'name': movement.get('name', ''),
-                        'planned_reps': movement.get('reps', ''),
-                        'planned_weight': movement.get('weight', ''),
-                        'input_fields': {
-                            'actual_reps': {'type': 'number', 'per_round': True},
-                            'actual_weight': {'type': 'text', 'per_round': True}
-                        }
-                    } for movement in movements
-                ]
-            }
-
-        elif exercise_type == 'circuit':
-            return {
-                'template_type': 'circuit',
-                'circuit_rounds': exercise_data.get('circuit_rounds', 3),
-                'movements': exercise_data.get('movements', []),
-                'timing': exercise_data.get('timing', 'reps_based')  # or 'time_based'
-            }
-
-        else:
-            # Custom template generation
-            return {
-                'template_type': 'custom',
-                'structure': exercise_data.get('structure', {}),
-                'fields': self._generate_custom_fields(exercise_data)
-            }
+    def generate_logging_template(self, plan_json: List[Dict[str, Any]], date: str, user_id: int = 1) -> Dict[str, Any]:
+        """Generate structured template for logging workout"""
+        template = {
+            "date": date,
+            "blocks": []
+        }
+        
+        for plan_block in plan_json:
+            block_type = plan_block.get('block_type', 'single')
+            block_id = plan_block.get('id', f"block_{len(template['blocks'])}")
+            
+            if block_type == 'single':
+                # Simple exercise - one row
+                template["blocks"].append({
+                    "block_id": block_id,
+                    "type": "simple",
+                    "title": plan_block.get('exercise_name', 'Exercise'),
+                    "members": [{
+                        "name": plan_block.get('exercise_name', 'Exercise'),
+                        "input_id": f"{block_id}.1",
+                        "planned_reps": plan_block.get('reps', ''),
+                        "planned_weight": {"unit": "lb", "value": plan_block.get('weight', '').replace('lbs', '').strip()}
+                    }]
+                })
+            
+            elif block_type in ['circuit', 'rounds']:
+                # Complex block with rounds
+                members = plan_block.get('members', [])
+                rounds_count = plan_block.get('rounds', plan_block.get('meta', {}).get('rounds', 1))
+                
+                block = {
+                    "block_id": block_id,
+                    "type": "rounds",
+                    "title": plan_block.get('label', 'Complex Block'),
+                    "rounds": []
+                }
+                
+                for round_idx in range(rounds_count):
+                    round_data = {
+                        "round_index": round_idx + 1,
+                        "members": []
+                    }
+                    
+                    for member in members:
+                        weight_str = str(member.get('weight', ''))
+                        weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
+                        
+                        round_data["members"].append({
+                            "name": member.get('exercise', ''),
+                            "input_id": f"{block_id}.{round_idx + 1}.{member.get('exercise', '')}",
+                            "planned_reps": member.get('reps', ''),
+                            "planned_weight": {"unit": "lb", "value": weight_value},
+                            "tempo": member.get('tempo', '')
+                        })
+                    
+                    block["rounds"].append(round_data)
+                
+                template["blocks"].append(block)
+        
+        return template
 
     def _generate_custom_fields(self, exercise_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate input fields for completely custom exercise structures"""
-        # AI can analyze the structure and create appropriate fields
         return [
             {'name': 'performance_notes', 'type': 'textarea', 'placeholder': 'Describe how you performed this exercise'},
             {'name': 'intensity', 'type': 'slider', 'min': 1, 'max': 10},

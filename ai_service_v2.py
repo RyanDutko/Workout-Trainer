@@ -51,7 +51,7 @@ class AIServiceV2:
         # Define the tools/functions that the AI can call
         # In-memory proposal storage for two-step write flow
         self.pending_proposals = {}
-        
+
         self.tools = [
             {
                 "type": "function",
@@ -93,7 +93,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "propose_plan_update",
-                    "description": "Use this to add complex workouts (circuits, supersets, rounds), not just simple sets. Pass a block with block_type (e.g., 'circuit'), label, order_index, meta_json (e.g., {rounds, rest_between_rounds_sec}), and members (array of mini-exercises with reps/weight/tempo). Returns a confirmation summary and a proposal_id.",
+                    "description": "Propose changes to the weekly workout plan. Use this to add, modify, or remove workout blocks/exercises. When the user mentions 'rounds' (e.g., 2 rounds), include an integer rounds in the block.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -120,6 +120,10 @@ class AIServiceV2:
                                     "order_index": {
                                         "type": "integer",
                                         "description": "Position in the day (optional, will auto-assign)"
+                                    },
+                                    "rounds": {
+                                        "type": "integer",
+                                        "description": "Number of rounds for circuit/rounds blocks", "default": 1
                                     },
                                     "meta_json": {
                                         "type": "object",
@@ -313,7 +317,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         # Execute the function
                         tool_result = self._execute_tool(function_name, function_args)
                         tool_results_for_response.append(tool_result)
-                        
+
                         print(f"✅ Tool result: {json.dumps(tool_result, indent=2)}")  # Debug output
 
                         # Add tool result to conversation
@@ -335,7 +339,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                             "content": "Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}."
                         })
                         continue  # Go back to model for commit
-                    
+
                     # No more tools needed, save conversation turn and return final response
                     self.conversation_store.append_turn(message, response_message.content)
 
@@ -392,7 +396,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     reps=args.get('reps', '8-12'),
                     weight=args.get('weight', 'bodyweight')
                 )
-            
+
             elif function_name == "add_circuit_to_plan":
                 return self._add_circuit_to_plan(
                     day=args.get('day'),
@@ -433,26 +437,26 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 return self.get_session(
                     date=args.get('date')
                 )
-            
+
             elif function_name == "get_workout_history":
                 return self._get_workout_history(
                     date=args.get('date'),
                     limit=args.get('limit', 10)
                 )
-            
+
             elif function_name == "get_exercise_progression":
                 return self._get_exercise_progression(
                     exercise_name=args.get('exercise_name'),
                     limit=args.get('limit', 10)
                 )
-            
+
             elif function_name == "propose_plan_update":
                 return self._propose_plan_update(
                     day=args.get('day'),
                     action=args.get('action'),
                     block=args.get('block')
                 )
-            
+
             elif function_name == "commit_plan_update":
                 return self._commit_plan_update(
                     proposal_id=args.get('proposal_id')
@@ -668,7 +672,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         # Use the existing workout model to get plan data
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         try:
             # Get plan data with circuit support
             cursor.execute('''
@@ -679,14 +683,14 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 FROM weekly_plan
                 ORDER BY day_of_week, exercise_order
             ''')
-            
+
             all_plan = cursor.fetchall()
         except Exception as e:
             print(f"Error fetching weekly plan: {e}")
             all_plan = []
         finally:
             conn.close()
-            
+
         if not all_plan:
             return [] if day else {}
 
@@ -694,7 +698,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         plan_by_day = {}
         for row in all_plan:
             day_name, exercise_name, sets, reps, weight, order, block_type, meta_json, members_json = row
-            
+
             if day_name not in plan_by_day:
                 plan_by_day[day_name] = []
 
@@ -1042,7 +1046,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             return {"context": context}
         except Exception as e:
             return {"error": f"Failed to get last query context: {str(e)}"}
-    
+
     def _add_circuit_to_plan(self, day: str, label: str = 'Circuit', rounds: int = 2, rest_between_rounds_sec: int = 90, members: list = None) -> Dict[str, Any]:
         """Add a circuit block to the weekly plan"""
         if not members:
@@ -1092,12 +1096,12 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         except Exception as e:
             conn.close()
             return {'success': False, 'error': f'Failed to add circuit: {str(e)}'}
-    
+
     def _get_workout_history(self, date: str = None, limit: int = 10) -> Dict[str, Any]:
         """Get workout history for a specific date or recent workouts"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         try:
             if date:
                 cursor.execute('''
@@ -1113,7 +1117,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     ORDER BY date_logged DESC, id DESC
                     LIMIT ?
                 ''', (limit,))
-            
+
             workouts = []
             for row in cursor.fetchall():
                 workouts.append({
@@ -1124,19 +1128,19 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     'notes': row[4] or '',
                     'date': row[5]
                 })
-            
+
             conn.close()
             return {'workouts': workouts, 'total_found': len(workouts)}
-            
+
         except Exception as e:
             conn.close()
             return {'error': f'Failed to get workout history: {str(e)}'}
-    
+
     def _get_exercise_progression(self, exercise_name: str, limit: int = 10) -> Dict[str, Any]:
         """Get progression data for a specific exercise"""
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         try:
             cursor.execute('''
                 SELECT date_logged, sets, reps, weight, notes
@@ -1145,7 +1149,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 ORDER BY date_logged DESC
                 LIMIT ?
             ''', (f'%{exercise_name}%', limit))
-            
+
             progression = []
             for row in cursor.fetchall():
                 progression.append({
@@ -1155,42 +1159,65 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     'weight': row[3],
                     'notes': row[4] or ''
                 })
-            
+
             conn.close()
             return {
                 'exercise_name': exercise_name,
                 'progression': progression,
                 'total_found': len(progression)
             }
-            
+
         except Exception as e:
             conn.close()
             return {'error': f'Failed to get exercise progression: {str(e)}'}
-    
+
     def _propose_plan_update(self, day: str, action: str, block: dict) -> Dict[str, Any]:
         """Validate and normalize a plan update, return proposal_id for commit"""
         import uuid
-        
+
         try:
             # Generate unique proposal ID
             proposal_id = f"pr_{uuid.uuid4().hex[:8]}"
-            
-            # Normalize and validate the block
+
+            # Extract block details
+            block_type = block.get("block_type", "single")
+            label = block.get("label", f"New {block_type.title()} Block")
+            order_index = block.get("order_index", 99)
+            members = block.get("members", [])
+            rounds = int(block.get("rounds", 1))
+
+            # Normalize the block structure
             normalized_block = {
-                'block_type': block.get('block_type', 'single'),
-                'label': block.get('label', 'Untitled'),
-                'order_index': block.get('order_index', 99),
-                'meta_json': block.get('meta_json', {}),
-                'members': block.get('members', [])
+                "block_type": block_type,
+                "label": label,
+                "order_index": order_index,
+                "rounds": rounds,
+                "meta_json": block.get("meta", {}) or {},
+                "members": members,
+                "sets": []
             }
-            
+
+            # Create planned sets for complex blocks
+            if block_type in ["circuit", "rounds"]:
+                for r in range(rounds):
+                    for mi, m in enumerate(members):
+                        normalized_block["sets"].append({
+                            **m,
+                            "block_type": block_type,
+                            "member_idx": mi,
+                            "set_idx": r,
+                            "round_index": r + 1,  # 1-based for UI
+                            "status": "planned"
+                        })
+
+
             # Validate required fields
             if not day or day.lower() not in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
                 return {'error': 'Invalid day specified'}
-            
+
             if not action or action not in ['add_block', 'update_block', 'remove_block']:
                 return {'error': 'Invalid action specified'}
-            
+
             # Store the proposal
             self.pending_proposals[proposal_id] = {
                 'day': day.lower(),
@@ -1198,20 +1225,20 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 'block': normalized_block,
                 'timestamp': datetime.now().isoformat()
             }
-            
+
             # Generate user-friendly summary
             block_type = normalized_block['block_type']
             label = normalized_block['label']
-            
+
             if block_type == 'circuit':
-                rounds = normalized_block['meta_json'].get('rounds', 1)
+                rounds = normalized_block['rounds']
                 members_count = len(normalized_block['members'])
                 summary = f"Add '{label}' (circuit, {rounds} rounds, {members_count} members) to {day.title()}"
             else:
                 summary = f"Add '{label}' ({block_type}) to {day.title()}"
-            
-            print(f"PROPOSE id={proposal_id} day={day} action={action} type={block_type} rounds={normalized_block['meta_json'].get('rounds', 1)} members={len(normalized_block['members'])}")
-            
+
+            print(f"PROPOSE id={proposal_id} day={day} action={action} type={block_type} rounds={normalized_block['rounds']} members={len(normalized_block['members'])}")
+
             return {
                 'proposal_id': proposal_id,
                 'summary': summary,
@@ -1219,10 +1246,10 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 'action': action,
                 'day': day.lower()
             }
-            
+
         except Exception as e:
             return {'error': f'Failed to create proposal: {str(e)}'}
-    
+
     def _commit_plan_update(self, proposal_id: str) -> Dict[str, Any]:
         """Persist the previously proposed plan update"""
         try:
@@ -1230,22 +1257,22 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             proposal = self.pending_proposals.get(proposal_id)
             if not proposal:
                 return {'error': f'Proposal {proposal_id} not found or expired'}
-            
+
             day = proposal['day']
             action = proposal['action']
             block = proposal['block']
-            
+
             conn = self.db.get_connection()
             cursor = conn.cursor()
-            
+
             block_id = None
-            
+
             if action == 'add_block':
                 # Get next order if not specified
                 if block['order_index'] == 99:
                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
                     block['order_index'] = cursor.fetchone()[0]
-                
+
                 if block['block_type'] == 'circuit':
                     # Insert circuit block
                     cursor.execute('''
@@ -1263,7 +1290,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                           json.dumps(block['members']), 
                           'ai_v2', True, 
                           datetime.now().strftime('%Y-%m-%d')))
-                    
+
                     block_id = cursor.lastrowid
                 else:
                     # Insert simple block
@@ -1272,27 +1299,27 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (day, block['label'], 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
-                    
+
                     block_id = cursor.lastrowid
-            
+
             conn.commit()
             conn.close()
-            
+
             # Clean up the proposal
             del self.pending_proposals[proposal_id]
-            
+
             print(f"COMMIT id={proposal_id} wrote=True block_id={block_id}")
-            
+
             # Post-write verification
             updated_plan = self._get_weekly_plan(day)
             print(f"POST_WRITE_VERIFY day={day} blocks={len(updated_plan)}")
-            
+
             return {
                 'status': 'ok',
                 'block_id': block_id,
                 'wrote': True,
                 'updated_plan': updated_plan
             }
-            
+
         except Exception as e:
             return {'error': f'Failed to commit proposal: {str(e)}'}
