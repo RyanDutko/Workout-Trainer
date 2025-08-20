@@ -1,0 +1,119 @@
+Update the Weekly Plan list so circuit/rounds blocks render a compact summary. Keep changes minimal; don’t refactor unrelated code.
+
+1) In app.py (or wherever /weekly_plan builds the rows), include block_type, meta_json, and members_json in the query if they aren’t already.
+
+For example (adjust column names to your existing code):
+
+cursor.execute("""
+  SELECT id, day_of_week, exercise_name,
+         COALESCE(target_sets, 0) AS target_sets,
+         COALESCE(target_reps, '') AS target_reps,
+         COALESCE(target_weight, '') AS target_weight,
+         COALESCE(block_type, 'single') AS block_type,
+         COALESCE(meta_json, '{}')      AS meta_json,
+         COALESCE(members_json, '[]')   AS members_json,
+         exercise_order
+  FROM weekly_plan
+  WHERE LOWER(day_of_week) = ?
+  ORDER BY exercise_order
+""", (day_name,))
+rows = cursor.fetchall()
+
+2) Right after fetching rows, compute a display summary for each row:
+import json
+plan_items = []
+for r in rows:
+    (row_id, dow, name, t_sets, t_reps, t_weight, btype, meta_js, members_js, order_idx) = r
+    try:
+        meta = json.loads(meta_js) if meta_js else {}
+    except Exception:
+        meta = {}
+    try:
+        members = json.loads(members_js) if members_js else []
+    except Exception:
+        members = []
+
+    item = {
+        "id": row_id,
+        "name": name,
+        "block_type": (btype or "single").lower(),
+        "sets": t_sets,
+        "reps": t_reps,
+        "weight": t_weight,
+        "order": order_idx,
+        # new fields used by the template/UI:
+        "subtitle": "",
+        "sets_label": "",
+    }
+
+    if item["block_type"] in ("circuit", "rounds"):
+        rounds = None
+        if isinstance(meta, dict) and "rounds" in meta:
+            try: rounds = int(meta["rounds"])
+            except Exception: rounds = None
+        if rounds is None:
+            try: rounds = int(t_sets or 1)
+            except Exception: rounds = 1
+        rounds = max(1, rounds)
+
+        # Build a compact summary like:
+        # "2 rounds • Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs), Hammer curls (10 @ 15 lbs)"
+        parts = []
+        for m in members:
+            ex = m.get("exercise") or m.get("name") or "Movement"
+            reps = m.get("reps")
+            wt = m.get("weight")
+            if reps is not None and wt:
+                parts.append(f"{ex} ({reps} @ {wt})")
+            elif reps is not None:
+                parts.append(f"{ex} ({reps} reps)")
+            elif wt:
+                parts.append(f"{ex} ({wt})")
+            else:
+                parts.append(ex)
+
+        item["sets_label"] = f"{rounds} rounds"
+        item["subtitle"]   = " • ".join([item["sets_label"], ", ".join(parts)]) if parts else item["sets_label"]
+
+        # For circuits, blank the old single-exercise fields so the template won’t show "2 @"
+        item["reps"] = ""
+        item["weight"] = ""
+    else:
+        # single: keep old labels
+        item["sets_label"] = f"{t_sets} × {t_reps}" if t_reps else f"{t_sets} sets"
+
+    plan_items.append(item)
+
+
+If /weekly_plan returns JSON, include subtitle and sets_label in the payload for each row (in addition to existing fields).
+
+If /weekly_plan renders an HTML template (e.g., Jinja), pass plan_items to the template instead of raw rows.
+
+3) In the Weekly Plan HTML/template, render the summary for circuits
+
+Find where each row is displayed (the list/table on the weekly plan page). Replace the “sets × reps @ weight” snippet with conditional rendering:
+
+<!-- pseudo-Jinja; adapt to your template engine -->
+<div class="plan-row">
+  <div class="plan-name">{{ item.name }}</div>
+  {% if item.block_type in ['circuit', 'rounds'] %}
+    <div class="plan-meta">{{ item.subtitle }}</div>
+    <div class="plan-type">Complex block</div>
+  {% else %}
+    <div class="plan-meta">{{ item.sets }} × {{ item.reps }}{% if item.weight %} @ {{ item.weight }}{% endif %}</div>
+    <div class="plan-type">Single</div>
+  {% endif %}
+</div>
+
+
+(If you don’t have Jinja, apply the same logic in your frontend JS where you render the response.)
+
+4) Do not change the commit logic—it’s good now.
+5) Quick check
+
+Weekly Plan should show:
+Bicep Finisher Rounds
+“2 rounds • Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs), Hammer curls (10 @ 15 lbs)”
+Type: Complex block
+
+The existing “single” exercises should look unchanged.
