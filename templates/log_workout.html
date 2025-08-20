@@ -1,33 +1,88 @@
+
 {% extends "base.html" %}
 {% block content %}
 <div class="container mx-auto p-4">
   <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
 
+  <!-- Date Selection & Plan Loading -->
   <div class="mb-4 flex items-center gap-2">
     <label for="logDate" class="font-medium">Date:</label>
     <input id="logDate" type="date" class="border px-2 py-1 rounded">
     <button id="loadDayBtn" class="bg-blue-600 text-white px-3 py-1 rounded">Load Day</button>
   </div>
 
+  <!-- Planned Workouts Preview -->
   <div id="viewPreview" class="mb-6 hidden">
     <h2 class="text-xl font-semibold mb-2">Planned for <span id="previewDate"></span></h2>
-    <div id="previewList" class="space-y-2"></div>
-    <button id="beginBtn" class="mt-4 bg-green-600 text-white px-4 py-2 rounded">Begin logging</button>
+    <div id="previewList" class="space-y-2 mb-4"></div>
+    <button id="beginBtn" class="bg-green-600 text-white px-4 py-2 rounded font-semibold">Begin Logging</button>
   </div>
 
+  <!-- Workout Logging Wizard -->
   <div id="viewLogger" class="hidden">
-    <div class="flex items-baseline gap-2 mb-2">
-      <h2 id="blockTitle" class="text-xl font-semibold"></h2>
-      <span id="blockPlan" class="text-sm text-gray-600"></span>
+    <!-- Progress Bar -->
+    <div class="mb-4">
+      <div class="flex justify-between text-sm text-gray-600 mb-1">
+        <span>Exercise <span id="currentExercise">1</span> of <span id="totalExercises">1</span></span>
+        <span id="progressPercent">0%</span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2">
+        <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
     </div>
-    <div id="blockBody" class="space-y-3"></div>
-    <div class="mt-2">
-      <label class="block text-sm font-medium mb-1">Notes (for this block)</label>
-      <textarea id="blockNotes" rows="3" class="w-full border rounded p-2"></textarea>
+
+    <!-- Current Exercise -->
+    <div class="bg-white border rounded-lg p-4 mb-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="exerciseTitle" class="text-xl font-semibold"></h2>
+        <span id="exerciseType" class="text-sm bg-gray-100 px-2 py-1 rounded"></span>
+      </div>
+      
+      <!-- Simple Exercise Interface -->
+      <div id="simpleInterface" class="hidden">
+        <div id="setsContainer" class="space-y-3"></div>
+      </div>
+
+      <!-- Complex Exercise Interface -->
+      <div id="complexInterface" class="hidden">
+        <div class="mb-3">
+          <span class="text-sm font-medium text-gray-600">Structure: <span id="complexStructure"></span></span>
+        </div>
+        <div id="complexContainer" class="space-y-4"></div>
+      </div>
+
+      <!-- Notes Section -->
+      <div class="mt-4">
+        <label class="block text-sm font-medium mb-1">Exercise Notes</label>
+        <textarea id="exerciseNotes" rows="2" class="w-full border rounded p-2 text-sm" placeholder="Any notes about this exercise..."></textarea>
+      </div>
     </div>
-    <div class="mt-4 flex justify-between">
-      <button id="prevBtn" class="border px-4 py-2 rounded">Back</button>
-      <button id="saveNextBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Log &amp; continue</button>
+
+    <!-- Navigation -->
+    <div class="flex justify-between">
+      <button id="prevBtn" class="border border-gray-300 px-4 py-2 rounded text-gray-700 hover:bg-gray-50">
+        ← Previous
+      </button>
+      <button id="nextBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Log & Continue →
+      </button>
+    </div>
+  </div>
+
+  <!-- Completion Screen -->
+  <div id="viewComplete" class="hidden text-center py-8">
+    <div class="text-green-600 mb-4">
+      <i class="fas fa-check-circle text-6xl"></i>
+    </div>
+    <h2 class="text-2xl font-bold mb-2">Workout Complete!</h2>
+    <p class="text-gray-600 mb-4">All exercises have been logged successfully.</p>
+    <div class="space-x-4">
+      <button onclick="window.location.href='/'" class="bg-blue-600 text-white px-4 py-2 rounded">
+        Back to Dashboard
+      </button>
+      <button onclick="window.location.reload()" class="border border-gray-300 px-4 py-2 rounded text-gray-700">
+        Log Another Day
+      </button>
     </div>
   </div>
 
@@ -36,216 +91,340 @@
 </div>
 
 <script>
-let template = null;     // { date, blocks: [...] }
-let mode = "preview";    // "preview" | "active"
-let cursor = 0;          // index of current block
-let draft = {};          // input_id -> { reps, weight }
-let notesDraft = {};     // block_id -> notes
+let workoutPlan = [];
+let currentIndex = 0;
+let workoutData = {}; // Store all logged data
 
-function $(id){ return document.getElementById(id); }
-function show(id){ $(id).classList.remove('hidden'); }
-function hide(id){ $(id).classList.add('hidden'); }
+function $(id) { return document.getElementById(id); }
+function show(id) { $(id).classList.remove('hidden'); }
+function hide(id) { $(id).classList.add('hidden'); }
 
-async function fetchTemplate(dateStr) {
-  const resp = await fetch(`/logging_template?date=${encodeURIComponent(dateStr)}`);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const tpl = data.template || { date: data.date, blocks: data.blocks };
-  if (!tpl || !Array.isArray(tpl.blocks)) throw new Error("Bad template payload");
-  return tpl;
+// Initialize
+window.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  $("logDate").value = today;
+
+  $("loadDayBtn").addEventListener("click", loadPlannedWorkouts);
+  $("beginBtn").addEventListener("click", startWorkoutWizard);
+  $("prevBtn").addEventListener("click", previousExercise);
+  $("nextBtn").addEventListener("click", logAndContinue);
+});
+
+async function loadPlannedWorkouts() {
+  const date = $("logDate").value;
+  if (!date) return;
+
+  try {
+    $("msg").textContent = "Loading planned workouts...";
+    
+    const response = await fetch(`/logging_template?date=${encodeURIComponent(date)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const data = await response.json();
+    workoutPlan = data.blocks || [];
+    
+    if (workoutPlan.length === 0) {
+      $("msg").textContent = "No planned workouts found for this date.";
+      return;
+    }
+
+    displayPlannedWorkouts(date);
+    $("msg").textContent = "";
+    
+  } catch (error) {
+    console.error("Error loading workouts:", error);
+    $("templateError").textContent = "Failed to load planned workouts";
+    show("templateError");
+  }
 }
 
-function renderPreview() {
-  $("previewDate").textContent = template.date;
+function displayPlannedWorkouts(date) {
+  $("previewDate").textContent = new Date(date).toLocaleDateString();
   const list = $("previewList");
   list.innerHTML = "";
-  template.blocks.forEach((b) => {
-    const el = document.createElement("div");
-    el.className = "border rounded p-2";
-    if (b.type === "simple") {
-      el.textContent = `${b.title} — ${b.planned_sets || 1} sets`;
-    } else {
-      const rounds = (b.rounds || []).length || 1;
-      el.textContent = `${b.title} — ${rounds} rounds`;
+
+  workoutPlan.forEach((exercise, index) => {
+    const card = document.createElement("div");
+    card.className = "bg-gray-50 border rounded p-3";
+    
+    let description = "";
+    if (exercise.type === "simple") {
+      const sets = exercise.planned_sets || 1;
+      description = `${sets} set${sets > 1 ? 's' : ''}`;
+    } else if (exercise.rounds && exercise.rounds.length > 0) {
+      description = `${exercise.rounds.length} round${exercise.rounds.length > 1 ? 's' : ''}`;
     }
-    list.appendChild(el);
+
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <span class="font-medium">${exercise.title}</span>
+        <span class="text-sm text-gray-600">${description}</span>
+      </div>
+    `;
+    
+    list.appendChild(card);
   });
+
   show("viewPreview");
 }
 
-function inputRow(label, inputId, plannedReps, plannedWeight) {
-  const row = document.createElement("div");
-  row.className = "grid grid-cols-3 gap-2 items-center";
-  const lab = document.createElement("div");
-  lab.textContent = label;
-  const reps = document.createElement("input");
-  reps.type = "number";
-  reps.min = "0";
-  reps.placeholder = plannedReps ?? "";
-  reps.className = "border p-1 rounded";
-  reps.dataset.inputId = inputId;
-  reps.dataset.field = "reps";
-
-  const wt = document.createElement("input");
-  wt.type = "text";
-  wt.placeholder = plannedWeight ?? "";
-  wt.className = "border p-1 rounded";
-  wt.dataset.inputId = inputId;
-  wt.dataset.field = "weight";
-
-  reps.addEventListener("input", syncDraft);
-  wt.addEventListener("input", syncDraft);
-
-  row.appendChild(lab);
-  row.appendChild(reps);
-  row.appendChild(wt);
-  return row;
+function startWorkoutWizard() {
+  if (workoutPlan.length === 0) return;
+  
+  currentIndex = 0;
+  workoutData = {};
+  
+  hide("viewPreview");
+  show("viewLogger");
+  
+  displayCurrentExercise();
 }
 
-function syncDraft(e){
-  const iid = e.target.dataset.inputId;
-  const field = e.target.dataset.field;
-  draft[iid] = draft[iid] || {};
-  if (field === "reps") draft[iid].reps = e.target.value === "" ? null : Number(e.target.value);
-  if (field === "weight") draft[iid].weight = e.target.value;
-}
-
-function renderBlock() {
-  const b = template.blocks[cursor];
-  $("blockTitle").textContent = b.title;
-  $("blockBody").innerHTML = "";
-  $("blockNotes").value = notesDraft[b.block_id || b.title] || "";
-
-  if (b.type === "simple") {
-    // Expand N sets from planned_sets (default 1)
-    const sets = Math.max(1, Number(b.planned_sets || 1));
-    $("blockPlan").textContent = `Plan: ${sets} set${sets>1?"s":""}`;
-    // Build S0..S{N-1} input rows
-    for (let s = 0; s < sets; s++) {
-      const baseId = (b.block_id || "").replace("BLK-","") || "0";
-      const iid = `BLK-${baseId}.S${s}`;
-      const row = inputRow(`Set ${s+1}`, iid, (b.members?.[0]?.planned_reps ?? ""), (b.members?.[0]?.planned_weight ?? ""));
-      $("blockBody").appendChild(row);
-    }
+function displayCurrentExercise() {
+  const exercise = workoutPlan[currentIndex];
+  const totalExercises = workoutPlan.length;
+  
+  // Update progress
+  $("currentExercise").textContent = currentIndex + 1;
+  $("totalExercises").textContent = totalExercises;
+  $("progressPercent").textContent = Math.round((currentIndex / totalExercises) * 100) + "%";
+  $("progressBar").style.width = (currentIndex / totalExercises) * 100 + "%";
+  
+  // Update exercise info
+  $("exerciseTitle").textContent = exercise.title;
+  $("exerciseType").textContent = exercise.type === "simple" ? "Simple" : "Complex";
+  
+  // Clear previous data
+  $("exerciseNotes").value = workoutData[currentIndex]?.notes || "";
+  
+  // Show appropriate interface
+  if (exercise.type === "simple") {
+    displaySimpleInterface(exercise);
   } else {
-    const rounds = b.rounds || [];
-    $("blockPlan").textContent = `Plan: ${rounds.length || 1} round${rounds.length>1?"s":""}`;
-
-    rounds.forEach((r) => {
-      const det = document.createElement("details");
-      const sum = document.createElement("summary");
-      sum.textContent = `Round ${r.round_index}`;
-      det.appendChild(sum);
-
-      (r.members || []).forEach((m, i) => {
-        const row = inputRow(m.name || `Movement ${i+1}`, m.input_id, m.planned_reps, m.planned_weight);
-        row.classList.add("ml-4");
-        det.appendChild(row);
-      });
-      $("blockBody").appendChild(det);
-    });
+    displayComplexInterface(exercise);
   }
-
-  $("prevBtn").disabled = (cursor === 0);
-  $("saveNextBtn").textContent = (cursor === template.blocks.length - 1) ? "Save day" : "Log & continue";
+  
+  // Update navigation buttons
+  $("prevBtn").disabled = currentIndex === 0;
+  $("nextBtn").textContent = currentIndex === workoutPlan.length - 1 ? "Complete Workout" : "Log & Continue →";
 }
 
-async function saveCurrentAndNext() {
-  const b = template.blocks[cursor];
-  const entries = [];
-  // Gather entries for this block
-  if (b.type === "simple") {
-    const sets = Math.max(1, Number(b.planned_sets || 1));
-    const baseId = (b.block_id || "").replace("BLK-","") || "0";
-    for (let s = 0; s < sets; s++) {
-      const iid = `BLK-${baseId}.S${s}`;
-      const d = draft[iid] || {};
-      if (d.reps != null || (d.weight && d.weight !== "")) {
-        entries.push({ input_id: iid, actual_reps: d.reps, actual_weight: d.weight });
+function displaySimpleInterface(exercise) {
+  hide("complexInterface");
+  show("simpleInterface");
+  
+  const container = $("setsContainer");
+  container.innerHTML = "";
+  
+  const plannedSets = exercise.planned_sets || 1;
+  const member = exercise.members?.[0] || {};
+  
+  for (let setNum = 1; setNum <= plannedSets; setNum++) {
+    const setDiv = document.createElement("div");
+    setDiv.className = "flex items-center gap-3 p-3 bg-gray-50 rounded";
+    
+    const existingData = workoutData[currentIndex]?.sets?.[setNum - 1] || {};
+    
+    setDiv.innerHTML = `
+      <div class="w-16 text-center font-medium">Set ${setNum}</div>
+      <div class="flex-1">
+        <label class="block text-xs text-gray-600 mb-1">Reps</label>
+        <input type="number" 
+               class="w-full border rounded px-2 py-1" 
+               placeholder="${member.planned_reps || ''}"
+               value="${existingData.reps || ''}"
+               onchange="updateSetData(${setNum - 1}, 'reps', this.value)">
+      </div>
+      <div class="flex-1">
+        <label class="block text-xs text-gray-600 mb-1">Weight</label>
+        <input type="text" 
+               class="w-full border rounded px-2 py-1" 
+               placeholder="${member.planned_weight || ''}"
+               value="${existingData.weight || ''}"
+               onchange="updateSetData(${setNum - 1}, 'weight', this.value)">
+      </div>
+    `;
+    
+    container.appendChild(setDiv);
+  }
+}
+
+function displayComplexInterface(exercise) {
+  hide("simpleInterface");
+  show("complexInterface");
+  
+  const rounds = exercise.rounds || [];
+  $("complexStructure").textContent = `${rounds.length} round${rounds.length > 1 ? 's' : ''}`;
+  
+  const container = $("complexContainer");
+  container.innerHTML = "";
+  
+  rounds.forEach((round, roundIndex) => {
+    const roundDiv = document.createElement("div");
+    roundDiv.className = "border rounded p-3";
+    
+    const roundHeader = document.createElement("h4");
+    roundHeader.className = "font-medium mb-2";
+    roundHeader.textContent = `Round ${round.round_index}`;
+    roundDiv.appendChild(roundHeader);
+    
+    const membersDiv = document.createElement("div");
+    membersDiv.className = "space-y-2";
+    
+    (round.members || []).forEach((member, memberIndex) => {
+      const memberDiv = document.createElement("div");
+      memberDiv.className = "flex items-center gap-2 text-sm";
+      
+      const existingData = workoutData[currentIndex]?.rounds?.[roundIndex]?.[memberIndex] || {};
+      
+      memberDiv.innerHTML = `
+        <div class="w-24 font-medium">${member.name}</div>
+        <input type="number" 
+               class="w-16 border rounded px-1 py-0.5" 
+               placeholder="${member.planned_reps || ''}"
+               value="${existingData.reps || ''}"
+               onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'reps', this.value)">
+        <span class="text-xs">reps @</span>
+        <input type="text" 
+               class="w-20 border rounded px-1 py-0.5" 
+               placeholder="${member.planned_weight || ''}"
+               value="${existingData.weight || ''}"
+               onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'weight', this.value)">
+      `;
+      
+      membersDiv.appendChild(memberDiv);
+    });
+    
+    roundDiv.appendChild(membersDiv);
+    container.appendChild(roundDiv);
+  });
+}
+
+function updateSetData(setIndex, field, value) {
+  if (!workoutData[currentIndex]) workoutData[currentIndex] = { sets: [] };
+  if (!workoutData[currentIndex].sets[setIndex]) workoutData[currentIndex].sets[setIndex] = {};
+  workoutData[currentIndex].sets[setIndex][field] = value;
+}
+
+function updateRoundData(roundIndex, memberIndex, field, value) {
+  if (!workoutData[currentIndex]) workoutData[currentIndex] = { rounds: [] };
+  if (!workoutData[currentIndex].rounds[roundIndex]) workoutData[currentIndex].rounds[roundIndex] = [];
+  if (!workoutData[currentIndex].rounds[roundIndex][memberIndex]) {
+    workoutData[currentIndex].rounds[roundIndex][memberIndex] = {};
+  }
+  workoutData[currentIndex].rounds[roundIndex][memberIndex][field] = value;
+}
+
+function previousExercise() {
+  if (currentIndex > 0) {
+    // Save current notes
+    if (!workoutData[currentIndex]) workoutData[currentIndex] = {};
+    workoutData[currentIndex].notes = $("exerciseNotes").value;
+    
+    currentIndex--;
+    displayCurrentExercise();
+  }
+}
+
+async function logAndContinue() {
+  // Save current exercise data
+  if (!workoutData[currentIndex]) workoutData[currentIndex] = {};
+  workoutData[currentIndex].notes = $("exerciseNotes").value;
+  
+  // Save to backend immediately for each exercise
+  await saveCurrentExercise();
+  
+  if (currentIndex < workoutPlan.length - 1) {
+    currentIndex++;
+    displayCurrentExercise();
+  } else {
+    completeWorkout();
+  }
+}
+
+async function saveCurrentExercise() {
+  const exercise = workoutPlan[currentIndex];
+  const data = workoutData[currentIndex];
+  
+  if (!data || (!data.sets && !data.rounds)) return; // No data to save
+  
+  try {
+    const entries = [];
+    const date = $("logDate").value;
+    
+    if (exercise.type === "simple") {
+      // Save simple exercise
+      if (data.sets) {
+        for (let i = 0; i < data.sets.length; i++) {
+          const setData = data.sets[i];
+          if (setData && (setData.reps || setData.weight)) {
+            entries.push({
+              input_id: `BLK-${exercise.block_id}.S${i}`,
+              actual_reps: setData.reps ? parseInt(setData.reps) : null,
+              actual_weight: setData.weight || null
+            });
+          }
+        }
+      }
+    } else {
+      // Save complex exercise
+      if (data.rounds) {
+        data.rounds.forEach((round, roundIndex) => {
+          if (round) {
+            round.forEach((member, memberIndex) => {
+              if (member && (member.reps || member.weight)) {
+                const roundData = exercise.rounds[roundIndex];
+                const memberData = roundData?.members[memberIndex];
+                if (memberData?.input_id) {
+                  entries.push({
+                    input_id: memberData.input_id,
+                    actual_reps: member.reps ? parseInt(member.reps) : null,
+                    actual_weight: member.weight || null
+                  });
+                }
+              }
+            });
+          }
+        });
       }
     }
-  } else {
-    (b.rounds || []).forEach((r) => {
-      (r.members || []).forEach((m) => {
-        const d = draft[m.input_id] || {};
-        if (d.reps != null || (d.weight && d.weight !== "")) {
-          entries.push({ input_id: m.input_id, actual_reps: d.reps, actual_weight: d.weight });
-        }
+    
+    const blockNotes = [];
+    if (data.notes) {
+      blockNotes.push({
+        block_id: parseInt(exercise.block_id) || 0,
+        notes: data.notes
       });
-    });
-  }
-
-  const blockIdKey = b.block_id || b.title; // prefer numeric id when present
-  const block_notes = [{
-    block_id: Number((b.block_id || "BLK-0").replace("BLK-","")) || 0,
-    notes: $("blockNotes").value || ""
-  }];
-
-  const body = {
-    date: $("logDate").value,
-    entries,
-    block_notes
-  };
-
-  $("msg").textContent = "Saving…";
-  const resp = await fetch("/log_from_template", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  const data = await resp.json();
-  if (!resp.ok || !data.success) {
-    $("msg").textContent = "Save failed: " + (data.error || resp.status);
-    return;
-  }
-  $("msg").textContent = `Saved ${data.saved} input(s).`;
-
-  // Advance
-  if (cursor < template.blocks.length - 1) {
-    cursor++;
-    renderBlock();
-  } else {
-    // Finished the day
-   mode = "preview";
-    hide("viewLogger");
-    show("viewPreview");
+    }
+    
+    if (entries.length > 0 || blockNotes.length > 0) {
+      const response = await fetch("/log_from_template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: date,
+          entries: entries,
+          block_notes: blockNotes
+        })
+      });
+      
+      const result = await response.json();
+      if (!result.success) {
+        console.error("Failed to save exercise:", result.error);
+      }
+    }
+    
+  } catch (error) {
+    console.error("Error saving exercise:", error);
   }
 }
 
-// Wire up UI
-window.addEventListener("DOMContentLoaded", () => {
-  const today = new Date().toISOString().slice(0,10);
-  $("logDate").value = today;
-
-  $("loadDayBtn").addEventListener("click", async () => {
-    try {
-      template = await fetchTemplate($("logDate").value);
-      hide("viewLogger");
-      show("viewPreview");
-      renderPreview();
-      $("templateError").classList.add("hidden");
-      $("msg").textContent = "";
-    } catch (e) {
-      $("templateError").textContent = "Template loading failed";
-      $("templateError").classList.remove("hidden");
-    }
-  });
-
-  $("beginBtn").addEventListener("click", () => {
-    if (!template || !template.blocks || template.blocks.length === 0) return;
-    cursor = 0;
-    hide("viewPreview");
-    show("viewLogger");
-    renderBlock();
-  });
-
-  $("prevBtn").addEventListener("click", () => {
-    if (cursor > 0) {
-      cursor--;
-      renderBlock();
-    }
-  });
-  $("saveNextBtn").addEventListener("click", saveCurrentAndNext);
-});
+function completeWorkout() {
+  hide("viewLogger");
+  show("viewComplete");
+  
+  // Update progress to 100%
+  $("progressBar").style.width = "100%";
+}
 </script>
 {% endblock %}
