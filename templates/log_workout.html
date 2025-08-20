@@ -31,7 +31,7 @@
                         <div class="row mt-4">
                             <div class="col-md-6">
                                 <button type="submit" class="btn btn-success btn-lg w-100" id="submitBtn" disabled>
-                                    <i class="fas fa-save"></i> Save Workout
+                                    <i class="fas fa-arrow-right"></i> <span id="submitBtnText">Log & Continue</span>
                                 </button>
                             </div>
                             <div class="col-md-6">
@@ -50,6 +50,8 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
 let workoutTemplate = null;
+let currentExerciseIndex = 0;
+let completedExercises = [];
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
@@ -71,7 +73,9 @@ function loadWorkoutTemplate() {
         .then(response => response.json())
         .then(data => {
             workoutTemplate = data;
-            renderDynamicLoggingUI(data);
+            currentExerciseIndex = 0;
+            completedExercises = [];
+            renderCurrentExercise();
             document.getElementById('submitBtn').disabled = false;
         })
         .catch(error => {
@@ -80,70 +84,87 @@ function loadWorkoutTemplate() {
         });
 }
 
-function renderDynamicLoggingUI(template) {
+function renderCurrentExercise() {
     const container = document.getElementById('dynamicLoggingContainer');
 
-    if (!template.blocks || template.blocks.length === 0) {
+    if (!workoutTemplate.blocks || workoutTemplate.blocks.length === 0) {
         container.innerHTML = '<p class="text-muted text-center">No exercises planned for today</p>';
         return;
     }
 
-    let html = '';
+    if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+        renderWorkoutComplete();
+        return;
+    }
 
-    template.blocks.forEach((block, blockIdx) => {
-        if (block.type === 'simple') {
-            html += renderSimpleBlock(block, blockIdx);
-        } else if (block.type === 'rounds') {
-            html += renderRoundsBlock(block, blockIdx);
-        }
-    });
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+    const exerciseNumber = currentExerciseIndex + 1;
+    const totalExercises = workoutTemplate.blocks.length;
 
-    container.innerHTML = html;
-}
-
-function renderSimpleBlock(block, blockIdx) {
     let html = `
-        <div class="card mb-4" data-block-idx="${blockIdx}" data-block-type="simple">
-            <div class="card-header">
-                <h6 class="mb-0">${block.title}</h6>
-                <small class="text-muted">Planned: ${block.planned_sets} sets × ${block.planned_reps} reps @ ${block.planned_weight}</small>
+        <div class="progress mb-4">
+            <div class="progress-bar" role="progressbar" style="width: ${(exerciseNumber / totalExercises) * 100}%" 
+                 aria-valuenow="${exerciseNumber}" aria-valuemin="0" aria-valuemax="${totalExercises}">
+                Exercise ${exerciseNumber} of ${totalExercises}
             </div>
-            <div class="card-body">
+        </div>
     `;
 
-    // Create input fields for each set
+    if (currentBlock.type === 'simple') {
+        html += renderSingleSimpleBlock(currentBlock);
+    } else if (currentBlock.type === 'rounds') {
+        html += renderSingleRoundsBlock(currentBlock);
+    }
+
+    container.innerHTML = html;
+    updateSubmitButton();
+}
+
+function renderSingleSimpleBlock(block) {
+    let html = `
+        <div class="card shadow-sm" data-block-type="simple">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-1">${block.title}</h4>
+                <small>Planned: ${block.planned_sets} sets × ${block.planned_reps} reps @ ${block.planned_weight}</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+    `;
+
+    // Create input fields for each set - simplified layout
     block.sets.forEach((set, setIdx) => {
         html += `
-            <div class="row mb-3 border-bottom pb-2">
-                <div class="col-md-1 d-flex align-items-center">
-                    <strong>Set ${set.set_number}</strong>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Reps</label>
-                    <input type="number" class="form-control" 
-                           placeholder="${set.planned_reps}" 
-                           data-input-id="${set.input_id}"
-                           data-field="actual_reps">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Weight</label>
-                    <input type="text" class="form-control" 
-                           placeholder="${set.planned_weight.value}${set.planned_weight.unit}" 
-                           data-input-id="${set.input_id}"
-                           data-field="actual_weight">
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label">Notes</label>
-                    <input type="text" class="form-control" 
-                           placeholder="Optional notes for this set"
-                           data-input-id="${set.input_id}"
-                           data-field="notes">
+            <div class="col-md-4 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-3">
+                        <h6 class="card-title">Set ${set.set_number}</h6>
+                        <div class="mb-2">
+                            <label class="form-label">Reps</label>
+                            <input type="number" class="form-control text-center" 
+                                   placeholder="${set.planned_reps}" 
+                                   data-set-number="${set.set_number}"
+                                   data-field="actual_reps">
+                        </div>
+                        <div>
+                            <label class="form-label">Weight</label>
+                            <input type="text" class="form-control text-center" 
+                                   placeholder="${set.planned_weight.value}" 
+                                   data-set-number="${set.set_number}"
+                                   data-field="actual_weight">
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
     });
 
     html += `
+                </div>
+                <div class="mt-4">
+                    <label class="form-label">Exercise Notes</label>
+                    <textarea class="form-control" rows="2" id="exerciseNotes" 
+                              placeholder="Any notes about this exercise (form, difficulty, substitutions, etc.)"></textarea>
+                </div>
             </div>
         </div>
     `;
@@ -151,14 +172,14 @@ function renderSimpleBlock(block, blockIdx) {
     return html;
 }
 
-function renderRoundsBlock(block, blockIdx) {
+function renderSingleRoundsBlock(block) {
     let html = `
-        <div class="card mb-4" data-block-idx="${blockIdx}" data-block-type="rounds">
-            <div class="card-header bg-primary text-white">
-                <h6 class="mb-0">
+        <div class="card shadow-sm" data-block-type="rounds">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-1">
                     <i class="fas fa-repeat"></i> ${block.title}
-                </h6>
-                <small>Log each exercise for each round</small>
+                </h4>
+                <small>Complete all rounds, logging each exercise</small>
             </div>
             <div class="card-body">
     `;
@@ -166,35 +187,41 @@ function renderRoundsBlock(block, blockIdx) {
     block.rounds.forEach((round, roundIdx) => {
         html += `
             <div class="mb-4">
-                <h6 class="text-secondary border-bottom pb-2">Round ${round.round_index}</h6>
+                <h5 class="text-primary border-bottom pb-2">Round ${round.round_index}</h5>
                 <div class="row">
         `;
 
         round.members.forEach((member, memberIdx) => {
             html += `
-                <div class="col-md-4 mb-3">
-                    <div class="border rounded p-2">
-                        <label class="form-label small fw-bold">
-                            ${member.name}
-                            ${member.tempo ? `<span class="badge bg-secondary">${member.tempo}</span>` : ''}
-                        </label>
-                        <div class="input-group input-group-sm mb-1">
-                            <input type="number" class="form-control" 
-                                   placeholder="${member.planned_reps}" 
-                                   data-input-id="${member.input_id}"
-                                   data-field="actual_reps">
-                            <span class="input-group-text">reps</span>
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                ${member.name}
+                                ${member.tempo ? `<span class="badge bg-secondary ms-2">${member.tempo}</span>` : ''}
+                            </h6>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label class="form-label">Reps</label>
+                                    <input type="number" class="form-control" 
+                                           placeholder="${member.planned_reps}" 
+                                           data-round="${round.round_index}"
+                                           data-exercise="${member.name}"
+                                           data-field="actual_reps">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Weight</label>
+                                    <input type="text" class="form-control" 
+                                           placeholder="${member.planned_weight.value}" 
+                                           data-round="${round.round_index}"
+                                           data-exercise="${member.name}"
+                                           data-field="actual_weight">
+                                </div>
+                            </div>
+                            <small class="text-muted">
+                                Planned: ${member.planned_reps} @ ${member.planned_weight.value}${member.planned_weight.unit}
+                            </small>
                         </div>
-                        <div class="input-group input-group-sm mb-1">
-                            <input type="text" class="form-control" 
-                                   placeholder="${member.planned_weight.value}" 
-                                   data-input-id="${member.input_id}"
-                                   data-field="actual_weight">
-                            <span class="input-group-text">${member.planned_weight.unit}</span>
-                        </div>
-                        <small class="text-muted">
-                            Planned: ${member.planned_reps} @ ${member.planned_weight.value}${member.planned_weight.unit}
-                        </small>
                     </div>
                 </div>
             `;
@@ -203,8 +230,49 @@ function renderRoundsBlock(block, blockIdx) {
         html += '</div></div>';
     });
 
-    html += '</div></div>';
+    html += `
+                <div class="mt-4">
+                    <label class="form-label">Exercise Notes</label>
+                    <textarea class="form-control" rows="2" id="exerciseNotes" 
+                              placeholder="Any notes about this circuit/rounds exercise"></textarea>
+                </div>
+            </div>
+        </div>
+    `;
+
     return html;
+}
+
+function renderWorkoutComplete() {
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="card shadow-sm border-success">
+            <div class="card-header bg-success text-white text-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-check-circle"></i> Workout Complete!
+                </h4>
+            </div>
+            <div class="card-body text-center">
+                <h5>Great job!</h5>
+                <p class="mb-4">You've logged all ${workoutTemplate.blocks.length} exercises for today.</p>
+                <a href="/dashboard" class="btn btn-primary btn-lg">
+                    <i class="fas fa-home"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    `;
+    document.getElementById('submitBtn').style.display = 'none';
+}
+
+function updateSubmitButton() {
+    const isLastExercise = currentExerciseIndex === workoutTemplate.blocks.length - 1;
+    const submitBtnText = document.getElementById('submitBtnText');
+    
+    if (isLastExercise) {
+        submitBtnText.innerHTML = '<i class="fas fa-save"></i> Finish Workout';
+    } else {
+        submitBtnText.innerHTML = '<i class="fas fa-arrow-right"></i> Log & Continue';
+    }
 }
 
 function renderFallbackUI() {
@@ -267,92 +335,90 @@ document.getElementById('workoutForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
     if (workoutTemplate) {
-        submitFromTemplate();
+        submitCurrentExercise();
     } else {
         submitManualWorkout();
     }
 });
 
-function submitFromTemplate() {
-    const processedBlocks = [];
+function submitCurrentExercise() {
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+    const exerciseNotes = document.getElementById('exerciseNotes')?.value || '';
 
-    workoutTemplate.blocks.forEach((templateBlock, blockIdx) => {
-        const blockElement = document.querySelector(`[data-block-idx="${blockIdx}"]`);
+    if (currentBlock.type === 'simple') {
+        // Collect set data
+        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
+        
+        const repsArray = [];
+        const weightsArray = [];
+        
+        repsInputs.forEach((input, idx) => {
+            const value = input.value || currentBlock.sets[idx]?.planned_reps || '';
+            repsArray.push(value);
+        });
+        
+        weightInputs.forEach((input, idx) => {
+            const value = input.value || currentBlock.sets[idx]?.planned_weight?.value || '';
+            weightsArray.push(value);
+        });
 
-        if (templateBlock.type === 'simple') {
-            const processedSets = [];
+        // Format for legacy single exercise logging
+        const exerciseData = {
+            exercise_name: currentBlock.title,
+            sets: currentBlock.planned_sets,
+            reps: repsArray.join('/'),
+            weight: weightsArray[0] + (weightsArray[0] && !weightsArray[0].includes('lb') ? 'lbs' : ''),
+            notes: exerciseNotes,
+            date: workoutTemplate.date
+        };
 
-            templateBlock.sets.forEach(set => {
-                const repsInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="actual_reps"]`);
-                const weightInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="actual_weight"]`);
-                const notesInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="notes"]`);
+        submitExerciseData(exerciseData);
 
-                processedSets.push({
-                    set_number: set.set_number,
-                    actual_reps: repsInput ? (repsInput.value || set.planned_reps) : set.planned_reps,
-                    actual_weight: weightInput ? (weightInput.value || set.planned_weight.value) : set.planned_weight.value,
-                    notes: notesInput ? notesInput.value : ''
-                });
-            });
+    } else if (currentBlock.type === 'rounds') {
+        // For rounds/circuits, log as a summary
+        const exerciseData = {
+            exercise_name: currentBlock.title,
+            sets: currentBlock.rounds.length,
+            reps: 'Circuit',
+            weight: 'Mixed',
+            notes: exerciseNotes + ' [Circuit/Rounds Exercise]',
+            date: workoutTemplate.date
+        };
 
-            processedBlocks.push({
-                ...templateBlock,
-                sets: processedSets
-            });
-        } else if (templateBlock.type === 'rounds') {
-            const processedRounds = [];
+        submitExerciseData(exerciseData);
+    }
+}
 
-            templateBlock.rounds.forEach(round => {
-                const processedMembers = [];
-
-                round.members.forEach(member => {
-                    const repsInput = blockElement.querySelector(`[data-input-id="${member.input_id}"][data-field="actual_reps"]`);
-                    const weightInput = blockElement.querySelector(`[data-input-id="${member.input_id}"][data-field="actual_weight"]`);
-
-                    processedMembers.push({
-                        ...member,
-                        actual_reps: repsInput ? (repsInput.value || member.planned_reps) : member.planned_reps,
-                        actual_weight: weightInput ? (weightInput.value || member.planned_weight.value) : member.planned_weight.value
-                    });
-                });
-
-                processedRounds.push({
-                    ...round,
-                    members: processedMembers
-                });
-            });
-
-            processedBlocks.push({
-                ...templateBlock,
-                rounds: processedRounds
-            });
-        }
-    });
-
-    const submitData = {
-        date: workoutTemplate.date,
-        blocks: processedBlocks
-    };
-
-    fetch('/log_from_template', {
+function submitExerciseData(exerciseData) {
+    fetch('/save_workout', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify(submitData)
+        body: JSON.stringify(exerciseData)
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            alert(`✅ Workout logged successfully!\n\n${data.message}`);
-            window.location.href = '/dashboard';
+        if (data.status === 'success') {
+            // Move to next exercise
+            completedExercises.push(exerciseData);
+            currentExerciseIndex++;
+            
+            if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+                // Workout complete
+                renderWorkoutComplete();
+            } else {
+                // Show next exercise
+                renderCurrentExercise();
+            }
         } else {
-            alert('Error logging workout: ' + (data.error || 'Unknown error'));
+            alert('Error logging exercise: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error logging workout. Please try again.');
+        alert('Error logging exercise. Please try again.');
     });
 }
 
