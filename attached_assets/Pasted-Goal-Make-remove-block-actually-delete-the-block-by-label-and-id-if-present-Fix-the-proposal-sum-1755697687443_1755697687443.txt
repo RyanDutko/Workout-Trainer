@@ -1,0 +1,68 @@
+Goal: Make remove_block actually delete the block by label (and id if present). Fix the proposal summary text.
+
+1) In ai_service_v2.py – when building the proposal result for propose_plan_update:
+
+Set the summary by action:
+
+if action == "add_block":
+    summary = f"Add '{label}' ({block_type}, {normalized_block.get('rounds', 1)} rounds, {len(normalized_block.get('members', []))} members) to {day.title()}"
+elif action == "remove_block":
+    summary = f"Remove block titled '{label}' from {day.title()}"
+else:
+    summary = f"{action} '{label}' on {day.title()}"
+
+
+When action == "remove_block", keep the block as you already do, but also stash a target label so the commit step can use it:
+
+proposal_payload = {
+    "proposal_id": proposal_id,
+    "summary": summary,
+    "normalized_block": normalized_block,  # fine to keep; will be ignored on remove
+    "action": action,
+    "day": day,
+    "target_label": label  # <— add this
+}
+
+
+2) In commit_plan_update (same file), add a branch for remove:
+
+if action == "remove_block":
+    day = proposal["day"]
+    target_label = (proposal.get("target_label") 
+                    or proposal.get("block", {}).get("label") 
+                    or "").strip()
+    target_id = proposal.get("target_block_id")  # optional
+
+    # 1) Load current day plan (same function you use for add)
+    day_plan = get_weekly_plan(day)  # or whatever your helper is
+    before_len = len(day_plan)
+
+    def _label(b):
+        return (b.get("label") or b.get("exercise") or "").strip().casefold()
+
+    # 2) Build predicate: match by id if present, else by label (case-insensitive)
+    new_plan = []
+    removed_count = 0
+    for b in day_plan:
+        by_id = (target_id is not None and b.get("id") == target_id)
+        by_label = (target_label != "" and _label(b) == target_label.strip().casefold())
+        if by_id or by_label:
+            removed_count += 1
+            continue
+        new_plan.append(b)
+
+    # 3) If nothing matched, still return ok but note 0 removed
+    wrote = save_weekly_plan(day, new_plan)  # <-- use your existing writer
+    updated_plan = get_weekly_plan(day)      # reload for return/logging
+
+    print(f"REMOVE_BLOCK day={day} removed={removed_count} before={before_len} after={len(updated_plan)}")
+    return {
+        "status": "ok",
+        "block_id": None,
+        "wrote": bool(wrote),
+        "removed": removed_count,
+        "updated_plan": updated_plan
+    }
+
+
+(Keep your existing add_block branch untouched.)
