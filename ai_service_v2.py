@@ -434,7 +434,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 return self._get_last_query_context()
 
             elif function_name == "get_session":
-                return self.get_session(
+                return self._get_session(
                     date=args.get('date')
                 )
 
@@ -761,15 +761,37 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             print(f"TOOL_RESULT_LEN(get_weekly_plan)={total_exercises}")
             return plan_by_day
 
-    def get_session(self, date):
-        """Get normalized workout session data for a specific date"""
-        import sys
-        sys.path.append('.')
-        from app import normalize_session
+    def _get_session(self, date: str) -> Dict[str, Any]:
+        """Get workout session data for a specific date from workouts table"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
 
-        result = normalize_session(date)
-        print(f"TOOL_RESULT_LEN(get_session)={len(result)}")
-        return result
+        try:
+            cursor.execute('''
+                SELECT exercise_name, sets, reps, weight, notes
+                FROM workouts
+                WHERE date_logged = ?
+                ORDER BY id
+            ''', (date,))
+
+            workouts = []
+            for row in cursor.fetchall():
+                workouts.append({
+                    'exercise': row[0],
+                    'sets': row[1], 
+                    'reps': row[2],
+                    'weight': row[3],
+                    'notes': row[4] or ''
+                })
+
+            conn.close()
+            print(f"TOOL_RESULT_LEN(_get_session)={len(workouts)}")
+            return workouts
+
+        except Exception as e:
+            conn.close()
+            print(f"Error in _get_session: {e}")
+            return []
 
     def compare_workout_to_plan(self, date=None, day=None):
         """Compare actual workout to planned workout"""
