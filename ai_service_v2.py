@@ -93,7 +93,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "propose_plan_update",
-                    "description": "Propose changes to the weekly workout plan. Use this to add, modify, or remove workout blocks/exercises. When the user mentions 'rounds' (e.g., 2 rounds), include an integer rounds in the block.",
+                    "description": "Propose changes to the weekly workout plan. Use this to add, modify, or remove workout blocks/exercises. When the user mentions 'rounds' (e.g., 2 rounds), include an integer rounds in the block. When proposing complex/rounds content, include rounds and members; use block_type: \"circuit\" (not \"complex\").",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1183,7 +1183,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             block_type = (block.get("block_type") or "single").lower()
             if block_type == "complex":
                 block_type = "circuit"
-            
+
             label = block.get("label", f"New {block_type.title()} Block")
             order_index = block.get("order_index", 99)
             members = block.get("members", [])
@@ -1343,6 +1343,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 meta = (nb.get("meta_json") or nb.get("meta") or {}).copy()
                 meta["rounds"] = rounds
 
+                # Force commit_plan_update to write to DB
                 if block_type in ("circuit", "rounds"):
                     # Insert circuit/rounds block
                     cursor.execute('''
@@ -1364,6 +1365,10 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     ''', (day, label, 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
 
                     block_id = cursor.lastrowid
+
+                # Add debug print statement after assembling block_type/label/rounds/members
+                print(f"COMMIT_ADD inspect type={block_type} label={label} rounds={rounds} members={len(members)}")
+
 
             conn.commit()
             conn.close()
