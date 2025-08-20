@@ -248,25 +248,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Post-Workout Complete State -->
-        <div id="post-workout-complete" style="display: none;">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body text-center p-5">
-                    <i class="fas fa-clipboard-check fa-3x text-success mb-3"></i>
-                    <h2 class="text-success mb-3">Workout Logged!</h2>
-                    <p class="text-muted mb-4">All exercises logged successfully.</p>
-                    <div class="d-grid gap-2">
-                        <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
-                            <i class="fas fa-home me-2"></i>Back to Dashboard
-                        </a>
-                        <button class="btn btn-outline-secondary" onclick="startNewPostWorkout()">
-                            <i class="fas fa-plus me-2"></i>Log Another Day
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Active Workout State -->
@@ -352,7 +333,7 @@
                     <div id="complexExerciseSection" class="mb-3" style="display: none;">
                         <div class="alert alert-info">
                             <i class="fas fa-layer-group me-2"></i>
-                            <strong>Complex Exercise Detected!</strong> Enter each round as: movement reps@weight, movement reps@weight
+                            <strong>Complex Exercise Detected!</strong> Enter each round as: movement reps@weight
                         </div>
                         <div id="complexSetsContainer">
                             <!-- Complex sets will be populated here -->
@@ -421,704 +402,1191 @@
             </div>
         </div>
     </div>
+
+    <!-- Post-Workout Complete State -->
+    <div id="post-workout-complete" style="display: none;">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body text-center p-5">
+                <i class="fas fa-clipboard-check fa-3x text-success mb-3"></i>
+                <h2 class="text-success mb-3">Workout Logged!</h2>
+                <p class="text-muted mb-4">All exercises logged successfully.</p>
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-home me-2"></i>Back to Dashboard
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="startNewPostWorkout()">
+                        <i class="fas fa-plus me-2"></i>Log Another Day
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Global workout state
-let currentWorkoutPlan = [];
-let currentExerciseIndex = 0;
-let workoutStartTime = null;
-let clockInterval = null;
+    // Global workout state
+    let currentWorkoutPlan = [];
+    let currentExerciseIndex = 0;
+    let workoutStartTime = null;
+    let clockInterval = null;
 
-// Post-workout state
-let postWorkoutPlan = [];
-let postCurrentExerciseIndex = 0;
-let selectedWorkoutDate = '';
+    // Post-workout state
+    let postWorkoutPlan = [];
+    let postCurrentExerciseIndex = 0;
+    let selectedWorkoutDate = '';
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    setupWorkoutStatusListeners();
-    setupPostWorkoutStatusListeners(); // Ensure this is called
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        setupWorkoutStatusListeners();
+        setupPostWorkoutStatusListeners(); // Ensure this is called
 
-    // Set today's date for post-workout form
-    const today = new Date().toISOString().split('T')[0];
-    const postWorkoutDateElement = document.getElementById('postWorkoutDate');
-    if (postWorkoutDateElement) {
-        postWorkoutDateElement.value = today;
-    }
-});
-
-// Mode selection functions
-function selectMode(mode) {
-    document.getElementById('mode-selection').style.display = 'none';
-
-    if (mode === 'live') {
-        document.getElementById('workout-not-started').style.display = 'block';
-        loadTodaysPlan(); // Only load plan when live mode is selected
-    } else if (mode === 'post') {
-        document.getElementById('post-workout-mode').style.display = 'block';
-    }
-}
-
-function backToModeSelection() {
-    // Hide all mode-specific sections
-    document.getElementById('workout-not-started').style.display = 'none';
-    document.getElementById('workout-active').style.display = 'none';
-    document.getElementById('post-workout-mode').style.display = 'none';
-    document.getElementById('post-workout-not-started').style.display = 'block'; // Ensure this is visible if coming back from active state
-    document.getElementById('post-workout-complete').style.display = 'none'; // Hide complete state if returning
-
-
-    // Show mode selection
-    document.getElementById('mode-selection').style.display = 'block';
-
-    // Stop live clock if it's running
-    if (clockInterval) {
-        clearInterval(clockInterval);
-        clockInterval = null;
-    }
-}
-
-// Post-workout logging functions
-function handlePostWorkoutSubmit(e) {
-    e.preventDefault();
-
-    const exerciseName = document.getElementById('postExerciseName').value;
-    const sets = parseInt(document.getElementById('postSets').value);
-    const reps = document.getElementById('postReps').value;
-    const weight = document.getElementById('postWeight').value;
-    const notes = document.getElementById('postNotes').value;
-    const date = document.getElementById('postWorkoutDate').value;
-
-    // Create workout data
-    const workoutData = {
-        exercise_name: exerciseName,
-        sets: sets,
-        reps: reps,
-        weight: weight,
-        notes: notes,
-        date: date,
-            substitution_reason: document.getElementById('substitutionReason').value,
-            performance_context: document.getElementById('performanceContext').value,
-            environmental_factors: document.getElementById('environmentalFactors').value,
-            difficulty_rating: document.getElementById('difficultyRating').value ? parseInt(document.getElementById('difficultyRating').value) : null,
-            gym_location: '' // Can be added later if needed
-    };
-
-    // Submit to server
-    fetch('/save_workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(workoutData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            // Add to recently logged list
-            addToRecentlyLogged(workoutData);
-
-            // Clear form for next entry
-            document.getElementById('postExerciseName').value = '';
-            document.getElementById('postSets').value = '';
-            document.getElementById('postReps').value = '';
-            document.getElementById('postWeight').value = '';
-            document.getElementById('postNotes').value = '';
-
-            // Show success message
-            showSuccessMessage('Exercise logged successfully!');
-        } else {
-            alert('Error logging exercise: ' + data.message);
+        // Set today's date for post-workout form
+        const today = new Date().toISOString().split('T')[0];
+        const postWorkoutDateElement = document.getElementById('postWorkoutDate');
+        if (postWorkoutDateElement) {
+            postWorkoutDateElement.value = today;
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error logging exercise');
     });
-}
 
-function addAnotherExercise() {
-    // Just clear the exercise name and focus on it
-    document.getElementById('postExerciseName').value = '';
-    document.getElementById('postExerciseName').focus();
-}
+    // Mode selection functions
+    function selectMode(mode) {
+        document.getElementById('mode-selection').style.display = 'none';
 
-function addToRecentlyLogged(workoutData) {
-    const recentSection = document.getElementById('recentlyLogged');
-    const recentList = document.getElementById('recentLogsList');
-
-    // Show the recent section
-    recentSection.style.display = 'block';
-
-    // Create new list item
-    const listItem = document.createElement('div');
-    listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
-    listItem.innerHTML = `
-        <div>
-            <strong>${workoutData.exercise_name}</strong><br>
-            <small class="text-muted">${workoutData.sets}x${workoutData.reps} @ ${workoutData.weight}</small>
-        </div>
-        <small class="text-muted">${workoutData.date}</small>
-    `;
-
-    // Add to top of list
-    recentList.insertBefore(listItem, recentList.firstChild);
-
-    // Keep only last 5 entries
-    while (recentList.children.length > 5) {
-        recentList.removeChild(recentList.lastChild);
-    }
-}
-
-function showSuccessMessage(message) {
-    // Create and show a temporary success message
-    const alertDiv = document.createElement('div');
-    alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-
-    const form = document.getElementById('postWorkoutForm');
-    form.appendChild(alertDiv);
-
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
+        if (mode === 'live') {
+            document.getElementById('workout-not-started').style.display = 'block';
+            loadTodaysPlan(); // Only load plan when live mode is selected
+        } else if (mode === 'post') {
+            document.getElementById('post-workout-mode').style.display = 'block';
         }
-    }, 3000);
-}
+    }
 
-function loadTodaysPlan() {
-    const today = new Date().toISOString().split('T')[0];
+    function backToModeSelection() {
+        // Hide all mode-specific sections
+        document.getElementById('workout-not-started').style.display = 'none';
+        document.getElementById('workout-active').style.display = 'none';
+        document.getElementById('post-workout-mode').style.display = 'none';
+        document.getElementById('post-workout-not-started').style.display = 'block'; // Ensure this is visible if coming back from active state
+        document.getElementById('post-workout-complete').style.display = 'none'; // Hide complete state if returning
 
-    fetch(`/get_plan/${today}`)
+
+        // Show mode selection
+        document.getElementById('mode-selection').style.display = 'block';
+
+        // Stop live clock if it's running
+        if (clockInterval) {
+            clearInterval(clockInterval);
+            clockInterval = null;
+        }
+    }
+
+    // Post-workout logging functions
+    function handlePostWorkoutSubmit(e) {
+        e.preventDefault();
+
+        const exerciseName = document.getElementById('postExerciseName').value;
+        const sets = parseInt(document.getElementById('postSets').value);
+        const reps = document.getElementById('postReps').value;
+        const weight = document.getElementById('postWeight').value;
+        const notes = document.getElementById('postNotes').value;
+        const date = document.getElementById('postWorkoutDate').value;
+
+        // Create workout data
+        const workoutData = {
+            exercise_name: exerciseName,
+            sets: sets,
+            reps: reps,
+            weight: weight,
+            notes: notes,
+            date: date,
+                substitution_reason: document.getElementById('substitutionReason').value,
+                performance_context: document.getElementById('performanceContext').value,
+                environmental_factors: document.getElementById('environmentalFactors').value,
+                difficulty_rating: document.getElementById('difficultyRating').value ? parseInt(document.getElementById('difficultyRating').value) : null,
+                gym_location: '' // Can be added later if needed
+        };
+
+        // Submit to server
+        fetch('/save_workout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(workoutData)
+        })
         .then(response => response.json())
         .then(data => {
-            currentWorkoutPlan = data.exercises || [];
-            document.getElementById('workout-count').textContent = currentWorkoutPlan.length;
+            if (data.status === 'success') {
+                // Add to recently logged list
+                addToRecentlyLogged(workoutData);
 
-            // Show plan preview
-            const previewContainer = document.getElementById('plan-preview');
-            if (currentWorkoutPlan.length > 0) {
-                let previewHtml = '<div class="list-group list-group-flush">';
-                currentWorkoutPlan.forEach((exercise, index) => {
-                    previewHtml += `
-                        <div class="list-group-item border-0 py-2">
-                            <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
-                            <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
-                        </div>
-                    `;
-                });
-                previewHtml += '</div>';
-                previewContainer.innerHTML = previewHtml;
+                // Clear form for next entry
+                document.getElementById('postExerciseName').value = '';
+                document.getElementById('postSets').value = '';
+                document.getElementById('postReps').value = '';
+                document.getElementById('postWeight').value = '';
+                document.getElementById('postNotes').value = '';
+
+                // Show success message
+                showSuccessMessage('Exercise logged successfully!');
             } else {
-                previewContainer.innerHTML = '<p class="text-muted">No exercises planned for today. <a href="/weekly_plan">Set up your plan</a></p>';
+                alert('Error logging exercise: ' + data.message);
             }
         })
         .catch(error => {
-            console.error('Error loading plan:', error);
-            document.getElementById('plan-preview').innerHTML = '<p class="text-danger">Error loading plan</p>';
+            console.error('Error:', error);
+            alert('Error logging exercise');
         });
-}
-
-function beginWorkout() {
-    if (currentWorkoutPlan.length === 0) {
-        alert('No workout plan for today. Please set up your weekly plan first.');
-        return;
     }
 
-    workoutStartTime = new Date();
-    currentExerciseIndex = 0;
-
-    // Switch to workout view
-    document.getElementById('workout-not-started').style.display = 'none';
-    document.getElementById('workout-active').style.display = 'block';
-
-    // Start live clock
-    startLiveClock();
-
-    // Load first exercise
-    loadCurrentExercise();
-}
-
-function startLiveClock() {
-    function updateClock() {
-        const now = new Date();
-        const timeString = now.toLocaleTimeString('en-US', { hour12: false });
-        document.getElementById('live-clock').textContent = timeString;
+    function addAnotherExercise() {
+        // Just clear the exercise name and focus on it
+        document.getElementById('postExerciseName').value = '';
+        document.getElementById('postExerciseName').focus();
     }
 
-    updateClock(); // Update immediately
-    clockInterval = setInterval(updateClock, 1000);
-}
+    function addToRecentlyLogged(workoutData) {
+        const recentSection = document.getElementById('recentlyLogged');
+        const recentList = document.getElementById('recentLogsList');
 
-function selectMode(mode) {
-    document.getElementById('mode-selection').style.display = 'none';
+        // Show the recent section
+        recentSection.style.display = 'block';
 
-    if (mode === 'live') {
-        document.getElementById('workout-not-started').style.display = 'block';
-        loadTodaysPlan(); // Only load plan when live mode is selected
-    } else if (mode === 'post') {
-        document.getElementById('post-workout-mode').style.display = 'block';
-    }
-}
-
-function loadCurrentExercise() {
-    if (currentExerciseIndex >= currentWorkoutPlan.length) {
-        completeWorkout();
-        return;
-    }
-
-    const exercise = currentWorkoutPlan[currentExerciseIndex];
-    const totalExercises = currentWorkoutPlan.length;
-
-    // Update header
-    document.getElementById('current-exercise-num').textContent = currentExerciseIndex + 1;
-    document.getElementById('total-exercises').textContent = totalExercises;
-
-    // Safely extract exercise properties
-    const exerciseName = exercise.exercise_name || 'Unknown Exercise';
-    const targetSets = exercise.sets || exercise.target_sets || 3;
-    const exerciseReps = exercise.reps || exercise.target_reps || '8';
-    const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
-
-    // Update exercise info
-    document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
-
-    // Check if this is a complex exercise - use proper field check
-    const isComplex = exercise.is_complex || 
-                    (exercise.complex_structure && exercise.complex_structure !== '') ||
-                    exercise.exercise_name.toLowerCase().includes('finisher') ||
-                    exercise.exercise_name.toLowerCase().includes('rounds');
-
-    const setsSection = document.getElementById('setsSection');
-    const complexExerciseSection = document.getElementById('complexExerciseSection');
-    const regularSetsContainer = document.getElementById('regularSetsContainer');
-    const quickFillSection = document.getElementById('quickFillSection');
-
-    // Show different header for complex vs regular exercises
-    if (isComplex) {
-        document.getElementById('exercise-target').textContent = 'Complex Exercise';
-        document.getElementById('exercise-target').className = 'badge bg-warning fs-6';
-    } else {
-        document.getElementById('exercise-target').textContent = `${targetSets}x${exerciseReps} @ ${targetWeight}`;
-        document.getElementById('exercise-target').className = 'badge bg-info fs-6';
-    }
-
-    if (isComplex) {
-        complexExerciseSection.style.display = 'block';
-        regularSetsContainer.style.display = 'none';
-        quickFillSection.style.display = 'none'; // Quick fill is for regular sets
-        loadComplexExerciseSets(exercise);
-    } else {
-        complexExerciseSection.style.display = 'none';
-        regularSetsContainer.style.display = 'block';
-        quickFillSection.style.display = 'block';
-        loadRegularExerciseSets(exercise);
-    }
-
-    // Reset form state
-    document.getElementById('statusCompleted').checked = true;
-    document.getElementById('workoutNotes').value = '';
-    document.getElementById('skipReasonContainer').style.display = 'none';
-    document.getElementById('substitutionContainer').style.display = 'none';
-    setsSection.style.display = 'block';
-
-    // Update previous button
-    const prevBtn = document.getElementById('prevBtn');
-    if (currentExerciseIndex === 0) {
-        prevBtn.disabled = true;
-        prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
-    } else {
-        prevBtn.disabled = false;
-        prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
-    }
-}
-
-function loadRegularExerciseSets(exercise) {
-    const setsContainer = document.getElementById('regularSetsContainer');
-    setsContainer.innerHTML = '';
-
-    // Safely extract reps value
-    const exerciseTargetReps = exercise.reps || exercise.target_reps || '8';
-    const exerciseTargetSets = exercise.sets || exercise.target_sets || 3;
-
-    for (let i = 1; i <= exerciseTargetSets; i++) {
-        setsContainer.innerHTML += `
-            <div class="row mb-2 align-items-center">
-                <div class="col-3">
-                    <span class="fw-bold">Set ${i}:</span>
-                </div>
-                <div class="col-5">
-                    <input type="number" class="form-control" id="set${i}Reps" 
-                           placeholder="${exerciseTargetReps}" min="0" max="50">
-                </div>
-                <div class="col-4">
-                    <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${exerciseTargetReps}')" title="As planned">
-                            ${exerciseTargetReps}
-                        </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${getNumericReps(exerciseTargetReps) + 1})" title="+1">
-                            +1
-                        </button>
-                    </div>
-                </div>
+        // Create new list item
+        const listItem = document.createElement('div');
+        listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+        listItem.innerHTML = `
+            <div>
+                <strong>${workoutData.exercise_name}</strong><br>
+                <small class="text-muted">${workoutData.sets}x${workoutData.reps} @ ${workoutData.weight}</small>
             </div>
+            <small class="text-muted">${workoutData.date}</small>
         `;
-    }
-}
 
-function loadComplexExerciseSets(exercise) {
-    const complexSetsContainer = document.getElementById('complexSetsContainer');
-    complexSetsContainer.innerHTML = '';
+        // Add to top of list
+        recentList.insertBefore(listItem, recentList.firstChild);
 
-    // Parse the complex exercise structure - handle multiple formats
-    let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
-
-    if (complexStructure.length === 0) {
-        // Fallback to old format if parsing fails
-        complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
-        return;
-    }
-
-    complexStructure.forEach((item, index) => {
-        complexSetsContainer.innerHTML += `
-            <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
-                <div class="col-12 mb-2">
-                    <strong>${item.roundLabel}:</strong> ${item.movement}
-                </div>
-                <div class="col-6">
-                    <label for="complexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
-                    <input type="number" class="form-control" id="complexMovement${index}Reps" 
-                           placeholder="${item.plannedReps}" min="0" max="50"
-                           value="${item.plannedReps}">
-                </div>
-                <div class="col-6">
-                    <label for="complexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
-                    <input type="text" class="form-control" id="complexMovement${index}Weight" 
-                           placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
-                </div>
-            </div>
-        `;
-    });
-}
-
-function parseComplexExerciseStructure(repsString, weightString, notesString) {
-    // Parse different complex exercise formats
-    let structure = [];
-
-    // Format 1: Bicep finisher format - "2x10/15/10" with weights "20/15/15lbs" and notes describing movements
-    if (repsString.includes('/') && weightString && weightString.includes('/')) {
-        // Extract the pattern: "2x10/15/10" -> 2 rounds of 10/15/10 reps
-        const roundsMatch = repsString.match(/^(\d+)x(.+)/);
-        if (roundsMatch) {
-            const [, rounds, repsPattern] = roundsMatch;
-            const repsArray = repsPattern.split('/');
-            const weightsArray = weightString.replace(/lbs/g, '').replace(/kg/g, '').split('/');
-
-            // Default movement names for bicep finisher rounds
-            const defaultMovements = ['slow bicep curls', 'fast bicep curls', 'hammer curls'];
-
-            // Parse movement names from notes if available
-            let movementNames = defaultMovements;
-            if (notesString) {
-                // Extract movements from notes like "10 slow bicep curls + 15 fast bicep curls + 10 hammer curls"
-                const movementMatches = notesString.match(/\d+\s+([^+]+?)(?:\s*\+|$)/g);
-                if (movementMatches) {
-                    movementNames = movementMatches.map(match => {
-                        const nameMatch = match.match(/\d+\s+(.+?)(?:\s*\+|$)/);
-                        return nameMatch ? nameMatch[1].trim() : 'movement';
-                    });
-                }
-            }
-
-            // Create structure for each movement in the round
-            repsArray.forEach((reps, index) => {
-                const weight = weightsArray[index] || weightsArray[0] || '0';
-                const movementName = movementNames[index] || defaultMovements[index] || `Movement ${index + 1}`;
-
-                structure.push({
-                    roundLabel: `Movement ${index + 1}`,
-                    movement: movementName,
-                    plannedReps: reps.trim(),
-                    plannedWeight: `${weight}lbs`
-                });
-            });
+        // Keep only last 5 entries
+        while (recentList.children.length > 5) {
+            recentList.removeChild(recentList.lastChild);
         }
     }
-    // Format 2: Standard complex format "10 slow bicep curls(20 lbs), 15 fast bicep curls(15 lbs)"
-    else if (repsString.includes('(') && repsString.includes(')')) {
-        const movements = repsString.split(',');
-        movements.forEach((movement, index) => {
-            const trimmed = movement.trim();
 
-            // Extract reps, movement name, and weight
-            const repsMatch = trimmed.match(/(\d+)\s+(.+?)\s*\((.+?)\)/);
-            if (repsMatch) {
-                const [, reps, movementName, weight] = repsMatch;
+    function showSuccessMessage(message) {
+        // Create and show a temporary success message
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show mt-3';
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+
+        const form = document.getElementById('postWorkoutForm');
+        form.appendChild(alertDiv);
+
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 3000);
+    }
+
+    function loadTodaysPlan() {
+        const today = new Date().toISOString().split('T')[0];
+
+        fetch(`/get_plan/${today}`)
+            .then(response => response.json())
+            .then(data => {
+                currentWorkoutPlan = data.exercises || [];
+                document.getElementById('workout-count').textContent = currentWorkoutPlan.length;
+
+                // Show plan preview
+                const previewContainer = document.getElementById('plan-preview');
+                if (currentWorkoutPlan.length > 0) {
+                    let previewHtml = '<div class="list-group list-group-flush">';
+                    currentWorkoutPlan.forEach((exercise, index) => {
+                        previewHtml += `
+                            <div class="list-group-item border-0 py-2">
+                                <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
+                                <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
+                            </div>
+                        `;
+                    });
+                    previewHtml += '</div>';
+                    previewContainer.innerHTML = previewHtml;
+                } else {
+                    previewContainer.innerHTML = '<p class="text-muted">No exercises planned for today. <a href="/weekly_plan">Set up your plan</a></p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading plan:', error);
+                document.getElementById('plan-preview').innerHTML = '<p class="text-danger">Error loading plan</p>';
+            });
+    }
+
+    function beginWorkout() {
+        if (currentWorkoutPlan.length === 0) {
+            alert('No workout plan for today. Please set up your weekly plan first.');
+            return;
+        }
+
+        workoutStartTime = new Date();
+        currentExerciseIndex = 0;
+
+        // Switch to workout view
+        document.getElementById('workout-not-started').style.display = 'none';
+        document.getElementById('workout-active').style.display = 'block';
+
+        // Start live clock
+        startLiveClock();
+
+        // Load first exercise
+        loadCurrentExercise();
+    }
+
+    function startLiveClock() {
+        function updateClock() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { hour12: false });
+            document.getElementById('live-clock').textContent = timeString;
+        }
+
+        updateClock(); // Update immediately
+        clockInterval = setInterval(updateClock, 1000);
+    }
+
+    function selectMode(mode) {
+        document.getElementById('mode-selection').style.display = 'none';
+
+        if (mode === 'live') {
+            document.getElementById('workout-not-started').style.display = 'block';
+            loadTodaysPlan(); // Only load plan when live mode is selected
+        } else if (mode === 'post') {
+            document.getElementById('post-workout-mode').style.display = 'block';
+        }
+    }
+
+    function loadCurrentExercise() {
+        if (currentExerciseIndex >= currentWorkoutPlan.length) {
+            completeWorkout();
+            return;
+        }
+
+        const exercise = currentWorkoutPlan[currentExerciseIndex];
+        const totalExercises = currentWorkoutPlan.length;
+
+        // Update header
+        document.getElementById('current-exercise-num').textContent = currentExerciseIndex + 1;
+        document.getElementById('total-exercises').textContent = totalExercises;
+
+        // Safely extract exercise properties
+        const exerciseName = exercise.exercise_name || 'Unknown Exercise';
+        const targetSets = exercise.sets || exercise.target_sets || 3;
+        const exerciseReps = exercise.reps || exercise.target_reps || '8';
+        const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
+
+        // Update exercise info
+        document.getElementById('exercise-name').textContent = exerciseName.charAt(0).toUpperCase() + exerciseName.slice(1);
+
+        // Check if this is a complex exercise - use proper field check
+        const isComplex = exercise.is_complex || 
+                        (exercise.complex_structure && exercise.complex_structure !== '') ||
+                        exercise.exercise_name.toLowerCase().includes('finisher') ||
+                        exercise.exercise_name.toLowerCase().includes('rounds');
+
+        const setsSection = document.getElementById('setsSection');
+        const complexExerciseSection = document.getElementById('complexExerciseSection');
+        const regularSetsContainer = document.getElementById('regularSetsContainer');
+        const quickFillSection = document.getElementById('quickFillSection');
+
+        // Show different header for complex vs regular exercises
+        if (isComplex) {
+            document.getElementById('exercise-target').textContent = 'Complex Exercise';
+            document.getElementById('exercise-target').className = 'badge bg-warning fs-6';
+        } else {
+            document.getElementById('exercise-target').textContent = `${targetSets}x${exerciseReps} @ ${targetWeight}`;
+            document.getElementById('exercise-target').className = 'badge bg-info fs-6';
+        }
+
+        if (isComplex) {
+            complexExerciseSection.style.display = 'block';
+            regularSetsContainer.style.display = 'none';
+            quickFillSection.style.display = 'none'; // Quick fill is for regular sets
+            loadComplexExerciseSets(exercise);
+        } else {
+            complexExerciseSection.style.display = 'none';
+            regularSetsContainer.style.display = 'block';
+            quickFillSection.style.display = 'block';
+            loadRegularExerciseSets(exercise);
+        }
+
+        // Reset form state
+        document.getElementById('statusCompleted').checked = true;
+        document.getElementById('workoutNotes').value = '';
+        document.getElementById('skipReasonContainer').style.display = 'none';
+        document.getElementById('substitutionContainer').style.display = 'none';
+        setsSection.style.display = 'block';
+
+        // Update previous button
+        const prevBtn = document.getElementById('prevBtn');
+        if (currentExerciseIndex === 0) {
+            prevBtn.disabled = true;
+            prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
+        } else {
+            prevBtn.disabled = false;
+            prevBtn.innerHTML = '<i class="fas fa-arrow-left me-1"></i>Previous';
+        }
+    }
+
+    function loadRegularExerciseSets(exercise) {
+        const setsContainer = document.getElementById('regularSetsContainer');
+        setsContainer.innerHTML = '';
+
+        // Safely extract reps value
+        const exerciseTargetReps = exercise.reps || exercise.target_reps || '8';
+        const exerciseTargetSets = exercise.sets || exercise.target_sets || 3;
+
+        for (let i = 1; i <= exerciseTargetSets; i++) {
+            setsContainer.innerHTML += `
+                <div class="row mb-2 align-items-center">
+                    <div class="col-3">
+                        <span class="fw-bold">Set ${i}:</span>
+                    </div>
+                    <div class="col-5">
+                        <input type="number" class="form-control" id="set${i}Reps" 
+                               placeholder="${exerciseTargetReps}" min="0" max="50">
+                    </div>
+                    <div class="col-4">
+                        <div class="btn-group btn-group-sm w-100" role="group">
+                            <button type="button" class="btn btn-outline-success btn-sm" onclick="setReps(${i}, '${exerciseTargetReps}')" title="As planned">
+                                ${exerciseTargetReps}
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="setReps(${i}, ${getNumericReps(exerciseTargetReps) + 1})" title="+1">
+                                +1
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    function loadComplexExerciseSets(exercise) {
+        const complexSetsContainer = document.getElementById('complexSetsContainer');
+        complexSetsContainer.innerHTML = '';
+
+        // Parse the complex exercise structure - handle multiple formats
+        let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
+
+        if (complexStructure.length === 0) {
+            // Fallback to old format if parsing fails
+            complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
+            return;
+        }
+
+        complexStructure.forEach((item, index) => {
+            complexSetsContainer.innerHTML += `
+                <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
+                    <div class="col-12 mb-2">
+                        <strong>${item.roundLabel}:</strong> ${item.movement}
+                    </div>
+                    <div class="col-6">
+                        <label for="complexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
+                        <input type="number" class="form-control" id="complexMovement${index}Reps" 
+                               placeholder="${item.plannedReps}" min="0" max="50"
+                               value="${item.plannedReps}">
+                        <input type="hidden" 
+                               name="complex_movement[${index}][exercise]" 
+                               value="${item.movement}">
+                        <input type="hidden" 
+                               name="complex_movement[${index}][tempo]" 
+                               value="${item.tempo || ''}">
+                    </div>
+                    <div class="col-6">
+                        <label for="complexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
+                        <input type="text" class="form-control" id="complexMovement${index}Weight" 
+                               placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function parseComplexExerciseStructure(repsString, weightString, notesString) {
+        // Parse different complex exercise formats
+        let structure = [];
+
+        // Format 1: Bicep finisher format - "2x10/15/10" with weights "20/15/15lbs" and notes describing movements
+        if (repsString && typeof repsString === 'string' && repsString.includes('/') && weightString && typeof weightString === 'string' && weightString.includes('/')) {
+            // Extract the pattern: "2x10/15/10" -> 2 rounds of 10/15/10 reps
+            const roundsMatch = repsString.match(/^(\d+)x(.+)/);
+            if (roundsMatch) {
+                const [, rounds, repsPattern] = roundsMatch;
+                const repsArray = repsPattern.split('/');
+                const weightsArray = weightString.replace(/lbs/g, '').replace(/kg/g, '').split('/');
+
+                // Default movement names for bicep finisher rounds
+                const defaultMovements = ['slow bicep curls', 'fast bicep curls', 'hammer curls'];
+
+                // Parse movement names from notes if available
+                let movementNames = defaultMovements;
+                if (notesString) {
+                    // Extract movements from notes like "10 slow bicep curls + 15 fast bicep curls + 10 hammer curls"
+                    const movementMatches = notesString.match(/\d+\s+([^+]+?)(?:\s*\+|$)/g);
+                    if (movementMatches) {
+                        movementNames = movementMatches.map(match => {
+                            const nameMatch = match.match(/\d+\s+(.+?)(?:\s*\+|$)/);
+                            return nameMatch ? nameMatch[1].trim() : 'movement';
+                        });
+                    }
+                }
+
+                // Create structure for each movement in the round
+                repsArray.forEach((reps, index) => {
+                    const weight = weightsArray[index] || weightsArray[0] || '0';
+                    const movementName = movementNames[index] || defaultMovements[index] || `Movement ${index + 1}`;
+
+                    structure.push({
+                        roundLabel: `Movement ${index + 1}`,
+                        movement: movementName,
+                        plannedReps: reps.trim(),
+                        plannedWeight: `${weight}lbs`
+                    });
+                });
+            }
+        }
+        // Format 2: Standard complex format "10 slow bicep curls(20 lbs), 15 fast bicep curls(15 lbs)"
+        else if (repsString && typeof repsString === 'string' && repsString.includes('(') && repsString.includes(')')) {
+            const movements = repsString.split(',');
+            movements.forEach((movement, index) => {
+                const trimmed = movement.trim();
+
+                // Extract reps, movement name, and weight
+                const repsMatch = trimmed.match(/(\d+)\s+(.+?)\s*\((.+?)\)/);
+                if (repsMatch) {
+                    const [, reps, movementName, weight] = repsMatch;
+                    structure.push({
+                        roundLabel: `Movement ${index + 1}`,
+                        movement: movementName,
+                        plannedReps: reps,
+                        plannedWeight: weight
+                    });
+                }
+            });
+        }
+        // Format 3: Your original "movement reps@weight" format
+        else if (repsString && typeof repsString === 'string' && repsString.includes('@')) {
+            const rounds = repsString.split(',');
+            rounds.forEach((round, roundIndex) => {
+                const parts = round.trim().split(' ');
+                const movement = parts.slice(0, -1).join(' ');
+                const repWeight = parts[parts.length - 1].split('@');
+                const reps = repWeight[0];
+                const weight = repWeight[1] ? repWeight[1] : '0lbs';
+
                 structure.push({
-                    roundLabel: `Movement ${index + 1}`,
-                    movement: movementName,
+                    roundLabel: `Round ${roundIndex + 1}`,
+                    movement: movement,
                     plannedReps: reps,
                     plannedWeight: weight
                 });
-            }
-        });
-    }
-    // Format 3: Your original "movement reps@weight" format
-    else if (repsString.includes('@')) {
-        const rounds = repsString.split(',');
-        rounds.forEach((round, roundIndex) => {
-            const parts = round.trim().split(' ');
-            const movement = parts.slice(0, -1).join(' ');
-            const repWeight = parts[parts.length - 1].split('@');
-            const reps = repWeight[0];
-            const weight = repWeight[1] ? repWeight[1] : '0lbs';
-
+            });
+        }
+        // Format 4: Fallback for unrecognized formats
+        else {
             structure.push({
-                roundLabel: `Round ${roundIndex + 1}`,
-                movement: movement,
-                plannedReps: reps,
-                plannedWeight: weight
+                roundLabel: "Complex Movement",
+                movement: "Multi-movement exercise",
+                plannedReps: "varies",
+                plannedWeight: "varies"
+            });
+        }
+
+        return structure;
+    }
+
+
+    function setupWorkoutStatusListeners() {
+        const workoutStatusRadios = document.querySelectorAll('input[name="workoutStatus"]');
+        if (workoutStatusRadios.length === 0) return;
+
+        workoutStatusRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const skipContainer = document.getElementById('skipReasonContainer');
+                const substitutionContainer = document.getElementById('substitutionContainer');
+                const setsSection = document.getElementById('setsSection');
+
+                if (!skipContainer || !substitutionContainer || !setsSection) return;
+
+                if (this.value === 'skipped') {
+                    skipContainer.style.display = 'block';
+                    substitutionContainer.style.display = 'none';
+                    setsSection.style.display = 'none';
+                } else if (this.value === 'substituted') {
+                    skipContainer.style.display = 'none';
+                    substitutionContainer.style.display = 'block';
+                    setsSection.style.display = 'block';
+                } else {
+                    skipContainer.style.display = 'none';
+                    substitutionContainer.style.display = 'none';
+                    setsSection.style.display = 'block';
+                }
             });
         });
     }
-    // Format 4: Fallback for unrecognized formats
-    else {
-        structure.push({
-            roundLabel: "Complex Movement",
-            movement: "Multi-movement exercise",
-            plannedReps: "varies",
-            plannedWeight: "varies"
-        });
+
+    function setReps(setNumber, reps) {
+        document.getElementById(`set${setNumber}Reps`).value = reps;
     }
 
-    return structure;
-}
+    function getNumericReps(repsString) {
+        // Handle different rep formats like "8-12", "8", etc.
+        if (!repsString) return 8; // default
 
+        const repsStr = String(repsString);
+        if (repsStr.includes('-')) {
+            return parseInt(repsStr.split('-')[0]);
+        }
+        return parseInt(repsStr) || 8;
+    }
 
-function setupWorkoutStatusListeners() {
-    const workoutStatusRadios = document.querySelectorAll('input[name="workoutStatus"]');
-    if (workoutStatusRadios.length === 0) return;
+    function handleQuickFillAllSets(type) {
+        // Determine which mode we're in based on which elements are visible
+        const liveWorkoutActive = document.getElementById('workout-active').style.display !== 'none';
+        const postWorkoutActive = document.getElementById('post-workout-active').style.display !== 'none';
 
-    workoutStatusRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            const skipContainer = document.getElementById('skipReasonContainer');
-            const substitutionContainer = document.getElementById('substitutionContainer');
-            const setsSection = document.getElementById('setsSection');
+        if (liveWorkoutActive) {
+            quickFillAllSets(type);
+        } else if (postWorkoutActive) {
+            postQuickFillAllSets(type);
+        }
+    }
 
-            if (!skipContainer || !substitutionContainer || !setsSection) return;
+    function quickFillAllSets(type) {
+        const exercise = currentWorkoutPlan[currentExerciseIndex];
+        if (!exercise) return;
 
-            if (this.value === 'skipped') {
-                skipContainer.style.display = 'block';
-                substitutionContainer.style.display = 'none';
-                setsSection.style.display = 'none';
-            } else if (this.value === 'substituted') {
-                skipContainer.style.display = 'none';
-                substitutionContainer.style.display = 'block';
-                setsSection.style.display = 'block';
-            } else {
-                skipContainer.style.display = 'none';
-                substitutionContainer.style.display = 'none';
-                setsSection.style.display = 'block';
+        const exerciseReps = exercise.reps || exercise.target_reps || '8';
+        const exerciseSets = exercise.sets || exercise.target_sets || 3;
+        const plannedReps = getNumericReps(exerciseReps);
+        let repsValue;
+
+        switch(type) {
+            case 'planned':
+                repsValue = plannedReps;
+                break;
+            case 'plus1':
+                repsValue = plannedReps + 1;
+                break;
+            case 'minus1':
+                repsValue = Math.max(1, plannedReps - 1);
+                break;
+        }
+
+        for (let i = 1; i <= exerciseSets; i++) {
+            const input = document.getElementById(`set${i}Reps`);
+            if (input) {
+                input.value = repsValue;
             }
-        });
-    });
-}
-
-function setReps(setNumber, reps) {
-    document.getElementById(`set${setNumber}Reps`).value = reps;
-}
-
-function getNumericReps(repsString) {
-    // Handle different rep formats like "8-12", "8", etc.
-    if (!repsString) return 8; // default
-
-    const repsStr = String(repsString);
-    if (repsStr.includes('-')) {
-        return parseInt(repsStr.split('-')[0]);
-    }
-    return parseInt(repsStr) || 8;
-}
-
-function handleQuickFillAllSets(type) {
-    // Determine which mode we're in based on which elements are visible
-    const liveWorkoutActive = document.getElementById('workout-active').style.display !== 'none';
-    const postWorkoutActive = document.getElementById('post-workout-active').style.display !== 'none';
-
-    if (liveWorkoutActive) {
-        quickFillAllSets(type);
-    } else if (postWorkoutActive) {
-        postQuickFillAllSets(type);
-    }
-}
-
-function quickFillAllSets(type) {
-    const exercise = currentWorkoutPlan[currentExerciseIndex];
-    if (!exercise) return;
-
-    const exerciseReps = exercise.reps || exercise.target_reps || '8';
-    const exerciseSets = exercise.sets || exercise.target_sets || 3;
-    const plannedReps = getNumericReps(exerciseReps);
-    let repsValue;
-
-    switch(type) {
-        case 'planned':
-            repsValue = plannedReps;
-            break;
-        case 'plus1':
-            repsValue = plannedReps + 1;
-            break;
-        case 'minus1':
-            repsValue = Math.max(1, plannedReps - 1);
-            break;
-    }
-
-    for (let i = 1; i <= exerciseSets; i++) {
-        const input = document.getElementById(`set${i}Reps`);
-        if (input) {
-            input.value = repsValue;
         }
     }
-}
 
-function logCurrentExercise() {
-    const exercise = currentWorkoutPlan[currentExerciseIndex];
-    const workoutStatus = document.querySelector('input[name="workoutStatus"]:checked').value;
-    let notes = document.getElementById('workoutNotes').value;
+    function logCurrentExercise() {
+        const exercise = currentWorkoutPlan[currentExerciseIndex];
+        const workoutStatus = document.querySelector('input[name="workoutStatus"]:checked').value;
+        let notes = document.getElementById('workoutNotes').value;
 
-    // Build workout data based on status
-    let workoutData = {
-        exercise_name: exercise.exercise_name,
-        sets: exercise.sets,
-        reps: exercise.reps, // This will be the planned reps
-        weight: exercise.weight,
-        notes: notes,
-        status: workoutStatus,
-        date: new Date().toISOString().split('T')[0]
-    };
+        // Build workout data based on status
+        let workoutData = {
+            exercise_name: exercise.exercise_name,
+            sets: exercise.sets,
+            reps: exercise.reps, // This will be the planned reps
+            weight: exercise.weight,
+            notes: notes,
+            status: workoutStatus,
+            date: new Date().toISOString().split('T')[0]
+        };
 
-    if (workoutStatus === 'skipped') {
-        const skipReasonElement = document.getElementById('skipReason');
-        const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
+        if (workoutStatus === 'skipped') {
+            const skipReasonElement = document.getElementById('skipReason');
+            const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
 
-        if (!skipReason || skipReason === '') {
-            alert('Please select a reason for skipping this exercise');
-            return;
+            if (!skipReason || skipReason === '') {
+                alert('Please select a reason for skipping this exercise');
+                return;
+            }
+            workoutData.skip_reason = skipReason;
+            workoutData.sets = 0;
+            workoutData.reps = '0';
+            workoutData.weight = '0lbs';
+        } else if (workoutStatus === 'substituted') {
+            const substitutedExerciseElement = document.getElementById('substitutedExercise');
+            const substitutedWeightElement = document.getElementById('substitutedWeight');
+            const substitutionReasonElement = document.getElementById('substitutionReason');
+
+            const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+            const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
+            const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
+
+            if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
+                alert('Please fill in what exercise you substituted, the weight used, and why');
+                return;
+            }
+
+            workoutData.exercise_name = substitutedExercise;
+            workoutData.weight = substitutedWeight;  // Use the actual weight used
+            workoutData.original_exercise = exercise.exercise_name;
+            workoutData.original_weight = exercise.weight;  // Store original planned weight
+            workoutData.substitution_reason = substitutionReason;
         }
-        workoutData.skip_reason = skipReason;
-        workoutData.sets = 0;
-        workoutData.reps = '0';
-        workoutData.weight = '0lbs';
-    } else if (workoutStatus === 'substituted') {
-        const substitutedExerciseElement = document.getElementById('substitutedExercise');
-        const substitutedWeightElement = document.getElementById('substitutedWeight');
-        const substitutionReasonElement = document.getElementById('substitutionReason');
 
-        const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
-        const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
-        const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
+        // Determine if it's a complex exercise based on the original plan's reps format
+        const isComplex = exercise.is_complex || 
+                        (exercise.complex_structure && exercise.complex_structure !== '') ||
+                        exercise.exercise_name.toLowerCase().includes('finisher') ||
+                        exercise.exercise_name.toLowerCase().includes('rounds');
 
-        if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
-            alert('Please fill in what exercise you substituted, the weight used, and why');
-            return;
-        }
+        if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
+            let collectedReps = [];
+            let collectedWeight = [];
 
-        workoutData.exercise_name = substitutedExercise;
-        workoutData.weight = substitutedWeight;  // Use the actual weight used
-        workoutData.original_exercise = exercise.exercise_name;
-        workoutData.original_weight = exercise.weight;  // Store original planned weight
-        workoutData.substitution_reason = substitutionReason;
-    }
+            if (isComplex) {
+                // For complex exercises, collect reps and weights from all movement items
+                const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
+                let allComplexFieldsFilled = true;
+                let complexPerformanceData = [];
 
-    // Determine if it's a complex exercise based on the original plan's reps format
-    const isComplex = exercise.is_complex || 
-                    (exercise.complex_structure && exercise.complex_structure !== '') ||
-                    exercise.exercise_name.toLowerCase().includes('finisher') ||
-                    exercise.exercise_name.toLowerCase().includes('rounds');
+                movementItems.forEach((item, index) => {
+                    const repsInput = item.querySelector(`#complexMovement${index}Reps`);
+                    const weightInput = item.querySelector(`#complexMovement${index}Weight`);
 
-    if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
-        let collectedReps = [];
-        let collectedWeight = [];
+                    if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
+                        allComplexFieldsFilled = false;
+                        return;
+                    }
 
-        if (isComplex) {
-            // For complex exercises, collect reps and weights from all movement items
-            const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
-            let allComplexFieldsFilled = true;
-            let complexPerformanceData = [];
+                    // Store detailed performance data
+                    const movementLabel = item.querySelector('strong').textContent.replace(':', '');
+                    const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
 
-            movementItems.forEach((item, index) => {
-                const repsInput = item.querySelector(`#complexMovement${index}Reps`);
-                const weightInput = item.querySelector(`#complexMovement${index}Weight`);
+                    complexPerformanceData.push({
+                        movement: movementName,
+                        reps: repsInput.value,
+                        weight: weightInput.value,
+                        label: movementLabel
+                    });
 
-                if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
-                    allComplexFieldsFilled = false;
+                    collectedReps.push(`${movementLabel}: ${repsInput.value}`);
+                    collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
+                });
+
+                if (!allComplexFieldsFilled) {
+                    alert('Please fill in reps and weight for all movements of the complex exercise.');
                     return;
                 }
 
-                // Store detailed performance data
-                const movementLabel = item.querySelector('strong').textContent.replace(':', '');
-                const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
+                // Store both simple and detailed formats
+                workoutData.reps_performed = collectedReps.join(' | ');
+                workoutData.weight_performed = collectedWeight.join(' | ');
+                workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
+            } else {
+                // For regular exercises, collect reps from regularSetsContainer
+                const setsContainer = document.getElementById('regularSetsContainer');
+                const setInputs = setsContainer.querySelectorAll('input[type="number"]');
+                let allSetsHaveReps = true;
 
-                complexPerformanceData.push({
-                    movement: movementName,
-                    reps: repsInput.value,
-                    weight: weightInput.value,
-                    label: movementLabel
+                setInputs.forEach(input => {
+                    const reps = input.value;
+                    if (!reps || reps === '') {
+                        allSetsHaveReps = false;
+                    }
+                    collectedReps.push(reps);
                 });
 
-                collectedReps.push(`${movementLabel}: ${repsInput.value}`);
-                collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
-            });
-
-            if (!allComplexFieldsFilled) {
-                alert('Please fill in reps and weight for all movements of the complex exercise.');
-                return;
-            }
-
-            // Store both simple and detailed formats
-            workoutData.reps_performed = collectedReps.join(' | ');
-            workoutData.weight_performed = collectedWeight.join(' | ');
-            workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
-        } else {
-            // For regular exercises, collect reps from regularSetsContainer
-            const setsContainer = document.getElementById('regularSetsContainer');
-            const setInputs = setsContainer.querySelectorAll('input[type="number"]');
-            let allSetsHaveReps = true;
-
-            setInputs.forEach(input => {
-                const reps = input.value;
-                if (!reps || reps === '') {
-                    allSetsHaveReps = false;
+                if (!allSetsHaveReps) {
+                    alert('Please fill in reps for all sets');
+                    return;
                 }
-                collectedReps.push(reps);
-            });
-
-            if (!allSetsHaveReps) {
-                alert('Please fill in reps for all sets');
-                return;
+                workoutData.reps_performed = collectedReps.join('/'); // Join with slash for regular
+                // For regular exercises, weight is usually constant per set and defined in the plan.
+                // If actual weight per set needs to be logged, the UI would need to be extended.
+                // For now, we assume the 'weight' field in workoutData is sufficient.
+                workoutData.weight_performed = workoutData.weight; // Use the planned weight
             }
-            workoutData.reps_performed = collectedReps.join('/'); // Join with slash for regular
-            // For regular exercises, weight is usually constant per set and defined in the plan.
-            // If actual weight per set needs to be logged, the UI would need to be extended.
-            // For now, we assume the 'weight' field in workoutData is sufficient.
-            workoutData.weight_performed = workoutData.weight; // Use the planned weight
+        }
+
+        // Use the correct endpoint based on exercise type or status
+        if (workoutStatus === 'skipped') {
+            const saveData = {
+                exercise_name: workoutData.exercise_name,
+                sets: 0,
+                reps: '0',
+                weight: '0lbs',
+                notes: workoutData.notes + ` [SKIPPED: ${workoutData.skip_reason}]`,
+                date: workoutData.date
+            };
+
+            fetch('/save_workout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(saveData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    currentExerciseIndex++;
+                    loadCurrentExercise();
+                } else {
+                    alert('Error logging exercise: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error logging exercise');
+            });
+        } else {
+            // For completed or substituted exercises, use the multi-workout endpoint
+            // This endpoint is designed to handle the more complex data structure
+            fetch('/log_multi_workout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    exercises: [workoutData], // Send as an array containing one exercise
+                    date: workoutData.date
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    currentExerciseIndex++;
+                    loadCurrentExercise();
+                } else {
+                    alert('Error logging exercise: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error logging exercise');
+            });
         }
     }
 
-    // Use the correct endpoint based on exercise type or status
-    if (workoutStatus === 'skipped') {
+    function previousExercise() {
+        if (currentExerciseIndex > 0) {
+            currentExerciseIndex--;
+            loadCurrentExercise();
+        }
+    }
+
+    function completeWorkout() {
+        if (clockInterval) {
+            clearInterval(clockInterval);
+            clockInterval = null;
+        }
+
+        document.getElementById('workout-active').style.display = 'none';
+        document.getElementById('workout-complete').style.display = 'block';
+    }
+
+    function endWorkout() {
+        if (confirm('Are you sure you want to end your workout early?')) {
+            completeWorkout();
+        }
+    }
+
+    function startNewWorkout() {
+        currentExerciseIndex = 0;
+        workoutStartTime = null;
+
+        if (clockInterval) {
+            clearInterval(clockInterval);
+            clockInterval = null;
+        }
+
+        document.getElementById('workout-complete').style.display = 'none';
+        document.getElementById('workout-active').style.display = 'none';
+        document.getElementById('workout-not-started').style.display = 'block';
+
+        loadTodaysPlan();
+    }
+
+    // Post-workout functions
+    function loadPostWorkoutPlan() {
+        const selectedDate = document.getElementById('postWorkoutDate').value;
+        if (!selectedDate) return;
+
+        selectedWorkoutDate = selectedDate;
+
+        fetch(`/get_plan/${selectedDate}`)
+            .then(response => response.json())
+            .then(data => {
+                postWorkoutPlan = data.exercises || [];
+                document.getElementById('postWorkoutCount').textContent = postWorkoutPlan.length;
+
+                const previewContainer = document.getElementById('postPlanPreview');
+                const beginBtn = document.getElementById('beginPostBtn');
+
+                if (postWorkoutPlan.length > 0) {
+                    let previewHtml = '<div class="list-group list-group-flush">';
+                    postWorkoutPlan.forEach((exercise, index) => {
+                        previewHtml += `
+                            <div class="list-group-item border-0 py-2">
+                                <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
+                                <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
+                            </div>
+                        `;
+                    });
+                    previewHtml += '</div>';
+                    previewContainer.innerHTML = previewHtml;
+                    beginBtn.disabled = false;
+                } else {
+                    previewContainer.innerHTML = '<p class="text-muted">No exercises planned for this date.</p>';
+                    beginBtn.disabled = true;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading plan:', error);
+                document.getElementById('postPlanPreview').innerHTML = '<p class="text-danger">Error loading plan</p>';
+            });
+    }
+
+    function beginPostWorkout() {
+        if (postWorkoutPlan.length === 0) {
+            alert('No workout plan for selected date.');
+            return;
+        }
+
+        postCurrentExerciseIndex = 0;
+
+        document.getElementById('post-workout-not-started').style.display = 'none';
+        document.getElementById('post-workout-active').style.display = 'block';
+
+        loadCurrentPostExercise();
+    }
+
+    function loadCurrentPostExercise() {
+        if (postCurrentExerciseIndex >= postWorkoutPlan.length) {
+            completePostWorkout();
+            return;
+        }
+
+        const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+        const totalExercises = postWorkoutPlan.length;
+
+        document.getElementById('postCurrentExerciseNum').textContent = postCurrentExerciseIndex + 1;
+        document.getElementById('postTotalExercises').textContent = totalExercises;
+        document.getElementById('postSelectedDate').textContent = selectedWorkoutDate;
+
+        document.getElementById('postExerciseName').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
+
+        // Safely extract exercise properties
+        const targetReps = exercise.reps || exercise.target_reps || '8';
+        const targetSets = exercise.sets || exercise.target_sets || 3;
+        const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
+
+        document.getElementById('postExerciseTarget').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
+
+        // Determine if it's a complex exercise
+        const isComplex = exercise.is_complex || 
+                        (exercise.complex_structure && exercise.complex_structure !== '') ||
+                        exercise.exercise_name.toLowerCase().includes('finisher') ||
+                        exercise.exercise_name.toLowerCase().includes('rounds');
+
+        const setsSection = document.getElementById('setsSection'); // This is the parent div for set logging
+        const complexExerciseSection = document.getElementById('complexExerciseSection');
+        const regularSetsContainer = document.getElementById('regularSetsContainer');
+        const quickFillSection = document.getElementById('quickFillSection'); // This is for regular exercises
+
+        if (isComplex) {
+            complexExerciseSection.style.display = 'block';
+            regularSetsContainer.style.display = 'none';
+            quickFillSection.style.display = 'none'; // Quick fill is not applicable to complex exercises
+            loadComplexPostExerciseSets(exercise);
+        } else {
+            complexExerciseSection.style.display = 'none';
+            regularSetsContainer.style.display = 'block';
+            quickFillSection.style.display = 'block';
+            loadRegularPostExerciseSets(exercise);
+        }
+
+        // Reset form state
+        document.getElementById('postStatusCompleted').checked = true;
+        document.getElementById('postWorkoutNotes').value = '';
+        document.getElementById('postSkipReasonContainer').style.display = 'none';
+        document.getElementById('postSubstitutionContainer').style.display = 'none';
+        setsSection.style.display = 'block'; // Make sure the sets section is visible
+
+        const prevBtn = document.getElementById('postPrevBtn');
+        if (postCurrentExerciseIndex === 0) {
+            prevBtn.disabled = true;
+        } else {
+            prevBtn.disabled = false;
+        }
+    }
+
+    function loadRegularPostExerciseSets(exercise) {
+        const setsContainer = document.getElementById('regularSetsContainer');
+        setsContainer.innerHTML = '';
+
+        // Safely extract reps and sets values
+        const postTargetReps = exercise.reps || exercise.target_reps || '8';
+        const postTargetSets = exercise.sets || exercise.target_sets || 3;
+
+        for (let i = 1; i <= postTargetSets; i++) {
+            setsContainer.innerHTML += `
+                <div class="row mb-2 align-items-center">
+                    <div class="col-3">
+                        <span class="fw-bold">Set ${i}:</span>
+                    </div>
+                    <div class="col-5">
+                        <input type="number" class="form-control" id="postSet${i}Reps" 
+                               placeholder="${postTargetReps}" min="0" max="50">
+                    </div>
+                    <div class="col-4">
+                        <div class="btn-group btn-group-sm w-100" role="group">
+                            <button type="button" class="btn btn-outline-success btn-sm" onclick="postSetReps(${i}, '${postTargetReps}')" title="As planned">
+                                ${postTargetReps}
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="postSetReps(${i}, ${getNumericReps(postTargetReps) + 1})" title="+1">
+                                +1
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    function loadComplexPostExerciseSets(exercise) {
+        const complexSetsContainer = document.getElementById('complexSetsContainer');
+        complexSetsContainer.innerHTML = '';
+
+        // Use the same parsing logic as live workout
+        let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
+
+        if (complexStructure.length === 0) {
+            complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
+            return;
+        }
+
+        complexStructure.forEach((item, index) => {
+            complexSetsContainer.innerHTML += `
+                <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
+                    <div class="col-12 mb-2">
+                        <strong>${item.roundLabel}:</strong> ${item.movement}
+                    </div>
+                    <div class="col-6">
+                        <label for="postComplexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
+                        <input type="number" class="form-control" id="postComplexMovement${index}Reps" 
+                               placeholder="${item.plannedReps}" min="0" max="50"
+                               value="${item.plannedReps}">
+                        <input type="hidden" 
+                               name="post_complex_movement[${index}][exercise]" 
+                               value="${item.movement}">
+                        <input type="hidden" 
+                               name="post_complex_movement[${index}][tempo]" 
+                               value="${item.tempo || ''}">
+                    </div>
+                    <div class="col-6">
+                        <label for="postComplexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
+                        <input type="text" class="form-control" id="postComplexMovement${index}Weight" 
+                               placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+
+    function setupPostWorkoutStatusListeners() {
+        document.querySelectorAll('input[name="postWorkoutStatus"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const skipContainer = document.getElementById('postSkipReasonContainer');
+                const substitutionContainer = document.getElementById('postSubstitutionContainer');
+                const setsSection = document.getElementById('postSetsSection'); // This element might not exist, it should be 'setsSection'
+
+                // Corrected element ID for sets section if it was meant to be specific to post-workout
+                const postSetsSection = document.getElementById('setsSection'); // Assuming it's the same as the live workout one
+
+                if (this.value === 'skipped') {
+                    skipContainer.style.display = 'block';
+                    substitutionContainer.style.display = 'none';
+                    postSetsSection.style.display = 'none'; // Use the correct ID
+                } else if (this.value === 'substituted') {
+                    skipContainer.style.display = 'none';
+                    substitutionContainer.style.display = 'block';
+                    postSetsSection.style.display = 'block'; // Use the correct ID
+                } else {
+                    skipContainer.style.display = 'none';
+                    substitutionContainer.style.display = 'none';
+                    postSetsSection.style.display = 'block'; // Use the correct ID
+                }
+            });
+        });
+    }
+
+    function postSetReps(setNumber, reps) {
+        document.getElementById(`postSet${setNumber}Reps`).value = reps;
+    }
+
+    function postQuickFillAllSets(type) {
+        const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+        if (!exercise) return;
+
+        const postExerciseReps = exercise.reps || exercise.target_reps || '8';
+        const postExerciseSets = exercise.sets || exercise.target_sets || 3;
+        const plannedReps = getNumericReps(postExerciseReps);
+        let repsValue;
+
+        switch(type) {
+            case 'planned':
+                repsValue = plannedReps;
+                break;
+            case 'plus1':
+                repsValue = plannedReps + 1;
+                break;
+            case 'minus1':
+                repsValue = Math.max(1, plannedReps - 1);
+                break;
+        }
+
+        for (let i = 1; i <= postExerciseSets; i++) {
+            const input = document.getElementById(`postSet${i}Reps`);
+            if (input) {
+                input.value = repsValue;
+            }
+        }
+    }
+
+    function logCurrentPostExercise() {
+        const exercise = postWorkoutPlan[postCurrentExerciseIndex];
+        const workoutStatus = document.querySelector('input[name="postWorkoutStatus"]:checked').value;
+        let notes = document.getElementById('postWorkoutNotes').value;
+
+        let workoutData = {
+            exercise_name: exercise.exercise_name,
+            sets: exercise.sets,
+            reps: exercise.reps,
+            weight: exercise.weight,
+            notes: notes,
+            status: workoutStatus,
+            date: selectedWorkoutDate
+        };
+
+        if (workoutStatus === 'skipped') {
+            const skipReasonElement = document.getElementById('postSkipReason');
+            const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
+
+            if (!skipReason || skipReason === '') {
+                alert('Please select a reason for skipping this exercise');
+                return;
+            }
+            workoutData.skip_reason = skipReason;
+            workoutData.sets = 0;
+            workoutData.reps = '0';
+            workoutData.weight = '0lbs';
+        } else if (workoutStatus === 'substituted') {
+            const substitutedExerciseElement = document.getElementById('postSubstitutedExercise');
+            const substitutedWeightElement = document.getElementById('postSubstitutedWeight');
+            const substitutionReasonElement = document.getElementById('postSubstitutionReason');
+
+            const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
+            const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
+            const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
+
+            if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
+                alert('Please fill in what exercise you substituted, the weight used, and why');
+                return;
+            }
+
+            workoutData.exercise_name = substitutedExercise;
+            workoutData.weight = substitutedWeight;
+            workoutData.original_exercise = exercise.exercise_name;
+            workoutData.original_weight = exercise.weight;
+            workoutData.substitution_reason = substitutionReason;
+        }
+
+        // Determine if it's a complex exercise based on the original plan's reps format
+        const isComplex = exercise.is_complex || 
+                        (exercise.complex_structure && exercise.complex_structure !== '') ||
+                        exercise.exercise_name.toLowerCase().includes('finisher') ||
+                        exercise.exercise_name.toLowerCase().includes('rounds');
+
+        if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
+            let collectedReps = [];
+            let collectedWeight = [];
+
+            if (isComplex) {
+                const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
+                let allComplexFieldsFilled = true;
+                let complexPerformanceData = [];
+
+                movementItems.forEach((item, index) => {
+                    const repsInput = item.querySelector(`#postComplexMovement${index}Reps`);
+                    const weightInput = item.querySelector(`#postComplexMovement${index}Weight`);
+
+                    if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
+                        allComplexFieldsFilled = false;
+                        return;
+                    }
+
+                    const movementLabel = item.querySelector('strong').textContent.replace(':', '');
+                    const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
+
+                    complexPerformanceData.push({
+                        movement: movementName,
+                        reps: repsInput.value,
+                        weight: weightInput.value,
+                        label: movementLabel
+                    });
+
+                    collectedReps.push(`${movementLabel}: ${repsInput.value}`);
+                    collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
+                });
+
+                if (!allComplexFieldsFilled) {
+                    alert('Please fill in reps and weight for all movements of the complex exercise.');
+                    return;
+                }
+
+                workoutData.reps_performed = collectedReps.join(' | ');
+                workoutData.weight_performed = collectedWeight.join(' | ');
+                workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
+            } else {
+                const setsContainer = document.getElementById('regularSetsContainer');
+                const setInputs = setsContainer.querySelectorAll('input[type="number"]');
+                let allSetsHaveReps = true;
+
+                setInputs.forEach(input => {
+                    const reps = input.value;
+                    if (!reps || reps === '') {
+                        allSetsHaveReps = false;
+                    }
+                    collectedReps.push(reps);
+                });
+
+                if (!allSetsHaveReps) {
+                    alert('Please fill in reps for all sets');
+                    return;
+                }
+                workoutData.reps_performed = collectedReps.join('/');
+                workoutData.weight_performed = workoutData.weight; // Using planned weight
+            }
+        }
+
+        // Use the simple save_workout endpoint for post-workout logging
         const saveData = {
             exercise_name: workoutData.exercise_name,
-            sets: 0,
-            reps: '0',
-            weight: '0lbs',
-            notes: workoutData.notes + ` [SKIPPED: ${workoutData.skip_reason}]`,
+            sets: workoutData.sets,
+            reps: workoutData.reps_performed, // This will be the actual performed reps (joined string)
+            weight: workoutData.weight_performed, // This will be the actual performed weight (joined string or planned weight)
+            notes: workoutData.notes + (workoutData.status !== 'completed' ? ` [${workoutData.status}]` : ''),
             date: workoutData.date
         };
+
+        if (workoutStatus === 'skipped') {
+            saveData.notes += ` [SKIPPED: ${workoutData.skip_reason}]`;
+        }
 
         fetch('/save_workout', {
             method: 'POST',
@@ -1128,8 +1596,8 @@ function logCurrentExercise() {
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success') {
-                currentExerciseIndex++;
-                loadCurrentExercise();
+                postCurrentExerciseIndex++;
+                loadCurrentPostExercise();
             } else {
                 alert('Error logging exercise: ' + data.message);
             }
@@ -1138,491 +1606,191 @@ function logCurrentExercise() {
             console.error('Error:', error);
             alert('Error logging exercise');
         });
-    } else {
-        // For completed or substituted exercises, use the multi-workout endpoint
-        // This endpoint is designed to handle the more complex data structure
-        fetch('/log_multi_workout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                exercises: [workoutData], // Send as an array containing one exercise
-                date: workoutData.date
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                currentExerciseIndex++;
-                loadCurrentExercise();
-            } else {
-                alert('Error logging exercise: ' + data.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error logging exercise');
-        });
-    }
-}
-
-function previousExercise() {
-    if (currentExerciseIndex > 0) {
-        currentExerciseIndex--;
-        loadCurrentExercise();
-    }
-}
-
-function completeWorkout() {
-    if (clockInterval) {
-        clearInterval(clockInterval);
-        clockInterval = null;
     }
 
-    document.getElementById('workout-active').style.display = 'none';
-    document.getElementById('workout-complete').style.display = 'block';
-}
-
-function endWorkout() {
-    if (confirm('Are you sure you want to end your workout early?')) {
-        completeWorkout();
-    }
-}
-
-function startNewWorkout() {
-    currentExerciseIndex = 0;
-    workoutStartTime = null;
-
-    if (clockInterval) {
-        clearInterval(clockInterval);
-        clockInterval = null;
-    }
-
-    document.getElementById('workout-complete').style.display = 'none';
-    document.getElementById('workout-active').style.display = 'none';
-    document.getElementById('workout-not-started').style.display = 'block';
-
-    loadTodaysPlan();
-}
-
-// Post-workout functions
-function loadPostWorkoutPlan() {
-    const selectedDate = document.getElementById('postWorkoutDate').value;
-    if (!selectedDate) return;
-
-    selectedWorkoutDate = selectedDate;
-
-    fetch(`/get_plan/${selectedDate}`)
-        .then(response => response.json())
-        .then(data => {
-            postWorkoutPlan = data.exercises || [];
-            document.getElementById('postWorkoutCount').textContent = postWorkoutPlan.length;
-
-            const previewContainer = document.getElementById('postPlanPreview');
-            const beginBtn = document.getElementById('beginPostBtn');
-
-            if (postWorkoutPlan.length > 0) {
-                let previewHtml = '<div class="list-group list-group-flush">';
-                postWorkoutPlan.forEach((exercise, index) => {
-                    previewHtml += `
-                        <div class="list-group-item border-0 py-2">
-                            <strong>${exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1)}</strong>
-                            <span class="badge bg-light text-dark ms-2">${exercise.sets}x${exercise.reps} @ ${exercise.weight}</span>
-                        </div>
-                    `;
-                });
-                previewHtml += '</div>';
-                previewContainer.innerHTML = previewHtml;
-                beginBtn.disabled = false;
-            } else {
-                previewContainer.innerHTML = '<p class="text-muted">No exercises planned for this date.</p>';
-                beginBtn.disabled = true;
-            }
-        })
-        .catch(error => {
-            console.error('Error loading plan:', error);
-            document.getElementById('postPlanPreview').innerHTML = '<p class="text-danger">Error loading plan</p>';
-        });
-}
-
-function beginPostWorkout() {
-    if (postWorkoutPlan.length === 0) {
-        alert('No workout plan for selected date.');
-        return;
-    }
-
-    postCurrentExerciseIndex = 0;
-
-    document.getElementById('post-workout-not-started').style.display = 'none';
-    document.getElementById('post-workout-active').style.display = 'block';
-
-    loadCurrentPostExercise();
-}
-
-function loadCurrentPostExercise() {
-    if (postCurrentExerciseIndex >= postWorkoutPlan.length) {
-        completePostWorkout();
-        return;
-    }
-
-    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
-    const totalExercises = postWorkoutPlan.length;
-
-    document.getElementById('postCurrentExerciseNum').textContent = postCurrentExerciseIndex + 1;
-    document.getElementById('postTotalExercises').textContent = totalExercises;
-    document.getElementById('postSelectedDate').textContent = selectedWorkoutDate;
-
-    document.getElementById('postExerciseName').textContent = exercise.exercise_name.charAt(0).toUpperCase() + exercise.exercise_name.slice(1);
-
-    // Safely extract exercise properties
-    const targetReps = exercise.reps || exercise.target_reps || '8';
-    const targetSets = exercise.sets || exercise.target_sets || 3;
-    const targetWeight = exercise.weight || exercise.target_weight || 'bodyweight';
-
-    document.getElementById('postExerciseTarget').textContent = `${targetSets}x${targetReps} @ ${targetWeight}`;
-
-    // Determine if it's a complex exercise
-    const isComplex = exercise.is_complex || 
-                    (exercise.complex_structure && exercise.complex_structure !== '') ||
-                    exercise.exercise_name.toLowerCase().includes('finisher') ||
-                    exercise.exercise_name.toLowerCase().includes('rounds');
-
-    const setsSection = document.getElementById('setsSection'); // This is the parent div for set logging
-    const complexExerciseSection = document.getElementById('complexExerciseSection');
-    const regularSetsContainer = document.getElementById('regularSetsContainer');
-    const quickFillSection = document.getElementById('quickFillSection'); // This is for regular exercises
-
-    if (isComplex) {
-        complexExerciseSection.style.display = 'block';
-        regularSetsContainer.style.display = 'none';
-        quickFillSection.style.display = 'none'; // Quick fill is not applicable to complex exercises
-        loadComplexPostExerciseSets(exercise);
-    } else {
-        complexExerciseSection.style.display = 'none';
-        regularSetsContainer.style.display = 'block';
-        quickFillSection.style.display = 'block';
-        loadRegularPostExerciseSets(exercise);
-    }
-
-    // Reset form state
-    document.getElementById('postStatusCompleted').checked = true;
-    document.getElementById('postWorkoutNotes').value = '';
-    document.getElementById('postSkipReasonContainer').style.display = 'none';
-    document.getElementById('postSubstitutionContainer').style.display = 'none';
-    setsSection.style.display = 'block'; // Make sure the sets section is visible
-
-    const prevBtn = document.getElementById('postPrevBtn');
-    if (postCurrentExerciseIndex === 0) {
-        prevBtn.disabled = true;
-    } else {
-        prevBtn.disabled = false;
-    }
-}
-
-function loadRegularPostExerciseSets(exercise) {
-    const setsContainer = document.getElementById('regularSetsContainer');
-    setsContainer.innerHTML = '';
-
-    // Safely extract reps and sets values
-    const postTargetReps = exercise.reps || exercise.target_reps || '8';
-    const postTargetSets = exercise.sets || exercise.target_sets || 3;
-
-    for (let i = 1; i <= postTargetSets; i++) {
-        setsContainer.innerHTML += `
-            <div class="row mb-2 align-items-center">
-                <div class="col-3">
-                    <span class="fw-bold">Set ${i}:</span>
-                </div>
-                <div class="col-5">
-                    <input type="number" class="form-control" id="postSet${i}Reps" 
-                           placeholder="${postTargetReps}" min="0" max="50">
-                </div>
-                <div class="col-4">
-                    <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-outline-success btn-sm" onclick="postSetReps(${i}, '${postTargetReps}')" title="As planned">
-                            ${postTargetReps}
-                        </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="postSetReps(${i}, ${getNumericReps(postTargetReps) + 1})" title="+1">
-                            +1
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-}
-
-function loadComplexPostExerciseSets(exercise) {
-    const complexSetsContainer = document.getElementById('complexSetsContainer');
-    complexSetsContainer.innerHTML = '';
-
-    // Use the same parsing logic as live workout
-    let complexStructure = parseComplexExerciseStructure(exercise.reps, exercise.weight, exercise.notes);
-
-    if (complexStructure.length === 0) {
-        complexSetsContainer.innerHTML = '<div class="alert alert-warning">Complex exercise format not recognized. Please contact support.</div>';
-        return;
-    }
-
-    complexStructure.forEach((item, index) => {
-        complexSetsContainer.innerHTML += `
-            <div class="row mb-3 align-items-center border p-2 rounded complex-movement-item">
-                <div class="col-12 mb-2">
-                    <strong>${item.roundLabel}:</strong> ${item.movement}
-                </div>
-                <div class="col-6">
-                    <label for="postComplexMovement${index}Reps" class="form-label">Reps (planned: ${item.plannedReps})</label>
-                    <input type="number" class="form-control" id="postComplexMovement${index}Reps" 
-                           placeholder="${item.plannedReps}" min="0" max="50"
-                           value="${item.plannedReps}">
-                </div>
-                <div class="col-6">
-                    <label for="postComplexMovement${index}Weight" class="form-label">Weight (planned: ${item.plannedWeight})</label>
-                    <input type="text" class="form-control" id="postComplexMovement${index}Weight" 
-                           placeholder="${item.plannedWeight}" value="${item.plannedWeight}">
-                </div>
-            </div>
-        `;
-    });
-}
-
-
-function setupPostWorkoutStatusListeners() {
-    document.querySelectorAll('input[name="postWorkoutStatus"]').forEach(radio => {
-        radio.addEventListener('change', function() {
-            const skipContainer = document.getElementById('postSkipReasonContainer');
-            const substitutionContainer = document.getElementById('postSubstitutionContainer');
-            const setsSection = document.getElementById('postSetsSection');
-
-            if (this.value === 'skipped') {
-                skipContainer.style.display = 'block';
-                substitutionContainer.style.display = 'none';
-                setsSection.style.display = 'none';
-            } else if (this.value === 'substituted') {
-                skipContainer.style.display = 'none';
-                substitutionContainer.style.display = 'block';
-                setsSection.style.display = 'block';
-            } else {
-                skipContainer.style.display = 'none';
-                substitutionContainer.style.display = 'none';
-                setsSection.style.display = 'block';
-            }
-        });
-    });
-}
-
-function postSetReps(setNumber, reps) {
-    document.getElementById(`postSet${setNumber}Reps`).value = reps;
-}
-
-function postQuickFillAllSets(type) {
-    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
-    if (!exercise) return;
-
-    const postExerciseReps = exercise.reps || exercise.target_reps || '8';
-    const postExerciseSets = exercise.sets || exercise.target_sets || 3;
-    const plannedReps = getNumericReps(postExerciseReps);
-    let repsValue;
-
-    switch(type) {
-        case 'planned':
-            repsValue = plannedReps;
-            break;
-        case 'plus1':
-            repsValue = plannedReps + 1;
-            break;
-        case 'minus1':
-            repsValue = Math.max(1, plannedReps - 1);
-            break;
-    }
-
-    for (let i = 1; i <= postExerciseSets; i++) {
-        const input = document.getElementById(`postSet${i}Reps`);
-        if (input) {
-            input.value = repsValue;
-        }
-    }
-}
-
-function logCurrentPostExercise() {
-    const exercise = postWorkoutPlan[postCurrentExerciseIndex];
-    const workoutStatus = document.querySelector('input[name="postWorkoutStatus"]:checked').value;
-    let notes = document.getElementById('postWorkoutNotes').value;
-
-    let workoutData = {
-        exercise_name: exercise.exercise_name,
-        sets: exercise.sets,
-        reps: exercise.reps,
-        weight: exercise.weight,
-        notes: notes,
-        status: workoutStatus,
-        date: selectedWorkoutDate
-    };
-
-    if (workoutStatus === 'skipped') {
-        const skipReasonElement = document.getElementById('postSkipReason');
-        const skipReason = skipReasonElement ? skipReasonElement.value : 'no_reason_provided';
-
-        if (!skipReason || skipReason === '') {
-            alert('Please select a reason for skipping this exercise');
-            return;
-        }
-        workoutData.skip_reason = skipReason;
-        workoutData.sets = 0;
-        workoutData.reps = '0';
-        workoutData.weight = '0lbs';
-    } else if (workoutStatus === 'substituted') {
-        const substitutedExerciseElement = document.getElementById('postSubstitutedExercise');
-        const substitutedWeightElement = document.getElementById('postSubstitutedWeight');
-        const substitutionReasonElement = document.getElementById('postSubstitutionReason');
-
-        const substitutedExercise = substitutedExerciseElement ? substitutedExerciseElement.value : '';
-        const substitutedWeight = substitutedWeightElement ? substitutedWeightElement.value : '';
-        const substitutionReason = substitutionReasonElement ? substitutionReasonElement.value : '';
-
-        if (!substitutedExercise || !substitutedWeight || !substitutionReason) {
-            alert('Please fill in what exercise you substituted, the weight used, and why');
-            return;
-        }
-
-        workoutData.exercise_name = substitutedExercise;
-        workoutData.weight = substitutedWeight;
-        workoutData.original_exercise = exercise.exercise_name;
-        workoutData.original_weight = exercise.weight;
-        workoutData.substitution_reason = substitutionReason;
-    }
-
-    // Determine if it's a complex exercise based on the original plan's reps format
-    const isComplex = exercise.is_complex || 
-                    (exercise.complex_structure && exercise.complex_structure !== '') ||
-                    exercise.exercise_name.toLowerCase().includes('finisher') ||
-                    exercise.exercise_name.toLowerCase().includes('rounds');
-
-    if (workoutStatus === 'completed' || workoutStatus === 'substituted') {
-        let collectedReps = [];
-        let collectedWeight = [];
-
-        if (isComplex) {
-            const movementItems = document.querySelectorAll('#complexSetsContainer .complex-movement-item');
-            let allComplexFieldsFilled = true;
-            let complexPerformanceData = [];
-
-            movementItems.forEach((item, index) => {
-                const repsInput = item.querySelector(`#postComplexMovement${index}Reps`);
-                const weightInput = item.querySelector(`#postComplexMovement${index}Weight`);
-
-                if (!repsInput || !weightInput || repsInput.value === '' || weightInput.value === '') {
-                    allComplexFieldsFilled = false;
-                    return;
-                }
-
-                const movementLabel = item.querySelector('strong').textContent.replace(':', '');
-                const movementName = item.querySelector('strong').parentNode.textContent.split(': ')[1];
-
-                complexPerformanceData.push({
-                    movement: movementName,
-                    reps: repsInput.value,
-                    weight: weightInput.value,
-                    label: movementLabel
-                });
-
-                collectedReps.push(`${movementLabel}: ${repsInput.value}`);
-                collectedWeight.push(`${movementLabel}: ${weightInput.value}`);
-            });
-
-            if (!allComplexFieldsFilled) {
-                alert('Please fill in reps and weight for all movements of the complex exercise.');
-                return;
-            }
-
-            workoutData.reps_performed = collectedReps.join(' | ');
-            workoutData.weight_performed = collectedWeight.join(' | ');
-            workoutData.complex_performance_data = JSON.stringify(complexPerformanceData);
-        } else {
-            const setsContainer = document.getElementById('regularSetsContainer');
-            const setInputs = setsContainer.querySelectorAll('input[type="number"]');
-            let allSetsHaveReps = true;
-
-            setInputs.forEach(input => {
-                const reps = input.value;
-                if (!reps || reps === '') {
-                    allSetsHaveReps = false;
-                }
-                collectedReps.push(reps);
-            });
-
-            if (!allSetsHaveReps) {
-                alert('Please fill in reps for all sets');
-                return;
-            }
-            workoutData.reps_performed = collectedReps.join('/');
-            workoutData.weight_performed = workoutData.weight; // Using planned weight
-        }
-    }
-
-    // Use the simple save_workout endpoint for post-workout logging
-    const saveData = {
-        exercise_name: workoutData.exercise_name,
-        sets: workoutData.sets,
-        reps: workoutData.reps_performed, // This will be the actual performed reps (joined string)
-        weight: workoutData.weight_performed, // This will be the actual performed weight (joined string or planned weight)
-        notes: workoutData.notes + (workoutData.status !== 'completed' ? ` [${workoutData.status}]` : ''),
-        date: workoutData.date
-    };
-
-    if (workoutStatus === 'skipped') {
-        saveData.notes += ` [SKIPPED: ${workoutData.skip_reason}]`;
-    }
-
-    fetch('/save_workout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(saveData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            postCurrentExerciseIndex++;
+    function previousPostExercise() {
+        if (postCurrentExerciseIndex > 0) {
+            postCurrentExerciseIndex--;
             loadCurrentPostExercise();
-        } else {
-            alert('Error logging exercise: ' + data.message);
         }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error logging exercise');
-    });
-}
-
-function previousPostExercise() {
-    if (postCurrentExerciseIndex > 0) {
-        postCurrentExerciseIndex--;
-        loadCurrentPostExercise();
     }
-}
 
-function completePostWorkout() {
-    document.getElementById('post-workout-active').style.display = 'none';
-    document.getElementById('post-workout-complete').style.display = 'block';
-}
-
-function endPostWorkout() {
-    if (confirm('Are you sure you want to finish logging this workout?')) {
-        completePostWorkout();
+    function completePostWorkout() {
+        document.getElementById('post-workout-active').style.display = 'none';
+        document.getElementById('post-workout-complete').style.display = 'block';
     }
-}
 
-function startNewPostWorkout() {
-    postCurrentExerciseIndex = 0;
-    postWorkoutPlan = [];
-    selectedWorkoutDate = '';
+    function endPostWorkout() {
+        if (confirm('Are you sure you want to finish logging this workout?')) {
+            completePostWorkout();
+        }
+    }
 
-    document.getElementById('post-workout-complete').style.display = 'none';
-    document.getElementById('post-workout-active').style.display = 'none';
-    document.getElementById('post-workout-not-started').style.display = 'block';
+    function startNewPostWorkout() {
+        postCurrentExerciseIndex = 0;
+        postWorkoutPlan = [];
+        selectedWorkoutDate = '';
 
-    document.getElementById('postWorkoutDate').value = '';
-    document.getElementById('postPlanPreview').innerHTML = '<div class="text-center text-muted">Select a date to see planned exercises</div>';
-    document.getElementById('beginPostBtn').disabled = true;
-}
+        document.getElementById('post-workout-complete').style.display = 'none';
+        document.getElementById('post-workout-active').style.display = 'none';
+        document.getElementById('post-workout-not-started').style.display = 'block';
+
+        document.getElementById('postWorkoutDate').value = '';
+        document.getElementById('postPlanPreview').innerHTML = '<div class="text-center text-muted">Select a date to see planned exercises</div>';
+        document.getElementById('beginPostBtn').disabled = true;
+    }
 </script>
+<script>
+    // Circuit planned value autofill function
+    function fillPlanned(blockId, roundIndex) {
+        const inputs = document.querySelectorAll(`input[name^="circuit[${blockId}][${roundIndex}]"]`);
+
+        inputs.forEach(input => {
+            if (input.name.includes('[reps]') && input.dataset.plannedReps) {
+                input.value = input.dataset.plannedReps;
+            } else if (input.name.includes('[weight]') && input.dataset.plannedWeight) {
+                input.value = input.dataset.plannedWeight;
+            }
+        });
+    }
+
+    $(document).ready(function() {
+        // Save individual exercise
+        $('.save-exercise-btn').click(function() {
+            const card = $(this).closest('.exercise-entry-card');
+            const formData = {
+                exercise_name: card.find('input[name="exercise_name"]').val(),
+                sets: card.find('input[name="sets"]').val(),
+                reps: card.find('input[name="reps"]').val(),
+                weight: card.find('input[name="weight"]').val(),
+                notes: card.find('input[name="notes"]').val(),
+                date: '{{ today }}'
+            };
+
+            $.post('/save_workout', formData)
+                .done(function(response) {
+                    if (response.status === 'success') {
+                        showToast('✅ Logged: ' + formData.exercise_name, 'success');
+                        // Mark as completed
+                        card.addClass('completed');
+                        card.find('.save-exercise-btn').text('Logged ✓').prop('disabled', true);
+                    } else {
+                        showToast('❌ Error: ' + response.message, 'error');
+                    }
+                })
+                .fail(function() {
+                    showToast('❌ Failed to save workout', 'error');
+                });
+        });
+
+        // Save circuit
+        $('.save-circuit-btn').click(function() {
+            const card = $(this).closest('.circuit-block');
+            const formData = new FormData();
+
+            // Add all circuit inputs to form data
+            card.find('input').each(function() {
+                if (this.name && this.value) {
+                    formData.append(this.name, this.value);
+                }
+            });
+            formData.append('date', '{{ today }}');
+
+            $.ajax({
+                url: '/save_workout',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.status === 'success') {
+                        const circuitName = card.find('.exercise-name').text();
+                        showToast('✅ Saved: ' + circuitName + ' • All rounds completed', 'success');
+                        // Mark as completed
+                        card.addClass('completed');
+                        card.find('.save-circuit-btn').text('Logged ✓').prop('disabled', true);
+                    } else {
+                        showToast('❌ Error: ' + response.message, 'error');
+                    }
+                },
+                error: function() {
+                    showToast('❌ Failed to save circuit', 'error');
+                }
+            });
+        });
+
+        function showToast(message, type) {
+            const toast = $('<div class="toast-message ' + type + '">' + message + '</div>');
+            $('body').append(toast);
+            toast.fadeIn();
+
+            setTimeout(function() {
+                toast.fadeOut(function() {
+                    $(this).remove();
+                });
+            }, 3000);
+        }
+    });
+</script>
+<style>
+    .exercise-entry-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: #f9f9f9;
+    }
+
+    .circuit-block {
+        border: 2px solid #007bff;
+        background: #f8f9ff;
+    }
+
+    .exercise-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .exercise-name {
+        margin: 0;
+        color: #333;
+    }
+
+    .planned-values {
+        font-size: 0.9em;
+        color: #666;
+        font-weight: 500;
+    }
+
+    .round-section {
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 10px;
+        background: white;
+    }
+
+    .round-section h6 {
+        margin-bottom: 8px;
+        color: #007bff;
+    }
+
+    .toast-message {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        border-radius: 5px;
+        color: white;
+        font-weight: bold;
+        z-index: 1000;
+    }
+    .toast-message.success {
+        background-color: #28a745; /* Green */
+    }
+    .toast-message.error {
+        background-color: #dc3545; /* Red */
+    }
+</style>
 {% endblock %}

@@ -11,6 +11,9 @@ import uuid
 
 app = Flask(__name__)
 
+# Add enumerate filter for templates
+app.jinja_env.filters['enumerate'] = enumerate
+
 # Import V2 AI service for testing
 try:
     from ai_service_v2 import AIServiceV2
@@ -1931,8 +1934,9 @@ def get_plan(date):
         day_name = date_obj.strftime('%A').lower()
 
         cursor.execute('''
-            SELECT exercise_name, target_sets, target_reps, target_weight, exercise_order,
-                   COALESCE(notes, ""), COALESCE(progression_notes, "")
+            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                   COALESCE(notes, ""), COALESCE(progression_notes, ""),
+                   COALESCE(block_type, "single"), COALESCE(meta_json, "{}"), COALESCE(members_json, "[]")
             FROM weekly_plan
             WHERE day_of_week = ?
             ORDER BY exercise_order
@@ -1940,16 +1944,33 @@ def get_plan(date):
 
         exercises = []
         for row in cursor.fetchall():
-            exercise_name, sets, reps, weight, order, notes, progression_notes = row
-            exercises.append({
+            exercise_id, exercise_name, sets, reps, weight, order, notes, progression_notes, block_type, meta_json, members_json = row
+            
+            exercise_data = {
+                'id': exercise_id,
                 'exercise_name': exercise_name,
                 'sets': sets,
                 'reps': reps,
                 'weight': weight,
                 'order': order,
                 'notes': notes,
-                'progression_notes': progression_notes
-            })
+                'progression_notes': progression_notes,
+                'block_type': block_type
+            }
+
+            # Handle circuit blocks
+            if block_type == 'circuit':
+                try:
+                    import json
+                    exercise_data['label'] = exercise_name
+                    exercise_data['meta'] = json.loads(meta_json) if meta_json else {}
+                    exercise_data['members'] = json.loads(members_json) if members_json else []
+                except json.JSONDecodeError:
+                    # Fallback if JSON parsing fails
+                    exercise_data['meta'] = {'rounds': 2}
+                    exercise_data['members'] = []
+
+            exercises.append(exercise_data)
 
         conn.close()
         return jsonify({'exercises': exercises})
@@ -2769,6 +2790,154 @@ def edit_exercise():
         except sqlite3.OperationalError as e:
             print(f"Error checking column existence: {e}")
 
+
+def save_circuit_workout():
+    """Save circuit workout data with normalized structure"""
+    try:
+        date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # Parse circuit data from form
+        circuit_data = {}
+        for key, value in request.form.items():
+            if key.startswith('circuit[') and value.strip():
+                # Parse: circuit[block_id][round][member][field]
+                parts = key.replace('circuit[', '').replace(']', '').split('[')
+                if len(parts) == 4:
+                    block_id, round_idx, member_idx, field = parts
+                    
+                    if block_id not in circuit_data:
+                        circuit_data[block_id] = {}
+                    if round_idx not in circuit_data[block_id]:
+                        circuit_data[block_id][round_idx] = {}
+                    if member_idx not in circuit_data[block_id][round_idx]:
+                        circuit_data[block_id][round_idx][member_idx] = {}
+                    
+                    circuit_data[block_id][round_idx][member_idx][field] = value
+                    
+                    print(f"LOG_UI_PARSE circuit block={block_id} round={round_idx} member={member_idx} {field}={value}")
+
+        if not circuit_data:
+            return jsonify({'status': 'error', 'message': 'No circuit data found'})
+
+        # Initialize database tables if needed
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Create normalized tables if they don't exist
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workout_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                date TEXT NOT NULL,
+                user_id INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workout_blocks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                block_type TEXT NOT NULL,
+                label TEXT,
+                order_index INTEGER DEFAULT 1,
+                meta_json TEXT DEFAULT '{}',
+                FOREIGN KEY (session_id) REFERENCES workout_sessions (id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS workout_sets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                block_id INTEGER NOT NULL,
+                set_index INTEGER NOT NULL,
+                data_json TEXT NOT NULL,
+                status TEXT DEFAULT 'completed',
+                FOREIGN KEY (block_id) REFERENCES workout_blocks (id)
+            )
+        ''')
+
+        # Get or create workout session for this date
+        cursor.execute('SELECT id FROM workout_sessions WHERE date = ? AND user_id = 1', (date,))
+        session_result = cursor.fetchone()
+        
+        if session_result:
+            session_id = session_result[0]
+        else:
+            cursor.execute('INSERT INTO workout_sessions (date, user_id) VALUES (?, 1)', (date,))
+            session_id = cursor.lastrowid
+
+        sets_saved = 0
+        
+        # Process each circuit block
+        for block_id, rounds in circuit_data.items():
+            # Get circuit label from weekly_plan
+            cursor.execute('SELECT exercise_name FROM weekly_plan WHERE id = ?', (int(block_id),))
+            block_result = cursor.fetchone()
+            circuit_label = block_result[0] if block_result else 'Circuit'
+            
+            # Create workout_block
+            cursor.execute('''
+                INSERT INTO workout_blocks (session_id, block_type, label, order_index, meta_json)
+                VALUES (?, 'circuit', ?, 1, '{}')
+            ''', (session_id, circuit_label))
+            workout_block_id = cursor.lastrowid
+            
+            # Process each round and member
+            for round_idx, members in rounds.items():
+                for member_idx, member_data in members.items():
+                    exercise = member_data.get('exercise', '')
+                    reps = member_data.get('reps', '')
+                    weight = member_data.get('weight', '')
+                    notes = member_data.get('notes', '')
+                    tempo = member_data.get('tempo', '')
+                    
+                    # Create set data JSON
+                    set_data = {
+                        'exercise': exercise,
+                        'reps': int(reps) if reps.isdigit() else 0,
+                        'weight': weight,
+                        'tempo': tempo,
+                        'member_idx': int(member_idx),
+                        'set_idx': int(round_idx),
+                        'notes': notes,
+                        'status': 'completed'
+                    }
+                    
+                    # Insert workout_set
+                    cursor.execute('''
+                        INSERT INTO workout_sets (block_id, set_index, data_json, status)
+                        VALUES (?, ?, ?, 'completed')
+                    ''', (workout_block_id, int(round_idx), json.dumps(set_data)))
+                    
+                    set_id = cursor.lastrowid
+                    sets_saved += 1
+                    
+                    print(f"DB_WRITE circuit set_id={set_id} block={block_id} r={round_idx} m={member_idx}")
+
+        # Clear newly_added flag if this exercise was recently added to plan
+        try:
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET newly_added = FALSE
+                WHERE id = ? AND newly_added = TRUE
+            ''', (int(list(circuit_data.keys())[0]),))
+        except (ValueError, IndexError):
+            pass
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Circuit logged successfully - {sets_saved} sets saved',
+            'sets_saved': sets_saved
+        })
+
+    except Exception as e:
+        print(f"Error saving circuit workout: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
+
         if progression_notes_col_exists:
             cursor.execute('''
                 UPDATE weekly_plan
@@ -3353,9 +3522,21 @@ def delete_workout():
 
 @app.route('/save_workout', methods=['POST'])
 def save_workout():
-    """Save a single workout entry"""
+    """Save a single workout entry or circuit data"""
     try:
-        data = request.json
+        # Check if this is a circuit submission
+        circuit_keys = [key for key in request.form.keys() if key.startswith('circuit[')]
+        
+        if circuit_keys:
+            # Handle circuit data
+            return save_circuit_workout()
+        
+        # Handle regular workout data (JSON or form)
+        if request.is_json:
+            data = request.json
+        else:
+            data = request.form.to_dict()
+            
         exercise_name = data.get('exercise_name', '')
         sets = data.get('sets', 1)
         reps = data.get('reps', '')
