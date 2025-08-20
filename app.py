@@ -3961,6 +3961,60 @@ def update_philosophy():
         print(f"❌ Error updating philosophy: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/add_circuit_to_plan', methods=['POST'])
+def add_circuit_to_plan():
+    """Add a circuit block to the weekly plan"""
+    try:
+        data = request.json
+        day = data.get('day', '').lower()
+        label = data.get('label', 'Circuit')
+        rounds = data.get('rounds', 2)
+        rest_between_rounds_sec = data.get('rest_between_rounds_sec', 90)
+        members = data.get('members', [])
+
+        if not day or not members:
+            return jsonify({'success': False, 'error': 'Day and members are required'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get next order for the day
+        cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+        next_order = cursor.fetchone()[0]
+
+        # Create meta data for the circuit
+        meta_data = {
+            'rounds': rounds,
+            'rest_between_rounds_sec': rest_between_rounds_sec
+        }
+
+        # Insert circuit into weekly plan
+        cursor.execute('''
+            INSERT INTO weekly_plan
+            (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+             block_type, meta_json, members_json, created_by, newly_added, date_added)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (day, label, rounds, f'{len(members)} exercises', 'circuit', next_order,
+              'circuit', json.dumps(meta_data), json.dumps(members), 'circuit_test', True, datetime.now().strftime('%Y-%m-%d')))
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': f'Added {label} circuit to {day.title()}',
+            'circuit': {
+                'day': day,
+                'label': label,
+                'rounds': rounds,
+                'members': members,
+                'order': next_order
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/make_substitution_permanent', methods=['POST'])
 def make_substitution_permanent():
     """Make a workout substitution permanent in the weekly plan"""
