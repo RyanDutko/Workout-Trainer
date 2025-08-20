@@ -2497,7 +2497,64 @@ def add_progression_guidance():
 
 @app.route('/modify_plan', methods=['POST'])
 def modify_plan():
+    """Allow Grok to propose and execute plan modifications"""
+    try:
+        data = request.json
+        modification_type = data.get('type')  # 'update', 'add', 'remove'
+        day = data.get('day', '').lower()
+        exercise_name = data.get('exercise_name', '')
+        sets = data.get('sets')
+        reps = data.get('reps')
+        weight = data.get('weight')
+        reasoning = data.get('reasoning', '')
 
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        if modification_type == 'update':
+            # Update existing exercise
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (sets, reps, weight, reasoning, day, exercise_name))
+
+            message = f"Updated {exercise_name} on {day}: {sets}x{reps}@{weight}"
+
+        elif modification_type == 'add':
+            # Get next order for the day
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+            next_order = cursor.fetchone()[0]
+
+            cursor.execute('''
+                INSERT INTO weekly_plan
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
+
+            message = f"Added {exercise_name} to {day}: {sets}x{reps}@{weight}"
+
+        elif modification_type == 'remove':
+            cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
+            message = f"Removed {exercise_name} from {day}"
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'change_made': {
+                'type': modification_type,
+                'day': day,
+                'exercise': exercise_name,
+                'details': f"{sets}x{reps}@{weight}" if sets else None,
+                'reasoning': reasoning
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/log_from_template', methods=['POST'])
 def log_from_template():
@@ -2582,10 +2639,6 @@ def log_from_template():
     except Exception as e:
         print(f"Error logging from template: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
-
-    """Allow Grok to propose and execute plan modifications"""
-    try:
-        data = request.json
         modification_type = data.get('type')  # 'update', 'add', 'remove'
         day = data.get('day', '').lower()
         exercise_name = data.get('exercise_name', '')
