@@ -1,0 +1,148 @@
+Goal: Make complex/circuit blocks show their actual label (“Bicep Finisher Rounds”) and member details, while simple exercises still show their exercise name and set/reps/weight.
+
+Do the following edits exactly:
+
+1) app.py — rewrite /weekly_plan to return normalized items with block support
+
+Replace the current /weekly_plan route body with this:
+
+@app.route('/weekly_plan')
+def weekly_plan():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Pull a superset of columns and coalesce legacy names so this works on old DBs too
+    cursor.execute("""
+        SELECT
+            id,
+            day_of_week,
+            exercise_name,
+            COALESCE(target_sets, sets) AS sets,
+            COALESCE(target_reps, reps) AS reps,
+            COALESCE(target_weight, weight) AS weight,
+            COALESCE(exercise_order, order_index) AS ord,
+            COALESCE(notes, "") AS notes,
+            COALESCE(newly_added, 0) AS newly_added,
+            COALESCE(progression_notes, "") AS progression_notes,
+            COALESCE(block_type, 'single') AS block_type,
+            COALESCE(meta_json, '{}') AS meta_json,
+            COALESCE(members_json, '[]') AS members_json
+        FROM weekly_plan
+        ORDER BY day_of_week, ord
+    """)
+
+    import json
+    rows = cursor.fetchall()
+    conn.close()
+
+    plan_by_day = {}
+    for row in rows:
+        (row_id, day, exercise_name, sets, reps, weight, ord_idx, notes,
+         newly_added, progression_notes, block_type, meta_json, members_json) = row
+
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+
+        if block_type == 'circuit':
+            # Parse circuit metadata
+            try:
+                meta = json.loads(meta_json) if meta_json else {}
+            except Exception:
+                meta = {}
+            try:
+                members = json.loads(members_json) if members_json else []
+            except Exception:
+                members = []
+
+            # Optional: prebuild a "sets" list so UI can show round-by-round if desired
+            rounds = int(meta.get('rounds', 1)) if str(meta.get('rounds', 1)).isdigit() else 1
+            circuit_sets = []
+            for round_idx in range(rounds):
+                for member_idx, member in enumerate(members):
+                    circuit_sets.append({
+                        'exercise': member.get('exercise', ''),
+                        'block_type': 'circuit',
+                        'member_idx': member_idx,
+                        'set_idx': round_idx,
+                        'reps': member.get('reps'),
+                        'weight': member.get('weight'),
+                        'tempo': member.get('tempo'),
+                        'status': 'planned'
+                    })
+
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'circuit',
+                'label': exercise_name,         # block title (e.g., "Bicep Finisher Rounds")
+                'order_index': ord_idx,
+                'meta': meta,                   # includes rounds
+                'members': members,             # array of { exercise, reps, weight, tempo }
+                'sets': circuit_sets,           # round-expanded if you want to show it
+                'notes': notes or "",
+                'newly_added': bool(newly_added),
+                'progression_notes': progression_notes or ""
+            })
+        else:
+            # Simple exercise
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'single',
+                'exercise': exercise_name,      # name string for simple item
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': ord_idx,
+                'notes': notes or "",
+                'newly_added': bool(newly_added),
+                'progression_notes': progression_notes or ""
+            })
+
+    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
+
+
+Notes:
+• This mirrors the normalization you already use in the tool path (_get_weekly_plan) so the UI and tools agree. 
+
+• Your previous route always built simple items only, which is why names collapsed to “Block”. 
+
+2) templates/weekly_plan.html — show the correct title & details
+
+Find the card header where the title is rendered (it currently shows “Block” everywhere). Replace the title line with this conditional:
+
+<h3 class="card-title">
+  {% if exercise.block_type == 'circuit' %}
+    {{ exercise.label }}
+  {% else %}
+    {{ exercise.exercise }}
+  {% endif %}
+</h3>
+
+
+Immediately below the title, replace the subtitle/details with this:
+
+{% if exercise.block_type == 'circuit' %}
+  <div class="text-sm text-muted-foreground">
+    {{ exercise.meta.rounds or 1 }} rounds • Complex block
+  </div>
+  <div class="mt-1 text-sm">
+    {# compact one-line summary of members #}
+    {% if exercise.members and exercise.members|length > 0 %}
+      {% set parts = [] %}
+      {% for m in exercise.members %}
+        {% set p = (m.exercise or 'Exercise') ~
+                   ((' ' ~ m.reps ~ ' reps') if m.reps is defined and m.reps is not none else '') ~
+                   ((' @ ' ~ m.weight) if m.weight is defined and m.weight is not none else '') %}
+        {% do parts.append(p) %}
+      {% endfor %}
+      {{ parts|join(' • ') }}
+    {% endif %}
+  </div>
+{% else %}
+  <div class="text-sm text-muted-foreground">
+    {{ exercise.sets }} × {{ exercise.reps }}{% if exercise.weight %} @ {{ exercise.weight }}{% endif %}
+  </div>
+  <div class="text-xs">Single</div>
+{% endif %}
+
+
+Keep your edit/delete/move buttons as-is (they should still use exercise.id).
