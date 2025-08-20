@@ -381,7 +381,7 @@ def init_db():
 
         for day, exercise, sets, reps, weight, order in sample_plan:
             cursor.execute('''
-                INSERT INTO weekly_plan (day_of_week, exercise_name, sets, reps, weight, exercise_order)
+                INSERT INTO weekly_plan (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (day, exercise, sets, reps, weight, order))
 
@@ -2257,9 +2257,10 @@ Please be concise but capture the key insights from our discussion."""
                                 INSERT INTO exercise_metadata
                                 (user_id, exercise_name, exercise_type, primary_purpose,
                                  progression_logic, ai_notes, created_date)
-                                VALUES (1, ?, 'working_set', ?, ?, ?, ?)
+                                VALUES (1, ?, ?, ?, ?, ?, ?)
                             ''', (
                                 context_name,
+                                'working_set',
                                 purpose,
                                 progression_logic,
                                 notes,
@@ -4060,9 +4061,9 @@ def make_substitution_permanent():
 
 @app.route('/get_day_progression_status/<date>')
 def get_day_progression_status(date):
-    """Check if a day's progression analysis has been completed"""
+    """Get progression analysis status for a specific date"""
     try:
-        conn = get_db_connection()
+        conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
 
         # Count total workouts and completed progression analysis for the date
@@ -4104,6 +4105,88 @@ def get_day_progression_status(date):
 
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/logging_template')
+def logging_template():
+    """Generate dynamic workout logging template"""
+    try:
+        date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        # Get the day of week for the requested date
+        day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+
+        conn = sqlite3.connect('workout_logs.db')
+        cursor = conn.cursor()
+
+        # Get weekly plan for this day, including circuit blocks
+        cursor.execute('''
+            SELECT id, exercise_name, sets, reps, weight, exercise_order, notes,
+                   COALESCE(block_type, 'simple') as block_type,
+                   COALESCE(meta_json, '{}') as meta_json,
+                   COALESCE(members_json, '[]') as members_json,
+                   COALESCE(label, exercise_name) as label
+            FROM weekly_plan 
+            WHERE day_of_week = ? 
+            ORDER BY exercise_order
+        ''', (day_name,))
+
+        plan_exercises = cursor.fetchall()
+        conn.close()
+
+        template = {
+            "date": date,
+            "day": day_name,
+            "blocks": []
+        }
+
+        for exercise in plan_exercises:
+            exercise_id, exercise_name, sets, reps, weight, order, notes, block_type, meta_json, members_json, label = exercise
+
+            try:
+                meta = json.loads(meta_json) if meta_json else {}
+                members = json.loads(members_json) if members_json else []
+            except:
+                meta = {}
+                members = []
+
+            if block_type in ['circuit', 'rounds']:
+                # Circuit/rounds block
+                rounds = meta.get('rounds', sets or 1)
+
+                block = {
+                    "block_id": exercise_id,
+                    "type": "circuit",
+                    "title": label,
+                    "rounds": rounds,
+                    "members": []
+                }
+
+                for member in members:
+                    block["members"].append({
+                        "name": member.get('exercise', member.get('name', 'Exercise')),
+                        "planned_reps": member.get('reps', ''),
+                        "planned_weight": member.get('weight', ''),
+                        "tempo": member.get('tempo', '')
+                    })
+
+                template["blocks"].append(block)
+            else:
+                # Simple exercise
+                template["blocks"].append({
+                    "block_id": exercise_id,
+                    "type": "simple",
+                    "title": exercise_name,
+                    "planned_sets": sets,
+                    "planned_reps": reps,
+                    "planned_weight": weight,
+                    "notes": notes
+                })
+
+        return jsonify(template)
+
+    except Exception as e:
+        print(f"Error generating logging template: {e}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     init_db()
