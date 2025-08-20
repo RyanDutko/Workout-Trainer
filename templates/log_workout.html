@@ -102,41 +102,53 @@ function renderDynamicLoggingUI(template) {
 }
 
 function renderSimpleBlock(block, blockIdx) {
-    const member = block.members[0];
-    return `
+    let html = `
         <div class="card mb-4" data-block-idx="${blockIdx}" data-block-type="simple">
             <div class="card-header">
                 <h6 class="mb-0">${block.title}</h6>
+                <small class="text-muted">Planned: ${block.planned_sets} sets × ${block.planned_reps} reps @ ${block.planned_weight}</small>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <label class="form-label">Reps</label>
-                        <input type="number" class="form-control" 
-                               placeholder="${member.planned_reps}" 
-                               data-input-id="${member.input_id}"
-                               data-field="actual_reps">
-                        <small class="text-muted">Planned: ${member.planned_reps}</small>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Weight</label>
-                        <input type="text" class="form-control" 
-                               placeholder="${member.planned_weight.value}${member.planned_weight.unit}" 
-                               data-input-id="${member.input_id}"
-                               data-field="actual_weight">
-                        <small class="text-muted">Planned: ${member.planned_weight.value}${member.planned_weight.unit}</small>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Notes</label>
-                        <input type="text" class="form-control" 
-                               placeholder="Optional notes"
-                               data-input-id="${member.input_id}"
-                               data-field="notes">
-                    </div>
+    `;
+
+    // Create input fields for each set
+    block.sets.forEach((set, setIdx) => {
+        html += `
+            <div class="row mb-3 border-bottom pb-2">
+                <div class="col-md-1 d-flex align-items-center">
+                    <strong>Set ${set.set_number}</strong>
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label">Reps</label>
+                    <input type="number" class="form-control" 
+                           placeholder="${set.planned_reps}" 
+                           data-input-id="${set.input_id}"
+                           data-field="actual_reps">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Weight</label>
+                    <input type="text" class="form-control" 
+                           placeholder="${set.planned_weight.value}${set.planned_weight.unit}" 
+                           data-input-id="${set.input_id}"
+                           data-field="actual_weight">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Notes</label>
+                    <input type="text" class="form-control" 
+                           placeholder="Optional notes for this set"
+                           data-input-id="${set.input_id}"
+                           data-field="notes">
+                </div>
+            </div>
+        `;
+    });
+
+    html += `
             </div>
         </div>
     `;
+
+    return html;
 }
 
 function renderRoundsBlock(block, blockIdx) {
@@ -268,19 +280,24 @@ function submitFromTemplate() {
         const blockElement = document.querySelector(`[data-block-idx="${blockIdx}"]`);
 
         if (templateBlock.type === 'simple') {
-            const member = templateBlock.members[0];
-            const inputs = blockElement.querySelectorAll(`[data-input-id="${member.input_id}"]`);
+            const processedSets = [];
 
-            const processedMember = {
-                ...member,
-                actual_reps: inputs[0].value || member.planned_reps,
-                actual_weight: inputs[1].value || member.planned_weight.value,
-                notes: inputs[2].value || ''
-            };
+            templateBlock.sets.forEach(set => {
+                const repsInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="actual_reps"]`);
+                const weightInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="actual_weight"]`);
+                const notesInput = blockElement.querySelector(`[data-input-id="${set.input_id}"][data-field="notes"]`);
+
+                processedSets.push({
+                    set_number: set.set_number,
+                    actual_reps: repsInput ? (repsInput.value || set.planned_reps) : set.planned_reps,
+                    actual_weight: weightInput ? (weightInput.value || set.planned_weight.value) : set.planned_weight.value,
+                    notes: notesInput ? notesInput.value : ''
+                });
+            });
 
             processedBlocks.push({
                 ...templateBlock,
-                members: [processedMember]
+                sets: processedSets
             });
         } else if (templateBlock.type === 'rounds') {
             const processedRounds = [];

@@ -2576,20 +2576,45 @@ def log_from_template():
             block_type = block.get('type', 'simple')
             
             if block_type == 'simple':
-                # Simple exercise logging
+                # Simple exercise logging with sets
                 exercise_name = block.get('title', '')
-                actual_sets = block.get('actual_sets', block.get('planned_sets', 1))
-                actual_reps = block.get('actual_reps', block.get('planned_reps', ''))
-                actual_weight = block.get('actual_weight', block.get('planned_weight', ''))
-                notes = block.get('notes', '')
-
-                if exercise_name:
+                sets_data = block.get('sets', [])
+                
+                if exercise_name and sets_data:
+                    # Log each set as a separate entry, or combine into summary
+                    completed_sets = len([s for s in sets_data if s.get('actual_reps')])
+                    
+                    # Create consolidated reps and weights strings
+                    reps_list = []
+                    weights_list = []
+                    all_notes = []
+                    
+                    for set_data in sets_data:
+                        actual_reps = set_data.get('actual_reps', set_data.get('planned_reps', ''))
+                        actual_weight = set_data.get('actual_weight', set_data.get('planned_weight', {}).get('value', ''))
+                        set_notes = set_data.get('notes', '').strip()
+                        
+                        if actual_reps:
+                            reps_list.append(str(actual_reps))
+                        if actual_weight:
+                            weights_list.append(str(actual_weight))
+                        if set_notes:
+                            all_notes.append(f"Set {set_data.get('set_number', len(all_notes) + 1)}: {set_notes}")
+                    
+                    # Format reps and weight strings
+                    reps_str = '/'.join(reps_list) if reps_list else str(sets_data[0].get('planned_reps', ''))
+                    weight_str = weights_list[0] if weights_list else str(sets_data[0].get('planned_weight', {}).get('value', ''))
+                    if weight_str and not weight_str.endswith('lbs'):
+                        weight_str += 'lbs'
+                    
+                    combined_notes = ' | '.join(all_notes) if all_notes else ''
+                    
                     cursor.execute('''
                         INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
                         VALUES (?, ?, ?, ?, ?, ?, FALSE)
-                    ''', (exercise_name, actual_sets, actual_reps, actual_weight, notes, date))
+                    ''', (exercise_name, completed_sets or len(sets_data), reps_str, weight_str, combined_notes, date))
 
-                    logged_exercises.append(f"{exercise_name}: {actual_sets}x{actual_reps}@{actual_weight}")
+                    logged_exercises.append(f"{exercise_name}: {completed_sets or len(sets_data)}x{reps_str}@{weight_str}")
 
             elif block_type == 'circuit':
                 # Circuit logging
@@ -4324,7 +4349,7 @@ def logging_template():
 
                 template["blocks"].append(block)
             else:
-                # Simple exercise - format it to match the expected structure
+                # Simple exercise - create proper sets structure
                 weight_str = str(target_weight or '')
                 weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
                 
@@ -4332,12 +4357,18 @@ def logging_template():
                     "block_id": exercise_id,
                     "type": "simple",
                     "title": exercise_name,
-                    "members": [{
-                        "name": exercise_name,
-                        "input_id": f"{exercise_id}.1",
-                        "planned_reps": target_reps,
-                        "planned_weight": {"unit": "lb", "value": weight_value}
-                    }]
+                    "planned_sets": target_sets,
+                    "planned_reps": target_reps,
+                    "planned_weight": target_weight,
+                    "sets": [
+                        {
+                            "set_number": i + 1,
+                            "input_id": f"{exercise_id}.set.{i + 1}",
+                            "planned_reps": target_reps,
+                            "planned_weight": {"unit": "lb", "value": weight_value}
+                        }
+                        for i in range(target_sets or 3)
+                    ]
                 })
 
         print(f"Generated template for {day_name} with {len(template['blocks'])} blocks")
