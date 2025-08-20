@@ -14,6 +14,15 @@ app = Flask(__name__)
 # Add enumerate filter for templates
 app.jinja_env.filters['enumerate'] = enumerate
 
+# Database initialization
+def get_db_connection():
+    """Get a database connection with proper timeout and thread safety"""
+    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
+    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
+    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
+    return conn
+
 def ensure_logging_tables():
     conn = get_db_connection()
     c = conn.cursor()
@@ -52,15 +61,6 @@ except ImportError:
 # Feature flag for legacy intent detection
 ENABLE_LEGACY_INTENT = False # Set to True to re-enable legacy intent analysis
 
-# Database initialization
-def get_db_connection():
-    """Get a database connection with proper timeout and thread safety"""
-    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
-    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
-    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
-    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
-    return conn
-
 def get_user_ai_preferences():
     """Get user's AI preferences for personalized responses"""
     try:
@@ -93,10 +93,10 @@ def get_user_ai_preferences():
 
 def init_db():
     conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
 
     # Add circuit support columns to weekly_plan if they don't exist
     try:
-        cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(weekly_plan)")
         columns = [col[1] for col in cursor.fetchall()]
 
@@ -242,7 +242,7 @@ def init_db():
         conversation_thread_id TEXT,
         parent_conversation_id INTEGER,
         FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (parent_conversation_id) REFERENCES conversations (id)
+        FOREIGN_KEY (parent_conversation_id) REFERENCES conversations (id)
     )
     ''')
 
@@ -1868,52 +1868,52 @@ def logging_template():
     """Generate workout logging template for a specific date"""
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
+
         # Get the day name from the date
         date_obj = datetime.strptime(date_str, '%Y-%m-%d')
         day_name = date_obj.strftime('%A').lower()
-        
+
         # Import the models to use the template generator
         from models import Database, WorkoutTemplateGenerator
-        
+
         db = Database()
         template_gen = WorkoutTemplateGenerator(db)
-        
+
         # Get the weekly plan for this day
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute('''
             SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order,
                    COALESCE(block_type, 'single') as block_type,
                    COALESCE(meta_json, '{}') as meta_json,
                    COALESCE(members_json, '[]') as members_json
-            FROM weekly_plan 
+            FROM weekly_plan
             WHERE day_of_week = ?
             ORDER BY exercise_order
         ''', (day_name,))
-        
+
         plan_data = cursor.fetchall()
         conn.close()
-        
+
         if not plan_data:
             # No plan for this day - return empty template
             return jsonify({
                 'date': date_str,
                 'blocks': []
             })
-        
+
         # Convert plan data to the format expected by the template generator
         plan_json = []
         for row in plan_data:
             row_id, exercise_name, sets, reps, weight, order, block_type, meta_json, members_json = row
-            
+
             if block_type == 'circuit':
                 import json
                 try:
                     meta = json.loads(meta_json) if meta_json else {}
                     members = json.loads(members_json) if members_json else []
-                    
+
                     plan_json.append({
                         'id': f"block_{row_id}",
                         'block_type': 'circuit',
@@ -1946,12 +1946,12 @@ def logging_template():
                         "planned_weight": weight
                     }]
                 })
-        
+
         # Generate the template
         template = template_gen.generate_logging_template(plan_json, date_str)
-        
+
         return jsonify(template)
-        
+
     except Exception as e:
         print(f"Error generating logging template: {e}")
         return jsonify({
@@ -2631,7 +2631,7 @@ def execute_auto_actions():
                         action_data['sets'],
                         action_data['reps'],
                         action_data['weight'],
-                        'Auto-logged from conversation',
+                        action_data['notes'],
                         datetime.now().strftime('%Y-%m-%d'),
                         action_data.get('substitution_reason', '')
                     ))
@@ -2690,7 +2690,7 @@ def add_progression_guidance():
         if not exercise_name or not guidance_note:
             return jsonify({'success': False, 'error': 'Exercise name and guidance note required'})
 
-        conn = sqlite3.connect('workout_logs.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         # Update progression_notes for the exercise
@@ -2752,9 +2752,9 @@ def modify_plan():
 
             cursor.execute('''
                 INSERT INTO weekly_plan
-                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
-            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning))
 
             message = f"Added {exercise_name} to {day}: {sets}x{reps}@{weight}"
 
@@ -3537,18 +3537,18 @@ def log_from_template():
         data = request.json
         date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
         blocks = data.get('blocks', [])
-        
+
         if not blocks:
             return jsonify({'success': False, 'error': 'No workout data provided'})
-        
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         logged_exercises = []
-        
+
         for block in blocks:
             block_type = block.get('type', 'simple')
-            
+
             if block_type == 'simple':
                 # Handle simple exercise
                 member = block['members'][0]
@@ -3556,58 +3556,58 @@ def log_from_template():
                 actual_reps = member.get('actual_reps', member.get('planned_reps', ''))
                 actual_weight = member.get('actual_weight', member.get('planned_weight', {}).get('value', ''))
                 notes = member.get('notes', '')
-                
+
                 # Determine sets (assume 1 set for simple logging)
                 sets = 1
-                
+
                 cursor.execute('''
                     INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
                     VALUES (?, ?, ?, ?, ?, ?, FALSE)
                 ''', (exercise_name, sets, actual_reps, actual_weight, notes, date_str))
-                
+
                 logged_exercises.append(f"{exercise_name}: {sets}x{actual_reps}@{actual_weight}")
-                
+
             elif block_type == 'rounds':
                 # Handle rounds/circuit exercise
                 block_title = block.get('title', 'Circuit')
                 rounds = block.get('rounds', [])
-                
+
                 for round_idx, round_data in enumerate(rounds, 1):
                     for member in round_data.get('members', []):
                         exercise_name = member['name']
                         actual_reps = member.get('actual_reps', member.get('planned_reps', ''))
                         actual_weight = member.get('actual_weight', member.get('planned_weight', {}).get('value', ''))
-                        
+
                         # Create descriptive exercise name for circuit
                         circuit_exercise_name = f"{block_title} - {exercise_name} (Round {round_idx})"
                         sets = 1
-                        
+
                         cursor.execute('''
                             INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, complex_exercise_data)
                             VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
-                        ''', (circuit_exercise_name, sets, actual_reps, actual_weight, 
+                        ''', (circuit_exercise_name, sets, actual_reps, actual_weight,
                              f"Part of {block_title} circuit", date_str, f"Round {round_idx} of {len(rounds)}"))
-                        
+
                         logged_exercises.append(f"{circuit_exercise_name}: {actual_reps}@{actual_weight}")
-        
+
         # Clear newly_added flags for logged exercises
         for block in blocks:
             if block.get('type') == 'simple':
                 exercise_name = block['members'][0]['name']
                 cursor.execute('''
-                    UPDATE weekly_plan SET newly_added = FALSE 
+                    UPDATE weekly_plan SET newly_added = FALSE
                     WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
                 ''', (exercise_name,))
-        
+
         conn.commit()
         conn.close()
-        
+
         return jsonify({
             'success': True,
             'message': f'Logged {len(logged_exercises)} exercises successfully',
             'exercises_logged': logged_exercises
         })
-        
+
     except Exception as e:
         print(f"Error logging from template: {e}")
         return jsonify({'success': False, 'error': str(e)})
