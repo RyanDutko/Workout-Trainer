@@ -90,14 +90,27 @@ function loadWorkoutTemplate() {
     const workoutDateInput = document.getElementById('workoutDate');
     const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
 
+    console.log('Loading workout template for date:', selectedDate);
+
     fetch(`/logging_template?date=${selectedDate}`)
         .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', response.headers.get('content-type'));
+            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
+            
+            // Check if response is actually JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error(`Expected JSON response, got ${contentType}`);
+            }
+            
             return response.json();
         })
         .then(data => {
+            console.log('Template data received:', data);
             workoutTemplate = data;
             currentExerciseIndex = 0;
             completedExercises = [];
@@ -106,7 +119,20 @@ function loadWorkoutTemplate() {
         })
         .catch(error => {
             console.error('Error loading template:', error);
-            renderFallbackUI();
+            const container = document.getElementById('dynamicLoggingContainer');
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <h6>Template Loading Failed</h6>
+                    <p>Unable to load workout template: ${error.message}</p>
+                    <p>Date: ${selectedDate}</p>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="loadWorkoutTemplate()">
+                        <i class="fas fa-refresh"></i> Retry
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="renderFallbackUI()">
+                        <i class="fas fa-edit"></i> Manual Entry
+                    </button>
+                </div>
+            `;
         });
 }
 

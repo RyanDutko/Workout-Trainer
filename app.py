@@ -4275,12 +4275,15 @@ def logging_template():
     """Generate dynamic workout logging template"""
     try:
         date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        print(f"LOGGING_TEMPLATE: Request for date {date}")
 
         # Get the day of week for the requested date
         try:
             day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-        except ValueError:
-            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD", "date": date, "blocks": []}), 400
+            print(f"LOGGING_TEMPLATE: Day name is {day_name}")
+        except ValueError as e:
+            print(f"LOGGING_TEMPLATE: Date parse error: {e}")
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD", "date": date, "blocks": []})
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -4298,8 +4301,9 @@ def logging_template():
             ''', (day_name.lower(),))
 
             plan_exercises = cursor.fetchall()
+            print(f"LOGGING_TEMPLATE: Found {len(plan_exercises)} exercises for {day_name}")
         except Exception as db_error:
-            print(f"Database error in logging_template: {db_error}")
+            print(f"LOGGING_TEMPLATE: Database error: {db_error}")
             conn.close()
             return jsonify({"error": "Database error", "date": date, "blocks": []})
 
@@ -4313,16 +4317,18 @@ def logging_template():
 
         # If no exercises found, return empty template (not an error)
         if not plan_exercises:
-            print(f"No exercises found for {day_name} ({date})")
+            print(f"LOGGING_TEMPLATE: No exercises found for {day_name} ({date})")
             return jsonify(template)
 
         for exercise in plan_exercises:
             exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
+            print(f"LOGGING_TEMPLATE: Processing {exercise_name} (type: {block_type})")
 
             try:
                 meta = json.loads(meta_json) if meta_json else {}
                 members = json.loads(members_json) if members_json else []
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"LOGGING_TEMPLATE: JSON decode error for {exercise_name}: {e}")
                 meta = {}
                 members = []
 
@@ -4382,11 +4388,13 @@ def logging_template():
                     ]
                 })
 
-        print(f"Generated template for {day_name} with {len(template['blocks'])} blocks")
+        print(f"LOGGING_TEMPLATE: Generated template for {day_name} with {len(template['blocks'])} blocks")
         return jsonify(template)
 
     except Exception as e:
-        print(f"Error generating logging template: {e}")
+        print(f"LOGGING_TEMPLATE: Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         # Always return valid JSON, even on error
         return jsonify({
             "error": str(e), 
