@@ -1,0 +1,202 @@
+Goal: Make the logging UI fully dynamic for complex workouts (rounds/circuits), without breaking simple exercises. Keep single-user. V2 stays on; legacy intent stays disabled.
+Design:
+
+Plans: canonical JSON (“plan blocks”).
+
+Logs: normalized tables (sessions, blocks, sets).
+
+Bridge: WorkoutTemplateGenerator.generate_logging_template(plan_json, date, user_id=1) returns a template JSON the UI renders (simple or complex).
+
+On submit, convert user inputs → normalized sessions/blocks/sets.
+
+1) Add/confirm a canonical plan JSON shape
+
+In ai_service_v2.py, ensure propose_plan_update writes each workout day as array of blocks. Each block has:
+
+{
+  "block_id": "uuid-or-stable-id",
+  "type": "simple" | "rounds" | "circuit",
+  "title": "Bicep Finisher",
+  "rounds": 2,                   // for "rounds" only
+  "members": [                   // movements in this block
+    {
+      "name": "Slow Curl",
+      "planned_reps": 10,
+      "planned_weight": {"unit": "lb", "value": 20}
+    },
+    {
+      "name": "Fast Curl",
+      "planned_reps": 15,
+      "planned_weight": {"unit": "lb", "value": 15}
+    },
+    {
+      "name": "Hammer Curl",
+      "planned_reps": 10,
+      "planned_weight": {"unit": "lb", "value": 15}
+    }
+  ]
+}
+
+
+Keep existing fields you already use; just guarantee the type, members, and rounds shape for complex blocks.
+
+2) Expose a template endpoint
+
+In app.py, add GET /logging_template?date=YYYY-MM-DD&day=2 that:
+
+Loads the plan JSON for that day/date.
+
+Calls WorkoutTemplateGenerator.generate_logging_template(plan_json, date, user_id=1).
+
+Returns a structured template JSON like:
+
+{
+  "date": "2025-08-21",
+  "blocks": [
+    {
+      "block_id": "BICEP_FIN",
+      "type": "rounds",
+      "title": "Bicep Finisher",
+      "rounds": [
+        {
+          "round_index": 1,
+          "members": [
+            {"name":"Slow Curl","input_id":"BICEP_FIN.1.Slow Curl","planned_reps":10,"planned_weight":{"unit":"lb","value":20}},
+            {"name":"Fast Curl","input_id":"BICEP_FIN.1.Fast Curl","planned_reps":15,"planned_weight":{"unit":"lb","value":15}},
+            {"name":"Hammer Curl","input_id":"BICEP_FIN.1.Hammer Curl","planned_reps":10,"planned_weight":{"unit":"lb","value":15}}
+          ]
+        },
+        { "round_index": 2, "members": [ /* same structure */ ] }
+      ]
+    },
+    {
+      "block_id":"LEG_PRESS",
+      "type":"simple",
+      "title":"Leg Press",
+      "members":[
+        {"name":"Leg Press","input_id":"LEG_PRESS.1","planned_reps":12,"planned_weight":{"unit":"lb","value":170}}
+      ]
+    }
+  ]
+}
+
+
+If a day has only simple movements: return a single members array with one row per exercise (no rounds array).
+
+3) Render the logging UI from the template
+
+Update the “Log a workout” view to fetch /logging_template and render dynamically:
+
+If type = "simple" → one row per member, fields: actual_reps, actual_weight.
+
+If type = "rounds" → nested UI: for each round → rows for each member. Fields: actual_reps, actual_weight. Show planned values as placeholders/labels.
+
+If type = "circuit" → same as rounds but rounds may be optional; show set index instead.
+
+Use each member.input_id as the form field key so we can map inputs cleanly on submit.
+
+4) Submit path → normalized inserts
+
+Add POST /log_from_template that accepts { date, blocks: [...] } mirroring the template but with user’s actual_reps/actual_weight filled in.
+
+Create or fetch a session for that date.
+
+For each block:
+
+Insert into blocks (session_id, type, title, order_index).
+
+For simple: each member becomes a set row with exercise_name, planned_reps/weight, actual_reps/weight.
+
+For rounds: each round.members[*] becomes a set with round_index.
+
+For circuit: treat like rounds with round_index, or set_index if no rounds.
+
+Keep existing simple logging code as a fallback if no template is available.
+
+5) Keep memory flowing
+
+After each /chat_stream completion, call ConversationStore.append_turn(1, 'assistant', full_text) and when the user sends the next message, append their turn before planning.
+
+6) Acceptance tests
+
+Create a bicep finisher (2 rounds, 3 members) via AI → go to “Log a workout” → verify:
+
+UI shows two rounds and three rows per round with planned reps/weights shown.
+
+Submitting creates rows in sessions/blocks/sets with correct round_index and exercise_name.
+
+For a simple movement (e.g., Leg Press), UI shows a single row with planned values, and logs one set cleanly.
+
+Query:
+
+SELECT s.id, s.date, b.title, b.type, st.exercise_name, st.round_index, st.planned_reps, st.actual_reps
+FROM sessions s
+JOIN blocks b ON b.session_id = s.id
+JOIN sets st ON st.block_id = b.id
+ORDER BY s.date DESC, b.order_index, st.round_index, st.id;
+
+
+Confirm round indices and counts match the UI.
+
+Touch the smallest surface area possible:
+
+ai_service_v2.py (ensure plan JSON has type, members, rounds when applicable)
+
+app.py (add /logging_template, /log_from_template, render UI from template)
+
+Reuse WorkoutTemplateGenerator as the single place that emits the template JSON.
+
+🔧 “Rounds” add-on (paste to Replit)
+
+Goal: Ensure complex blocks include rounds and planned sets for each round, so the logging template can render two rounds immediately.
+
+Update the tool schema & instructions in ai_service_v2.py:
+
+In the tool spec for propose_plan_update, add an optional rounds int when block_type is "circuit" or "rounds"; tell the model:
+
+“If the user says ‘2 rounds’, include rounds: 2 in block.”
+
+Example snippet for the tool arg shape (do not remove existing fields; just extend):
+
+"block": {
+  "block_type": "single | circuit | rounds",
+  "label": "string",
+  "order_index": 1,
+  "rounds": 2,                // optional, default 1 (use when circuit/rounds)
+  "members": [
+    { "exercise":"...", "reps":10, "weight":"20 lbs", "tempo":"slow" }
+  ]
+}
+
+
+Normalize with rounds in the handler for propose_plan_update:
+
+When block_type is "circuit" or "rounds", do:
+
+rounds = int(block.get("rounds") or 1)
+normalized_block = {
+    "block_type": block_type,
+    "label": label,
+    "order_index": order_index,
+    "meta_json": block.get("meta", {}) or {},
+    "rounds": rounds,
+    "members": members,     # keep your current shape
+    "sets": []              # expand planned sets below
+}
+for r in range(rounds):         # r = 0..rounds-1
+    for mi, m in enumerate(members):
+        normalized_block["sets"].append({
+            **m,
+            "block_type": block_type,
+            "member_idx": mi,
+            "set_idx": r,       # treat as round index
+            "round_index": r+1, # 1-based for the UI/template
+            "status": "planned"
+        })
+
+
+Keep your existing logging like PROPOSE ... rounds=... so we can see it in the console.
+
+(Optional but helpful) In the planner prompt text for V2, add one sentence:
+
+“When the user mentions ‘rounds’ (e.g., 2 rounds), include an integer rounds in the block for propose_plan_update.”
