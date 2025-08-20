@@ -4273,62 +4273,34 @@ def get_day_progression_status(date):
 @app.route('/logging_template')
 def logging_template():
     """Generate dynamic workout logging template"""
+    # Force JSON content type to prevent HTML error pages
+    from flask import make_response
+    
     try:
-        print(f"🔄 LOGGING_TEMPLATE: Starting request processing")
-        print(f"🔄 LOGGING_TEMPLATE: Request args: {request.args}")
-        print(f"🔄 LOGGING_TEMPLATE: Request method: {request.method}")
-        print(f"🔄 LOGGING_TEMPLATE: Request URL: {request.url}")
-        
         date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-        print(f"📅 LOGGING_TEMPLATE: Request for date {date}")
-
+        
         # Get the day of week for the requested date
         try:
             day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
-            print(f"📅 LOGGING_TEMPLATE: Day name is {day_name}")
-        except ValueError as e:
-            print(f"❌ LOGGING_TEMPLATE: Date parse error: {e}")
-            response_data = {"error": "Invalid date format. Use YYYY-MM-DD", "date": date, "blocks": []}
-            print(f"📤 LOGGING_TEMPLATE: Returning error response: {response_data}")
-            return jsonify(response_data)
+        except ValueError:
+            return make_response(jsonify({"error": "Invalid date format", "date": date, "blocks": []}), 400)
 
-        print(f"🔗 LOGGING_TEMPLATE: Attempting database connection")
         conn = get_db_connection()
         cursor = conn.cursor()
-        print(f"✅ LOGGING_TEMPLATE: Database connection successful")
 
-        # Get weekly plan for this day, including circuit blocks
-        try:
-            query = '''
-                SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
-                       COALESCE(block_type, 'single') as block_type,
-                       COALESCE(meta_json, '{}') as meta_json,
-                       COALESCE(members_json, '[]') as members_json
-                FROM weekly_plan 
-                WHERE day_of_week = ? 
-                ORDER BY exercise_order
-            '''
-            print(f"🔍 LOGGING_TEMPLATE: Executing query for day: {day_name.lower()}")
-            cursor.execute(query, (day_name.lower(),))
+        # Get weekly plan for this day
+        cursor.execute('''
+            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
+                   COALESCE(block_type, 'single') as block_type,
+                   COALESCE(meta_json, '{}') as meta_json,
+                   COALESCE(members_json, '[]') as members_json
+            FROM weekly_plan 
+            WHERE day_of_week = ? 
+            ORDER BY exercise_order
+        ''', (day_name.lower(),))
 
-            plan_exercises = cursor.fetchall()
-            print(f"📊 LOGGING_TEMPLATE: Found {len(plan_exercises)} exercises for {day_name}")
-            
-            # Debug: Print first few exercises
-            for i, ex in enumerate(plan_exercises[:3]):
-                print(f"📊 LOGGING_TEMPLATE: Exercise {i+1}: {ex[1]} (type: {ex[7]})")
-                
-        except Exception as db_error:
-            print(f"❌ LOGGING_TEMPLATE: Database error: {db_error}")
-            import traceback
-            traceback.print_exc()
-            conn.close()
-            response_data = {"error": f"Database error: {str(db_error)}", "date": date, "blocks": []}
-            print(f"📤 LOGGING_TEMPLATE: Returning database error response: {response_data}")
-            return jsonify(response_data)
-
+        plan_exercises = cursor.fetchall()
         conn.close()
-        print(f"🔗 LOGGING_TEMPLATE: Database connection closed")
 
         template = {
             "date": date,
@@ -4336,27 +4308,23 @@ def logging_template():
             "blocks": []
         }
 
-        # If no exercises found, return empty template (not an error)
+        # If no exercises found, return empty template
         if not plan_exercises:
-            print(f"⚠️ LOGGING_TEMPLATE: No exercises found for {day_name} ({date})")
-            print(f"📤 LOGGING_TEMPLATE: Returning empty template: {template}")
-            return jsonify(template)
+            return make_response(jsonify(template), 200)
 
-        print(f"🔄 LOGGING_TEMPLATE: Processing {len(plan_exercises)} exercises")
-        for i, exercise in enumerate(plan_exercises):
+        # Process exercises
+        for exercise in plan_exercises:
             exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
-            print(f"🔄 LOGGING_TEMPLATE: Processing exercise {i+1}/{len(plan_exercises)}: {exercise_name} (type: {block_type})")
 
             try:
                 meta = json.loads(meta_json) if meta_json else {}
                 members = json.loads(members_json) if members_json else []
-            except json.JSONDecodeError as e:
-                print(f"❌ LOGGING_TEMPLATE: JSON decode error for {exercise_name}: {e}")
+            except json.JSONDecodeError:
                 meta = {}
                 members = []
 
             if block_type in ['circuit', 'rounds']:
-                print(f"🔄 LOGGING_TEMPLATE: Creating circuit/rounds block for {exercise_name}")
+                # Circuit/rounds block
                 rounds_count = meta.get('rounds', target_sets or 1)
                 
                 block = {
@@ -4366,7 +4334,6 @@ def logging_template():
                     "rounds": []
                 }
                 
-                # Generate rounds data
                 for round_idx in range(rounds_count):
                     round_data = {
                         "round_index": round_idx + 1,
@@ -4388,14 +4355,12 @@ def logging_template():
                     block["rounds"].append(round_data)
 
                 template["blocks"].append(block)
-                print(f"✅ LOGGING_TEMPLATE: Added circuit block with {rounds_count} rounds")
             else:
-                print(f"🔄 LOGGING_TEMPLATE: Creating simple block for {exercise_name}")
-                # Simple exercise - create proper sets structure
+                # Simple exercise block
                 weight_str = str(target_weight or '')
                 weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
-                
                 sets_count = target_sets or 3
+                
                 block_data = {
                     "block_id": exercise_id,
                     "type": "simple",
@@ -4414,31 +4379,17 @@ def logging_template():
                     ]
                 }
                 template["blocks"].append(block_data)
-                print(f"✅ LOGGING_TEMPLATE: Added simple block with {sets_count} sets")
 
-        print(f"✅ LOGGING_TEMPLATE: Generated template for {day_name} with {len(template['blocks'])} blocks")
-        print(f"📤 LOGGING_TEMPLATE: Final template structure: {json.dumps(template, indent=2)[:500]}...")
-        
-        response = jsonify(template)
-        print(f"📤 LOGGING_TEMPLATE: Response object created successfully")
-        return response
+        return make_response(jsonify(template), 200)
 
     except Exception as e:
-        print(f"❌ LOGGING_TEMPLATE: Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
-        
+        # Always return JSON even on error
         error_response = {
             "error": str(e), 
             "date": request.args.get('date', datetime.now().strftime('%Y-%m-%d')), 
-            "blocks": [],
-            "debug_info": {
-                "error_type": type(e).__name__,
-                "error_message": str(e)
-            }
+            "blocks": []
         }
-        print(f"📤 LOGGING_TEMPLATE: Returning error response: {error_response}")
-        return jsonify(error_response)
+        return make_response(jsonify(error_response), 500)
 
 if __name__ == '__main__':
     init_db()
