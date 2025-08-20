@@ -90,27 +90,40 @@ function loadWorkoutTemplate() {
     const workoutDateInput = document.getElementById('workoutDate');
     const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
 
-    console.log('Loading workout template for date:', selectedDate);
+    console.log('🔄 Loading workout template for date:', selectedDate);
 
     fetch(`/logging_template?date=${selectedDate}`)
         .then(response => {
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers.get('content-type'));
+            console.log('📡 Response status:', response.status);
+            console.log('📡 Response headers:', response.headers.get('content-type'));
+            console.log('📡 Response URL:', response.url);
             
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            // Check if response is actually JSON
-            const contentType = response.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                throw new Error(`Expected JSON response, got ${contentType}`);
-            }
-            
-            return response.json();
+            // Get the raw response text first to see what we're actually getting
+            return response.text().then(text => {
+                console.log('📡 Raw response text (first 500 chars):', text.substring(0, 500));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${text.substring(0, 200)}`);
+                }
+                
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error(`Expected JSON response, got ${contentType}. Response: ${text.substring(0, 200)}`);
+                }
+                
+                try {
+                    return JSON.parse(text);
+                } catch (parseError) {
+                    console.error('❌ JSON Parse Error:', parseError);
+                    throw new Error(`Failed to parse JSON: ${parseError.message}. Response: ${text.substring(0, 200)}`);
+                }
+            });
         })
         .then(data => {
-            console.log('Template data received:', data);
+            console.log('✅ Template data received:', data);
+            console.log('📊 Blocks count:', data.blocks ? data.blocks.length : 'No blocks');
+            
             workoutTemplate = data;
             currentExerciseIndex = 0;
             completedExercises = [];
@@ -118,19 +131,25 @@ function loadWorkoutTemplate() {
             document.getElementById('submitBtn').disabled = false;
         })
         .catch(error => {
-            console.error('Error loading template:', error);
+            console.error('❌ Error loading template:', error);
             const container = document.getElementById('dynamicLoggingContainer');
             container.innerHTML = `
-                <div class="alert alert-warning">
-                    <h6>Template Loading Failed</h6>
-                    <p>Unable to load workout template: ${error.message}</p>
-                    <p>Date: ${selectedDate}</p>
-                    <button type="button" class="btn btn-primary btn-sm" onclick="loadWorkoutTemplate()">
-                        <i class="fas fa-refresh"></i> Retry
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="renderFallbackUI()">
-                        <i class="fas fa-edit"></i> Manual Entry
-                    </button>
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Template Loading Failed</h6>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Date:</strong> ${selectedDate}</p>
+                    <p><strong>URL:</strong> /logging_template?date=${selectedDate}</p>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary btn-sm me-2" onclick="loadWorkoutTemplate()">
+                            <i class="fas fa-refresh"></i> Retry
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm me-2" onclick="debugEndpoint()">
+                            <i class="fas fa-bug"></i> Debug Endpoint
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" onclick="renderFallbackUI()">
+                            <i class="fas fa-edit"></i> Manual Entry
+                        </button>
+                    </div>
                 </div>
             `;
         });
@@ -400,6 +419,46 @@ function fillAsPlanned(blockType) {
         button.classList.remove('btn-success');
         button.classList.add('btn-outline-primary');
     }, 1500);
+}
+
+function debugEndpoint() {
+    const workoutDateInput = document.getElementById('workoutDate');
+    const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
+    
+    console.log('🐛 Debug: Testing endpoint directly');
+    console.log('🐛 Debug: Selected date:', selectedDate);
+    console.log('🐛 Debug: Full URL:', window.location.origin + `/logging_template?date=${selectedDate}`);
+    
+    // Test if the route exists at all
+    fetch('/logging_template?date=2025-08-20')
+        .then(response => {
+            console.log('🐛 Debug: Test response status:', response.status);
+            return response.text();
+        })
+        .then(text => {
+            console.log('🐛 Debug: Test response text:', text);
+            
+            const container = document.getElementById('dynamicLoggingContainer');
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-bug"></i> Debug Information</h6>
+                    <p><strong>Endpoint URL:</strong> /logging_template?date=${selectedDate}</p>
+                    <p><strong>Test Response:</strong></p>
+                    <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; max-height: 200px; overflow-y: auto;">${text}</pre>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="loadWorkoutTemplate()">
+                            <i class="fas fa-refresh"></i> Try Again
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" onclick="renderFallbackUI()">
+                            <i class="fas fa-edit"></i> Manual Entry
+                        </button>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('🐛 Debug: Test failed:', error);
+        });
 }
 
 function renderFallbackUI() {
