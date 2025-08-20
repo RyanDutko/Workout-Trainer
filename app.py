@@ -500,6 +500,11 @@ def normalize_session(date_or_id):
     print(f"NORMALIZE rows={len(normalized_rows)} for date={date_str}")
     return normalized_rows
 
+def parse_plan_modification_from_ai_response(response, user_message):
+    """Parse plan modifications from AI response (placeholder function)"""
+    # This function was referenced but missing - adding stub for now
+    return None
+
 def get_daily_progression_status(date_str):
     """Get progression status for exercises on a specific date"""
     try:

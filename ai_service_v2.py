@@ -295,9 +295,6 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             elif function_name == "get_weekly_plan":
                 return self._get_weekly_plan(args.get('day'))
 
-            elif function_name == "get_user_profile":
-                return self._get_user_profile()
-
             elif function_name == "add_exercise_to_plan":
                 return self._add_exercise_to_plan(
                     day=args.get('day'),
@@ -305,6 +302,15 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     sets=args.get('sets', 3),
                     reps=args.get('reps', '8-12'),
                     weight=args.get('weight', 'bodyweight')
+                )
+            
+            elif function_name == "add_circuit_to_plan":
+                return self._add_circuit_to_plan(
+                    day=args.get('day'),
+                    label=args.get('label', 'Circuit'),
+                    rounds=args.get('rounds', 2),
+                    rest_between_rounds_sec=args.get('rest_between_rounds_sec', 90),
+                    members=args.get('members')
                 )
 
             elif function_name == "update_exercise_in_plan":
@@ -333,7 +339,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
             elif function_name == "get_last_query_context":
                 return self._get_last_query_context()
-            
+
             elif function_name == "get_session":
                 return self.get_session(
                     date=args.get('date')
@@ -897,3 +903,53 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             return {"context": context}
         except Exception as e:
             return {"error": f"Failed to get last query context: {str(e)}"}
+    
+    def _add_circuit_to_plan(self, day: str, label: str = 'Circuit', rounds: int = 2, rest_between_rounds_sec: int = 90, members: list = None) -> Dict[str, Any]:
+        """Add a circuit block to the weekly plan"""
+        if not members:
+            return {"success": False, "error": "Circuit members are required"}
+
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            import json
+            from datetime import datetime
+
+            # Get next order for the day
+            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day.lower(),))
+            next_order = cursor.fetchone()[0]
+
+            # Create meta data for the circuit
+            meta_data = {
+                'rounds': rounds,
+                'rest_between_rounds_sec': rest_between_rounds_sec
+            }
+
+            # Insert circuit into weekly plan
+            cursor.execute('''
+                INSERT INTO weekly_plan
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                 block_type, meta_json, members_json, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (day.lower(), label, rounds, f'{len(members)} exercises', 'circuit', next_order,
+                  'circuit', json.dumps(meta_data), json.dumps(members), 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
+
+            conn.commit()
+            conn.close()
+
+            return {
+                'success': True,
+                'message': f'Added {label} circuit to {day.title()}',
+                'circuit': {
+                    'day': day.lower(),
+                    'label': label,
+                    'rounds': rounds,
+                    'members': members,
+                    'order': next_order
+                }
+            }
+
+        except Exception as e:
+            conn.close()
+            return {'success': False, 'error': f'Failed to add circuit: {str(e)}'}
