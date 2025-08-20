@@ -52,43 +52,18 @@ class AIServiceV2:
             {
                 "type": "function",
                 "function": {
-                    "name": "compare_workout_to_plan",
-                    "description": "Use for any question that compares actual performance to planned workouts (followed plan, vs/versus, compliance). Returns plan + actual + diff.",
+                    "name": "get_workout_history",
+                    "description": "Get workout history for a specific date or recent workouts. Use when user asks about past workouts.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "date": {
                                 "type": "string",
-                                "description": "Calendar date in YYYY-MM-DD format"
-                            },
-                            "day": {
-                                "type": "string",
-                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
-                            }
-                        }
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_logs_by_day_or_date",
-                    "description": "Retrieve actual logged workouts for a specific date or for the most recent past occurrence of a weekday.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "day": {
-                                "type": "string",
-                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
-                            },
-                            "date": {
-                                "type": "string",
-                                "description": "Calendar date in YYYY-MM-DD format (optional)"
+                                "description": "Date in YYYY-MM-DD format (optional)"
                             },
                             "limit": {
                                 "type": "integer",
-                                "default": 100,
-                                "description": "Maximum number of workouts to return"
+                                "description": "Number of recent workouts to return (default: 10)"
                             }
                         }
                     }
@@ -98,160 +73,73 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_weekly_plan",
-                    "description": "Return plan for a given weekday or the entire week.",
+                    "description": "Get weekly workout plan including circuit blocks. Use when user asks about their plan, schedule, or what they should do on specific days.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "day": {
                                 "type": "string",
-                                "description": "Day of week (optional) - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                                "description": "Specific day to get plan for (optional): monday, tuesday, wednesday, thursday, friday, saturday, sunday"
                             }
                         }
                     }
                 }
             },
             {
-                "type": "function",
-                "function": {
-                    "name": "get_user_profile",
-                    "description": "Return user goal/level and latest plan philosophy.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_exercise_to_plan",
-                    "description": "Add a new exercise to a specific day in the weekly plan.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "day": {
-                                "type": "string",
-                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
-                            },
-                            "exercise_name": {
-                                "type": "string",
-                                "description": "Name of the exercise to add"
-                            },
-                            "sets": {
-                                "type": "integer",
-                                "description": "Number of sets",
-                                "default": 3
-                            },
-                            "reps": {
-                                "type": "string", 
-                                "description": "Number of reps (can be range like '8-12')",
-                                "default": "8-12"
-                            },
-                            "weight": {
-                                "type": "string",
-                                "description": "Weight to use (e.g. '25lbs', 'bodyweight')",
-                                "default": "bodyweight"
-                            }
-                        },
-                        "required": ["day", "exercise_name"]
-                    }
-                }
-            },
-            {
                 "type": "function", 
                 "function": {
-                    "name": "update_exercise_in_plan",
-                    "description": "Update an existing exercise in the weekly plan.",
+                    "name": "get_exercise_progression",
+                    "description": "Get progression data for a specific exercise. Use when user asks about progress, improvement, or trends for an exercise.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "day": {
-                                "type": "string",
-                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
-                            },
                             "exercise_name": {
                                 "type": "string",
-                                "description": "Name of the exercise to update"
+                                "description": "Name of the exercise to get progression for"
                             },
-                            "sets": {
-                                "type": "integer",
-                                "description": "Number of sets"
-                            },
-                            "reps": {
-                                "type": "string",
-                                "description": "Number of reps"
-                            },
-                            "weight": {
-                                "type": "string", 
-                                "description": "Weight to use"
+                            "limit": {
+                                "type": "integer", 
+                                "description": "Number of recent records to return (default: 10)"
                             }
                         },
-                        "required": ["day", "exercise_name"]
+                        "required": ["exercise_name"]
                     }
                 }
             },
             {
                 "type": "function",
                 "function": {
-                    "name": "remove_exercise_from_plan",
-                    "description": "Remove an exercise from a specific day in the weekly plan.",
+                    "name": "get_session",
+                    "description": "Get normalized workout session data for a specific date. Use when user asks about a specific workout session.",
                     "parameters": {
                         "type": "object",
                         "properties": {
+                            "date": {
+                                "type": "string",
+                                "description": "Date in YYYY-MM-DD format"
+                            }
+                        },
+                        "required": ["date"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "compare_workout_to_plan",
+                    "description": "Compare actual workout performance to planned workout. Use when user asks how they did vs their plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "date": {
+                                "type": "string",
+                                "description": "Date in YYYY-MM-DD format (optional)"
+                            },
                             "day": {
                                 "type": "string",
-                                "description": "Day of week - monday, tuesday, wednesday, thursday, friday, saturday, sunday"
-                            },
-                            "exercise_name": {
-                                "type": "string",
-                                "description": "Name of the exercise to remove"
+                                "description": "Day of week (optional): monday, tuesday, wednesday, thursday, friday, saturday, sunday"
                             }
-                        },
-                        "required": ["day", "exercise_name"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_pinned_facts",
-                    "description": "Return durable user facts (goals, injuries, equipment, schedule, nutrition prefs). Use when advice depends on user constraints.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_conversation",
-                    "description": "Use to recall older discussion relevant to the query (e.g., injuries, substitutions, constraints).",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Search query for relevant conversation history"
-                            },
-                            "max_items": {
-                                "type": "integer",
-                                "default": 3,
-                                "description": "Maximum number of conversation snippets to return"
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_last_query_context",
-                    "description": "Use for parameterless follow-ups like 'compare that to my plan'.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {}
+                        }
                     }
                 }
             }
@@ -268,7 +156,7 @@ class AIServiceV2:
 
             # Get recent conversation window
             recent_context = self.conversation_store.get_recent_window(max_turns=6)
-            
+
             system_content = f"""You are a coaching assistant inside a fitness app.
 
 CURRENT DATE/TIME: {current_datetime}
@@ -361,7 +249,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 else:
                     # No more tools needed, save conversation turn and return final response
                     self.conversation_store.append_turn(message, response_message.content)
-                    
+
                     return {
                         'response': response_message.content,
                         'tools_used': [name for name, _ in seen],
@@ -445,6 +333,11 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
             elif function_name == "get_last_query_context":
                 return self._get_last_query_context()
+            
+            elif function_name == "get_session":
+                return self.get_session(
+                    date=args.get('date')
+                )
 
             else:
                 return {"error": f"Unknown function: {function_name}"}
@@ -456,12 +349,12 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         """Composite tool to compare actual performance to planned workouts"""
         resolved_date, resolved_day = resolve_date_or_day(date, day)
         print(f"RESOLVE: date={resolved_date}, day={resolved_day}")
-        
+
         # Auto-load from sticky context if parameters missing
         if not resolved_date and not resolved_day:
             try:
                 context = self.conversation_store.get_last_query_context()
-                
+
                 # Try last comparison context first
                 if "last_comparison" in context:
                     last_comp = context["last_comparison"]
@@ -472,16 +365,16 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     last_logs = context["last_logs_query"]
                     resolved_date = last_logs.get("date")
                     resolved_day = last_logs.get("day")
-                
+
                 if resolved_date or resolved_day:
                     print(f"CTX_LOAD for compare_workout_to_plan → date={resolved_date}, day={resolved_day}")
-                    
+
             except Exception as e:
                 print(f"Failed to auto-load context: {e}")
-        
+
         if not resolved_date and not resolved_day:
             return {"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
-        
+
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
@@ -588,10 +481,10 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         """Get workout logs by day or date"""
         resolved_date, resolved_day = resolve_date_or_day(date, day)
         print(f"RESOLVE: date={resolved_date}, day={resolved_day}")
-        
+
         if not resolved_date and not resolved_day:
             return {"error": "missing_criteria", "hint": "provide date (YYYY-MM-DD) or day (e.g., 'tuesday')"}
-        
+
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
@@ -652,63 +545,170 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         }
 
     def _get_weekly_plan(self, day: str = None) -> Dict[str, Any]:
-        """Get weekly plan data"""
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
+        """Get weekly workout plan, optionally filtered by day, including circuit blocks"""
+        from models import get_weekly_plan as get_plan
+        import json
+
+        all_plan = get_plan()
+        if not all_plan:
+            return []
+
+        # Group by day with circuit support
+        plan_by_day = {}
+        for item in all_plan:
+            if isinstance(item, dict) and item.get('block_type') == 'circuit':
+                # Handle circuit block
+                day_name = item['day_of_week']
+                if day_name not in plan_by_day:
+                    plan_by_day[day_name] = []
+
+                # Expand circuit to planned sets
+                meta = item.get('meta', {})
+                members = item.get('members', [])
+                rounds = meta.get('rounds', 1)
+
+                circuit_sets = []
+                for round_idx in range(rounds):
+                    for member_idx, member in enumerate(members):
+                        circuit_sets.append({
+                            'exercise': member.get('exercise', ''),
+                            'block_type': 'circuit',
+                            'member_idx': member_idx,
+                            'set_idx': round_idx,
+                            'reps': member.get('reps'),
+                            'weight': member.get('weight'),
+                            'tempo': member.get('tempo'),
+                            'status': 'planned'
+                        })
+
+                plan_by_day[day_name].append({
+                    'block_type': 'circuit',
+                    'label': item.get('exercise_name', 'Circuit'),
+                    'order_index': item.get('exercise_order', 0),
+                    'meta': meta,
+                    'members': members,
+                    'sets': circuit_sets
+                })
+            else:
+                # Handle standard format
+                row = item if isinstance(item, tuple) else (item.get('id'), item.get('day_of_week'), item.get('exercise_name'), item.get('sets'), item.get('reps'), item.get('weight'))
+                day_name, exercise, sets, reps, weight = row[1], row[2], row[3], row[4], row[5]
+                if day_name not in plan_by_day:
+                    plan_by_day[day_name] = []
+                plan_by_day[day_name].append({
+                    'exercise': exercise,
+                    'sets': sets,
+                    'reps': reps,
+                    'weight': weight,
+                    'block_type': 'single'
+                })
 
         if day:
-            # Normalize day to lowercase
-            day = day.strip().lower()
-            weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
-            if day not in weekdays:
-                return {"error": "invalid_day", "hint": "use weekday name like 'tuesday'"}
-                
-            print(f"RESOLVE: day={day}")
-            
-        if day:
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
-                FROM weekly_plan
-                WHERE day_of_week = ?
-                ORDER BY exercise_order
-            ''', (day,))
+            result = plan_by_day.get(day.lower(), [])
+            print(f"TOOL_RESULT_LEN(get_weekly_plan[{day}])={len(result)}")
+            return result
         else:
-            cursor.execute('''
-                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes
-                FROM weekly_plan
-                ORDER BY 
-                    CASE day_of_week
-                        WHEN 'monday' THEN 1
-                        WHEN 'tuesday' THEN 2
-                        WHEN 'wednesday' THEN 3
-                        WHEN 'thursday' THEN 4
-                        WHEN 'friday' THEN 5
-                        WHEN 'saturday' THEN 6
-                        WHEN 'sunday' THEN 7
-                    END, exercise_order
-            ''')
+            total_exercises = sum(len(exercises) for exercises in plan_by_day.values())
+            print(f"TOOL_RESULT_LEN(get_weekly_plan)={total_exercises}")
+            return plan_by_day
 
-        plan_data = []
-        for row in cursor.fetchall():
-            plan_data.append({
-                'day': row[0],
-                'exercise': row[1],
-                'sets': row[2],
-                'reps': row[3],
-                'weight': row[4],
-                'order': row[5],
-                'notes': row[6] or ''
-            })
+    def get_session(self, date):
+        """Get normalized workout session data for a specific date"""
+        import sys
+        sys.path.append('.')
+        from app import normalize_session
 
-        conn.close()
+        result = normalize_session(date)
+        print(f"TOOL_RESULT_LEN(get_session)={len(result)}")
+        return result
 
-        # Save sticky context for follow-ups
-        if day:
-            self.conversation_store.save_query_context("last_plan_slice", {
-                "day": day
-            })
+    def compare_workout_to_plan(self, date=None, day=None):
+        """Compare actual workout to planned workout"""
+        import sys
+        from datetime import datetime
+        sys.path.append('.')
+        from app import normalize_session
 
-        return {"plan": plan_data, "total_exercises": len(plan_data)}
+        # Resolve date and day
+        if not date and not day:
+            date = datetime.now().strftime('%Y-%m-%d')
+            day = datetime.now().strftime('%A').lower()
+        elif date and not day:
+            date_obj = datetime.strptime(date, '%Y-%m-%d')
+            day = date_obj.strftime('%A').lower()
+        elif day and not date:
+            # Find most recent date for this day
+            date = datetime.now().strftime('%Y-%m-%d')  # Simplified for now
+
+        # Get actual workout
+        actual = normalize_session(date)
+
+        # Get planned workout for this day
+        plan_data = self._get_weekly_plan(day)
+
+        # Flatten plan data to comparable format
+        plan = []
+        for item in plan_data:
+            if item.get('block_type') == 'circuit' and 'sets' in item:
+                plan.extend(item['sets'])
+            else:
+                plan.append({
+                    'exercise': item.get('exercise', ''),
+                    'block_type': item.get('block_type', 'single'),
+                    'member_idx': None,
+                    'set_idx': 0,
+                    'reps': item.get('reps'),
+                    'weight': item.get('weight'),
+                    'status': 'planned'
+                })
+
+        # Create diff
+        diff = []
+        actual_exercises = {(row['exercise'], row.get('member_idx', 0), row.get('set_idx', 0)): row for row in actual}
+        plan_exercises = {(row['exercise'], row.get('member_idx', 0), row.get('set_idx', 0)): row for row in plan}
+
+        # Find matches and modifications
+        for key, plan_row in plan_exercises.items():
+            if key in actual_exercises:
+                actual_row = actual_exercises[key]
+                if (actual_row.get('reps') != plan_row.get('reps') or 
+                    actual_row.get('weight') != plan_row.get('weight')):
+                    diff.append({
+                        'type': 'modified',
+                        'exercise': plan_row['exercise'],
+                        'planned': plan_row,
+                        'actual': actual_row
+                    })
+                else:
+                    diff.append({
+                        'type': 'matched',
+                        'exercise': plan_row['exercise']
+                    })
+            else:
+                diff.append({
+                    'type': 'missing',
+                    'exercise': plan_row['exercise'],
+                    'planned': plan_row
+                })
+
+        # Find extra exercises
+        for key, actual_row in actual_exercises.items():
+            if key not in plan_exercises:
+                diff.append({
+                    'type': 'extra',
+                    'exercise': actual_row['exercise'],
+                    'actual': actual_row
+                })
+
+        result = {
+            'criteria': {'date': date, 'day': day},
+            'plan': plan,
+            'actual': actual,
+            'diff': diff
+        }
+
+        print(f"TOOL_RESULT_LEN(compare_workout_to_plan) plan={len(plan)} actual={len(actual)} diff={len(diff)}")
+        return result
 
     def _get_user_profile(self) -> Dict[str, Any]:
         """Get user profile and latest plan philosophy"""
@@ -847,7 +847,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 SELECT exercise_name FROM weekly_plan
                 WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
             ''', (day.lower(), exercise_name))
-            
+
             if not cursor.fetchone():
                 conn.close()
                 return {"success": False, "error": f"Exercise '{exercise_name}' not found on {day.title()}"}

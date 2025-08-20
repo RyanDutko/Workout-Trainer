@@ -1,4 +1,3 @@
-
 import sqlite3
 import json
 from datetime import datetime
@@ -8,17 +7,17 @@ class Database:
     def __init__(self, db_path: str = 'workout_logs.db'):
         self.db_path = db_path
         self.init_database()
-    
+
     def get_connection(self):
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.execute('PRAGMA foreign_keys = ON')
         conn.execute('PRAGMA journal_mode = WAL')
         return conn
-    
+
     def init_database(self):
         conn = self.get_connection()
         cursor = conn.cursor()
-        
+
         # Users table - extensible profile
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -29,7 +28,7 @@ class Database:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Training plans - flexible JSON structure
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS training_plans (
@@ -44,7 +43,7 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
-        
+
         # Workouts - flexible exercise data
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS workouts (
@@ -58,7 +57,7 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
-        
+
         # AI conversations - structured interaction history
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS conversations (
@@ -73,7 +72,7 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
-        
+
         # Exercise library - AI-enhanced exercise database
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS exercises (
@@ -86,7 +85,7 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
+
         # Create default user if none exists
         cursor.execute('SELECT COUNT(*) FROM users')
         if cursor.fetchone()[0] == 0:
@@ -94,7 +93,7 @@ class Database:
                 INSERT INTO users (profile_data, ai_preferences) 
                 VALUES ('{}', '{"tone": "motivational", "detail_level": "concise"}')
             ''')
-        
+
         conn.commit()
         conn.close()
 
@@ -102,7 +101,7 @@ class User:
     def __init__(self, db: Database, user_id: int = 1):
         self.db = db
         self.user_id = user_id
-    
+
     def get_profile(self) -> Dict[str, Any]:
         conn = self.db.get_connection()
         cursor = conn.cursor()
@@ -110,7 +109,7 @@ class User:
         result = cursor.fetchone()
         conn.close()
         return json.loads(result[0]) if result else {}
-    
+
     def update_profile(self, profile_data: Dict[str, Any]):
         conn = self.db.get_connection()
         cursor = conn.cursor()
@@ -120,7 +119,7 @@ class User:
         ''', (json.dumps(profile_data), self.user_id))
         conn.commit()
         conn.close()
-    
+
     def get_ai_preferences(self) -> Dict[str, Any]:
         conn = self.db.get_connection()
         cursor = conn.cursor()
@@ -132,7 +131,7 @@ class User:
 class TrainingPlan:
     def __init__(self, db: Database):
         self.db = db
-    
+
     def get_active_plan(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
         conn = self.db.get_connection()
         cursor = conn.cursor()
@@ -143,7 +142,7 @@ class TrainingPlan:
         ''', (user_id,))
         result = cursor.fetchone()
         conn.close()
-        
+
         if result:
             return {
                 'id': result[0],
@@ -152,31 +151,31 @@ class TrainingPlan:
                 'philosophy': result[3]
             }
         return None
-    
+
     def save_plan(self, user_id: int, name: str, plan_data: Dict[str, Any], philosophy: str = None):
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         # Deactivate current plans
         cursor.execute('UPDATE training_plans SET is_active = FALSE WHERE user_id = ?', (user_id,))
-        
+
         # Insert new plan
         cursor.execute('''
             INSERT INTO training_plans (user_id, name, plan_data, philosophy, is_active)
             VALUES (?, ?, ?, ?, TRUE)
         ''', (user_id, name, json.dumps(plan_data), philosophy))
-        
+
         conn.commit()
         conn.close()
 
 class Workout:
     def __init__(self, db: Database):
         self.db = db
-    
+
     def log_workout(self, user_id: int, date: str, exercises: List[Dict[str, Any]], notes: str = None):
         conn = self.db.get_connection()
         cursor = conn.cursor()
-        
+
         # Flexible exercise structure that can handle any complexity
         exercise_data = {
             'exercises': exercises,  # Each exercise can have its own structure
@@ -184,32 +183,32 @@ class Workout:
             'logged_at': datetime.now().isoformat(),
             'workout_type': self._detect_workout_type(exercises)
         }
-        
+
         cursor.execute('''
             INSERT INTO workouts (user_id, date_logged, exercise_data, performance_notes)
             VALUES (?, ?, ?, ?)
         ''', (user_id, date, json.dumps(exercise_data), notes))
-        
+
         workout_id = cursor.lastrowid
         conn.commit()
         conn.close()
         return workout_id
-    
+
     def _detect_workout_type(self, exercises: List[Dict[str, Any]]) -> str:
         """Detect if this is a simple, complex, or circuit workout"""
 
 
 class WorkoutTemplateGenerator:
     """Generate workout logging templates based on exercise structure"""
-    
+
     def __init__(self, db: Database):
         self.db = db
-    
+
     def generate_logging_template(self, exercise_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate appropriate logging interface based on exercise type"""
-        
+
         exercise_type = exercise_data.get('type', 'simple')
-        
+
         if exercise_type == 'simple':
             return {
                 'template_type': 'simple',
@@ -219,7 +218,7 @@ class WorkoutTemplateGenerator:
                     {'name': 'weight_used', 'type': 'text', 'placeholder': exercise_data.get('weight', 'bodyweight')}
                 ]
             }
-        
+
         elif exercise_type == 'rounds':
             movements = exercise_data.get('movements', [])
             return {
@@ -237,7 +236,7 @@ class WorkoutTemplateGenerator:
                     } for movement in movements
                 ]
             }
-        
+
         elif exercise_type == 'circuit':
             return {
                 'template_type': 'circuit',
@@ -245,7 +244,7 @@ class WorkoutTemplateGenerator:
                 'movements': exercise_data.get('movements', []),
                 'timing': exercise_data.get('timing', 'reps_based')  # or 'time_based'
             }
-        
+
         else:
             # Custom template generation
             return {
@@ -253,7 +252,7 @@ class WorkoutTemplateGenerator:
                 'structure': exercise_data.get('structure', {}),
                 'fields': self._generate_custom_fields(exercise_data)
             }
-    
+
     def _generate_custom_fields(self, exercise_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate input fields for completely custom exercise structures"""
         # AI can analyze the structure and create appropriate fields
@@ -268,10 +267,10 @@ class WorkoutTemplateGenerator:
             if exercise.get('type') in ['rounds', 'circuit', 'complex', 'superset']:
                 return 'complex'
         return 'simple'
-    
+
     def create_exercise_structure(self, exercise_type: str, name: str, **kwargs) -> Dict[str, Any]:
         """Create flexible exercise structures for any workout style"""
-        
+
         if exercise_type == 'simple':
             return {
                 'name': name,
@@ -281,7 +280,7 @@ class WorkoutTemplateGenerator:
                 'weight': kwargs.get('weight', 'bodyweight'),
                 'rest': kwargs.get('rest', '60s')
             }
-        
+
         elif exercise_type == 'rounds':
             return {
                 'name': name,
@@ -291,7 +290,7 @@ class WorkoutTemplateGenerator:
                 'rest_between_rounds': kwargs.get('rest', '2min'),
                 'structure': 'rounds'  # e.g., "2 rounds of: 10 slow curls + 15 fast curls + 10 hammer curls"
             }
-        
+
         elif exercise_type == 'circuit':
             return {
                 'name': name,
@@ -301,7 +300,7 @@ class WorkoutTemplateGenerator:
                 'rest_between_circuits': kwargs.get('rest', '90s'),
                 'structure': 'circuit'
             }
-        
+
         elif exercise_type == 'superset':
             return {
                 'name': name,
@@ -311,7 +310,7 @@ class WorkoutTemplateGenerator:
                 'rest_between_supersets': kwargs.get('rest', '90s'),
                 'structure': 'superset'
             }
-        
+
         elif exercise_type == 'tempo':
             return {
                 'name': name,
@@ -322,7 +321,7 @@ class WorkoutTemplateGenerator:
                 'tempo': kwargs.get('tempo', '3-1-2-1'),  # eccentric-pause-concentric-pause
                 'rest': kwargs.get('rest', '90s')
             }
-        
+
         else:
             # Completely custom structure
             return {
@@ -331,7 +330,7 @@ class WorkoutTemplateGenerator:
                 'structure': kwargs.get('structure', {}),
                 'description': kwargs.get('description', '')
             }
-    
+
     def get_recent_workouts(self, user_id: int = 1, limit: int = 10) -> List[Dict[str, Any]]:
         conn = self.db.get_connection()
         cursor = conn.cursor()
@@ -341,7 +340,7 @@ class WorkoutTemplateGenerator:
             ORDER BY date_logged DESC, created_at DESC
             LIMIT ?
         ''', (user_id, limit))
-        
+
         results = []
         for row in cursor.fetchall():
             results.append({
@@ -351,6 +350,124 @@ class WorkoutTemplateGenerator:
                 'notes': row[3],
                 'ai_analysis': row[4]
             })
-        
+
         conn.close()
         return results
+
+    def get_weekly_plan(self):
+        """Get all weekly plan exercises, including circuit blocks"""
+        import json
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        # Check if we have block_type column for enhanced weekly plan
+        try:
+            cursor.execute("PRAGMA table_info(weekly_plan)")
+            columns = [col[1] for col in cursor.fetchall()]
+            has_block_type = 'block_type' in columns
+        except:
+            has_block_type = False
+
+        if has_block_type:
+            cursor.execute('''
+                SELECT id, day_of_week, exercise_name, sets, reps, weight, exercise_order, 
+                       COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, ""),
+                       COALESCE(block_type, "single"), COALESCE(meta_json, "{}"), COALESCE(members_json, "[]")
+                FROM weekly_plan 
+                ORDER BY day_of_week, exercise_order
+            ''')
+
+            enhanced_plan = []
+            for row in cursor.fetchall():
+                # Safely unpack, assuming the structure is consistent or providing defaults
+                try:
+                    id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes, block_type, meta_json, members_json = row
+                except ValueError:
+                    # Handle cases where the row might not have all expected columns (e.g., older schema)
+                    # This is a fallback; the PRAGMA check should ideally prevent this for newer schemas.
+                    # If it's an older schema, it will fall through to the 'else' block.
+                    enhanced_plan.append(row) # Append as is if structure mismatch
+                    continue
+
+                if block_type == "circuit":
+                    # Parse circuit data
+                    try:
+                        meta = json.loads(meta_json) if meta_json else {}
+                        members = json.loads(members_json) if members_json else []
+
+                        # Return circuit block info
+                        enhanced_plan.append({
+                            'id': id,
+                            'day_of_week': day,
+                            'exercise_name': exercise,
+                            'sets': sets,
+                            'reps': reps,
+                            'weight': weight,
+                            'exercise_order': order,
+                            'notes': notes,
+                            'newly_added': newly_added,
+                            'progression_notes': progression_notes,
+                            'block_type': block_type,
+                            'meta': meta,
+                            'members': members
+                        })
+                    except json.JSONDecodeError:
+                        # Handle potential JSON parsing errors for meta_json or members_json
+                        # Fallback to standard format or log an error
+                        enhanced_plan.append({
+                            'id': id,
+                            'day_of_week': day,
+                            'exercise_name': exercise,
+                            'sets': sets,
+                            'reps': reps,
+                            'weight': weight,
+                            'exercise_order': order,
+                            'notes': notes,
+                            'newly_added': newly_added,
+                            'progression_notes': progression_notes,
+                            'block_type': block_type, # Keep block_type even if parsing fails
+                            'error': 'Failed to parse circuit data'
+                        })
+                else:
+                    # Standard format for non-circuit blocks
+                    enhanced_plan.append({
+                        'id': id,
+                        'day_of_week': day,
+                        'exercise_name': exercise,
+                        'sets': sets,
+                        'reps': reps,
+                        'weight': weight,
+                        'exercise_order': order,
+                        'notes': notes,
+                        'newly_added': newly_added,
+                        'progression_notes': progression_notes,
+                        'block_type': block_type # Include block_type for consistency
+                    })
+
+            return enhanced_plan
+        else:
+            # Legacy format: Fetch data without block_type, meta_json, members_json
+            cursor.execute('''
+                SELECT id, day_of_week, exercise_name, sets, reps, weight, exercise_order, 
+                       COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "")
+                FROM weekly_plan 
+                ORDER BY day_of_week, exercise_order
+            ''')
+
+            # Format legacy data to match the structure of the enhanced plan for consistency
+            legacy_plan = []
+            for row in cursor.fetchall():
+                legacy_plan.append({
+                    'id': row[0],
+                    'day_of_week': row[1],
+                    'exercise_name': row[2],
+                    'sets': row[3],
+                    'reps': row[4],
+                    'weight': row[5],
+                    'exercise_order': row[6],
+                    'notes': row[7],
+                    'newly_added': row[8],
+                    'progression_notes': row[9],
+                    'block_type': "single" # Assume single block for legacy data
+                })
+            return legacy_plan

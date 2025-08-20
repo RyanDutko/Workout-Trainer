@@ -63,7 +63,31 @@ def get_user_ai_preferences():
         return None
 
 def init_db():
-    conn = get_db_connection()
+    conn = sqlite3.connect('workout_logs.db')
+
+    # Add circuit support columns to weekly_plan if they don't exist
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(weekly_plan)")
+        columns = [col[1] for col in cursor.fetchall()]
+
+        if 'block_type' not in columns:
+            cursor.execute('ALTER TABLE weekly_plan ADD COLUMN block_type TEXT DEFAULT "single"')
+            print("NORMALIZE: Added block_type column to weekly_plan")
+
+        if 'meta_json' not in columns:
+            cursor.execute('ALTER TABLE weekly_plan ADD COLUMN meta_json TEXT DEFAULT "{}"')
+            print("NORMALIZE: Added meta_json column to weekly_plan")
+
+        if 'members_json' not in columns:
+            cursor.execute('ALTER TABLE weekly_plan ADD COLUMN members_json TEXT DEFAULT "[]"')
+            print("NORMALIZE: Added members_json column to weekly_plan")
+
+        conn.commit()
+    except Exception as e:
+        print(f"NORMALIZE: Error adding columns: {e}")
+
+    conn = sqlite3.connect('workout_logs.db')
     cursor = conn.cursor()
 
     # Create tables if they don't exist
@@ -357,872 +381,127 @@ def init_db():
     conn.commit()
     conn.close()
 
-def parseComplexExerciseStructure(exercise_data):
-    """Parse complex exercise structure from standardized JSON format"""
-    try:
-        # Handle structured JSON format (new standard)
-        if isinstance(exercise_data, str) and exercise_data.startswith('{'):
-            return json.loads(exercise_data)
+def normalize_session(date_or_id):
+    """Return a flat list of normalized workout rows for a session"""
+    import json
 
-        # Handle dict format (already parsed)
-        if isinstance(exercise_data, dict):
-            return exercise_data
-
-        # Handle comma-separated standard format: "10 slow bicep curls(20lbs), 15 fast bicep curls(15lbs), 10 hammer curls(15lbs)"
-        if isinstance(exercise_data, str) and ',' in exercise_data:
-            movements = []
-            parts = exercise_data.split(',')
-
-            for part in parts:
-                part = part.strip()
-                # Parse: "10 slow bicep curls(20lbs)"
-                match = re.match(r'(\d+)\s+(.+?)\(([^)]+)\)', part)
-                if match:
-                    reps, movement_name, weight = match.groups()
-                    movements.append({
-                        'name': movement_name.strip(),
-                        'reps': reps,
-                        'weight': weight
-                    })
-
-            if movements:
-                return {
-                    'type': 'complex',
-                    'movements': movements
-                }
-
-        return None
-    except Exception as e:
-        print(f"Error parsing complex exercise: {e}")
-        return None
-
-def analyze_query_intent(prompt, conversation_context=None):
-    """Enhanced intent detection with confidence scoring, multi-intent support, and context awareness"""
-    prompt_lower = prompt.lower()
-
-    # Intent scoring system
-    intents = {}
-    detected_entities = {
-        'exercises': [],
-        'days': [],
-        'numbers': [],
-        'references': []  # pronouns like "it", "that", "this"
-    }
-
-    # Extract entities for context resolution
-    exercise_keywords = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'tricep', 'bicep', 'leg', 'chest', 'back', 'shoulder']
-    days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-
-    for exercise in exercise_keywords:
-        if exercise in prompt_lower:
-            detected_entities['exercises'].append(exercise)
-
-    for day in days:
-        if day in prompt_lower:
-            detected_entities['days'].append(day)
-
-    # Detect references that need context resolution
-    reference_words = ['it', 'that', 'this', 'the exercise', 'that workout', 'the one', 'instead', 'other']
-    for ref in reference_words:
-        if ref in prompt_lower:
-            detected_entities['references'].append(ref)
-
-    # Full plan review (comprehensive analysis)
-    if 'FULL_PLAN_REVIEW_REQUEST:' in prompt:
-        return {'intent': 'full_plan_review', 'confidence': 1.0, 'actions': [], 'entities': detected_entities}
-
-    # CRITICAL FIX: Historical/workout discussion takes precedence over plan modification
-    # When someone wants to discuss past workouts, this should be historical, not plan modification
-    historical_discussion_keywords = [
-        'talk about', 'discuss', 'my workout', 'my recent workout', 'how did', 'what did',
-        'my training', 'yesterday', 'last week', 'this week', 'recent', 'previous', 'show me what i did'
-    ]
-    historical_discussion_score = sum(2 for phrase in historical_discussion_keywords if phrase in prompt_lower)
-
-    # VERY strong indicators for historical queries - these should override other intents
-    strong_historical_phrases = [
-        'talk about my', 'discuss my', 'my recent', 'my workout from', 'how was my',
-        'show me what i did', 'what did i do', 'my tuesday workout', 'my monday workout',
-        'my wednesday workout', 'my thursday workout', 'my friday workout'
-    ]
-    if any(phrase in prompt_lower for phrase in strong_historical_phrases):
-        historical_discussion_score += 20  # Much higher boost to ensure priority
-
-    # Check for day-specific historical queries
-    for day in days:
-        if f'my {day}' in prompt_lower or f'{day} workout' in prompt_lower or f'what i did on {day}' in prompt_lower:
-            historical_discussion_score += 15  # Strong boost for day-specific queries
-
-    if historical_discussion_score > 0:
-        intents['historical'] = min(historical_discussion_score * 0.05, 1.0)  # Lower multiplier but higher base scores
-
-    # Live workout coaching
-    live_workout_keywords = ['currently doing', 'doing now', 'at the gym', 'mid workout', 'between sets', 'just finished', 'form check']
-    live_score = sum(1 for word in live_workout_keywords if word in prompt_lower)
-    if live_score > 0:
-        intents['live_workout'] = min(live_score * 0.4, 1.0)
-
-    # Workout logging intent - but not for historical "what did I do" queries
-    log_keywords = ['completed', 'finished', 'logged', 'performed', 'x', 'sets', 'reps', '@']
-    log_patterns = [r'\d+x\d+', r'\d+\s*sets?', r'\d+\s*reps?', r'@\s*\d+']
-    log_score = sum(1 for word in log_keywords if word in prompt_lower)
-    log_score += sum(1 for pattern in log_patterns if re.search(pattern, prompt_lower))
-
-    # Reduce log score if this is clearly a historical query
-    if any(phrase in prompt_lower for phrase in ['what did i do', 'show me what i did', 'what i did on']):
-        log_score = max(0, log_score - 5)
-
-    if log_score > 0:
-        intents['workout_logging'] = min(log_score * 0.3, 1.0)
-
-    # Plan modification intent - REDUCED scoring when historical discussion detected
-    plan_keywords = ['change', 'modify', 'update', 'add', 'remove', 'swap', 'substitute', 'replace', 'adjust', 'tweak', 'switch']
-    plan_score = sum(1 for word in plan_keywords if word in prompt_lower)
-
-    # CRITICAL: Don't boost plan modification score just for mentioning days in historical context
-    # Only boost if it's actually about planning, not discussing past workouts
-    if any(phrase in prompt_lower for phrase in ['my plan', 'weekly plan', 'workout plan', 'current plan', 'next week']):
-        plan_score += 1
-    if any(phrase in prompt_lower for phrase in ['can you change', 'could you modify', 'would you update', 'please add']):
-        plan_score += 2
-
-    # REDUCE plan modification score if this is clearly about past workouts
-    if historical_discussion_score > 0:
-        plan_score = max(0, plan_score - 3)
-
-    if plan_score > 0:
-        intents['plan_modification'] = min(plan_score * 0.3, 1.0)
-
-    # Progression-related queries
-    progression_keywords = ['progress', 'increase', 'heavier', 'next week', 'bump up', 'advance', 'progression', 'stronger']
-    prog_score = sum(1 for word in progression_keywords if word in prompt_lower)
-    if prog_score > 0:
-        intents['progression'] = min(prog_score * 0.3, 1.0)
-
-    # Exercise-specific queries
-    exercise_names = ['bench', 'squat', 'deadlift', 'press', 'curl', 'row', 'pull', 'leg', 'chest', 'back']
-    exercise_score = sum(1 for exercise in exercise_names if exercise in prompt_lower)
-    if exercise_score > 0:
-        intents['exercise_specific'] = min(exercise_score * 0.2, 1.0)
-
-    # Philosophy update detection (HIGH PRIORITY - should override other intents)
-    philosophy_update_keywords = ['update my philosophy', 'update my philisophy', 'change my philosophy', 'modify my philosophy']
-    philosophy_update_score = sum(10 for phrase in philosophy_update_keywords if phrase in prompt_lower)  # Very high score
-
-    if philosophy_update_score > 0:
-        intents['philosophy_update'] = 1.0  # Maximum confidence for philosophy updates
-
-    # Enhanced historical queries - don't duplicate if already scored above
-    if 'historical' not in intents:
-        historical_keywords = ['did', 'last', 'history', 'previous', 'ago', 'yesterday', 'week', 'recent', 'latest']
-        hist_score = sum(1 for word in historical_keywords if word in prompt_lower)
-
-        # Boost score for day-specific historical queries
-        for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-            if day in prompt_lower and any(word in prompt_lower for word in ['what', 'show', 'did']):
-                hist_score += 5
-
-        # Boost score for general recent workout queries
-        general_recent_phrases = ['recent logs', 'recent workout', 'most recent', 'last workout', 'latest workout', 'most recent day']
-        for phrase in general_recent_phrases:
-            if phrase in prompt_lower:
-                hist_score += 8  # High boost for clear recent workout requests
-
-        if hist_score > 0:
-            intents['historical'] = min(hist_score * 0.25, 1.0)
-
-    # General fitness chat
-    general_keywords = ['hello', 'hi', 'how are', 'what can', 'help', 'advice', 'tips']
-    general_score = sum(1 for word in general_keywords if word in prompt_lower)
-    if general_score > 0:
-        intents['general'] = min(general_score * 0.15, 1.0)
-
-    # Enhanced negation and correction detection
-    negation_keywords = ['no', 'not', 'nope', 'incorrect', 'wrong', 'cancel', 'nevermind', 'actually']
-    correction_keywords = ['instead', 'rather', 'meant', 'actually', 'correction', 'change that to']
-
-    negation_score = sum(1 for word in negation_keywords if word in prompt_lower)
-    correction_score = sum(1 for word in correction_keywords if word in prompt_lower)
-
-    if negation_score > 0:
-        intents['negation'] = min(negation_score * 0.4, 1.0)
-
-    if correction_score > 0:
-        intents['correction'] = min(correction_score * 0.4, 1.0)
-
-    # Context-dependent intent boosting
-    if conversation_context:
-        last_intent = conversation_context.get('last_intent')
-        last_entities = conversation_context.get('last_entities', {})
-
-        # If user is making references and we have context, boost contextual intents
-        if detected_entities['references'] and last_intent:
-            if last_intent == 'plan_modification':
-                intents['plan_modification'] = intents.get('plan_modification', 0) + 0.3
-            elif last_intent == 'progression':
-                intents['progression'] = intents.get('progression', 0) + 0.3
-
-    # Multi-intent detection - return top intents if close in confidence
-    sorted_intents = sorted(intents.items(), key=lambda x: x[1], reverse=True)
-
-    if len(sorted_intents) >= 2 and sorted_intents[1][1] > 0.4:
-        # Multiple intents detected
-        return {
-            'intent': 'multi_intent',
-            'primary_intent': sorted_intents[0][0],
-            'secondary_intent': sorted_intents[1][0],
-            'confidence': sorted_intents[0][1],
-            'all_intents': intents,
-            'entities': detected_entities,
-            'actions': extract_potential_actions(prompt, sorted_intents[0][0])
-        }
-    elif intents:
-        best_intent = sorted_intents[0]
-        return {
-            'intent': best_intent[0],
-            'confidence': best_intent[1],
-            'all_intents': intents,
-            'entities': detected_entities,
-            'actions': extract_potential_actions(prompt, best_intent[0])
-        }
+    if isinstance(date_or_id, int):
+        session_id = date_or_id
+        date_str = None
     else:
-        return {'intent': 'general', 'confidence': 0.1, 'actions': [], 'entities': detected_entities}
+        date_str = date_or_id
+        session_id = None
 
-def extract_potential_actions(prompt, intent):
-    """Extract potential auto-executable actions from the prompt"""
-    actions = []
-    prompt_lower = prompt.lower()
+    conn = sqlite3.connect('workout_logs.db')
+    cursor = conn.cursor()
 
-    if intent == 'workout_logging':
-        # Look for workout data patterns
-        workout_patterns = re.findall(r'(\d+)x(\d+)(?:@|\s*at\s*)(\d+(?:\.\d+)?)\s*(?:lbs?|kg)?\s+([a-zA-Z\s]+)', prompt)
-        for sets, reps, weight, exercise in workout_patterns:
-            actions.append({
-                'type': 'log_workout',
-                'data': {
-                    'exercise': exercise.strip(),
-                    'sets': int(sets),
-                    'reps': reps,
-                    'weight': f"{weight}lbs"
-                }
-            })
+    normalized_rows = []
 
-    elif intent == 'plan_modification':
-        # Look for plan change requests with more detail
-        days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-        detected_day = None
-        for day in days:
-            if day in prompt_lower:
-                detected_day = day
-                break
-
-        # Try to extract exercise and modification details
-        modification_type = 'update'  # default
-
-        if any(word in prompt_lower for word in ['add', 'include']):
-            modification_type = 'add'
-        elif any(word in prompt_lower for word in ['remove', 'delete', 'drop']):
-            modification_type = 'remove'
-
-        actions.append({
-            'type': 'modify_plan',
-            'data': {
-                'day': detected_day,
-                'modification_type': modification_type,
-                'raw_request': prompt
-            }
-        })
-
-    return actions
-
-def extract_actual_performed_weight(exercise_name, recent_conversations):
-    """Extract the actual weight performed from recent conversations and workout logs"""
     try:
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
+        # First try to get from normalized tables
+        if session_id:
+            cursor.execute('SELECT date FROM workout_sessions WHERE id = ?', (session_id,))
+            result = cursor.fetchone()
+            if result:
+                date_str = result[0]
 
-        # Look for the most recent log of this exercise with weight details
-        cursor.execute('''
-            SELECT weight, notes FROM workouts
-            WHERE LOWER(exercise_name) = LOWER(?)
-            ORDER BY date_logged DESC, id DESC
-            LIMIT 1
-        ''', (exercise_name,))
+        if date_str:
+            # Get session from normalized tables
+            cursor.execute('SELECT id FROM workout_sessions WHERE date = ?', (date_str,))
+            session_result = cursor.fetchone()
 
-        recent_log = cursor.fetchone()
-        if recent_log:
-            weight, notes = recent_log
+            if session_result:
+                session_id = session_result[0]
 
-            # If notes mention specific weights (like "110 lbs for set 2 and 3"), extract the higher weight
-            if notes:
-                import re
-                weight_mentions = re.findall(r'(\d+)\s*(?:lbs?|pounds?)', notes)
-                if weight_mentions:
-                    # Return the highest weight mentioned in notes
-                    highest_weight = max(int(w) for w in weight_mentions)
-                    return f"{highest_weight}lbs"
+                # Get blocks for this session
+                cursor.execute('''
+                    SELECT id, block_type, label, order_index, meta_json
+                    FROM workout_blocks 
+                    WHERE session_id = ? 
+                    ORDER BY order_index
+                ''', (session_id,))
 
-            # Otherwise return the logged weight
-            return weight
+                blocks = cursor.fetchall()
 
-        conn.close()
-        return None
+                for block_id, block_type, label, order_index, meta_json in blocks:
+                    meta = json.loads(meta_json) if meta_json else {}
+
+                    # Get sets for this block
+                    cursor.execute('''
+                        SELECT set_index, data_json, status
+                        FROM workout_sets 
+                        WHERE block_id = ? 
+                        ORDER BY set_index
+                    ''', (block_id,))
+
+                    sets = cursor.fetchall()
+
+                    for set_index, data_json, status in sets:
+                        data = json.loads(data_json)
+
+                        row = {
+                            "exercise": data.get("exercise", ""),
+                            "block_type": block_type,
+                            "member_idx": data.get("member_idx"),
+                            "set_idx": set_index,
+                            "kind": data.get("kind", "standard"),
+                            "reps": data.get("reps"),
+                            "weight": data.get("weight"),
+                            "left_weight": data.get("left_weight"),
+                            "right_weight": data.get("right_weight"),
+                            "time_sec": data.get("time_sec"),
+                            "distance_m": data.get("distance_m"),
+                            "drops": data.get("drops", []),
+                            "mini_sets": data.get("mini_sets", []),
+                            "status": status,
+                            "notes": data.get("notes")
+                        }
+                        normalized_rows.append(row)
+
+            else:
+                # Legacy adapter: convert old workout_logs to normalized format
+                cursor.execute('''
+                    SELECT exercise, sets, reps, weight, notes 
+                    FROM workout_logs 
+                    WHERE date = ?
+                    ORDER BY id
+                ''', (date_str,))
+
+                legacy_rows = cursor.fetchall()
+
+                for exercise, sets, reps, weight, notes in legacy_rows:
+                    # Convert legacy format to normalized
+                    for set_idx in range(int(sets) if sets else 1):
+                        row = {
+                            "exercise": exercise,
+                            "block_type": "single",
+                            "member_idx": None,
+                            "set_idx": set_idx,
+                            "kind": "standard",
+                            "reps": int(reps) if reps else None,
+                            "weight": weight,
+                            "left_weight": None,
+                            "right_weight": None,
+                            "time_sec": None,
+                            "distance_m": None,
+                            "drops": [],
+                            "mini_sets": [],
+                            "status": "completed",
+                            "notes": notes
+                        }
+                        normalized_rows.append(row)
 
     except Exception as e:
-        print(f"Error extracting performed weight: {e}")
-        return None
+        print(f"NORMALIZE error: {e}")
 
-def parse_plan_modification_from_ai_response(ai_response, user_request):
-    """Parse Grok's response to extract specific plan modifications vs progression guidance"""
-    try:
-        # Look for progression guidance first (preferred method)
-        progression_guidance = []
-        guidance_pattern = r'PROGRESSION TIP:\s*([^:]+):\s*(.+?)(?=\n|$)'
-        guidance_matches = re.findall(guidance_pattern, ai_response, re.IGNORECASE)
-
-        for exercise_name, guidance_note in guidance_matches:
-            progression_guidance.append({
-                'type': 'progression_guidance',
-                'exercise_name': exercise_name.strip(),
-                'guidance_note': guidance_note.strip(),
-                'day': None  # Will be determined by the exercise location in plan
-            })
-
-        if progression_guidance:
-            return {'type': 'guidance', 'data': progression_guidance}
-
-        # Look for comprehensive trainer-style responses for actual plan modifications
-        modifications = []
-
-        # Check for structured trainer responses
-        if 'MODIFY:' in ai_response or 'ADD:' in ai_response or 'REPLACE:' in ai_response:
-            lines = ai_response.split('\n')
-            current_mod = None
-
-            for line in lines:
-                line = line.strip()
-
-                # Look for modification commands
-                if line.startswith('MODIFY:') or line.startswith('ADD:') or line.startswith('REPLACE:'):
-                    if current_mod:
-                        modifications.append(current_mod)
-
-                    mod_type = 'modify' if line.startswith('MODIFY:') else ('add' if line.startswith('ADD:') else 'replace')
-
-                    # Extract day and exercise from the line
-                    day_match = re.search(r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)', line.lower())
-                    exercise_match = re.search(r'(?:replace|add|modify)[\s\w]*?([a-zA-Z\s]+?)(?:\s*-|\s*with|\s*$)', line, re.IGNORECASE)
-
-                    current_mod = {
-                        'type': mod_type,
-                        'day': day_match.group(1) if day_match else None,
-                        'exercise_name': exercise_match.group(1).strip() if exercise_match else 'Unknown Exercise',
-                        'sets': 3,  # Default
-                        'reps': '8-12',  # Default
-                        'weight': 'bodyweight',  # Default
-                        'reasoning': ''
-                    }
-
-                # Extract details for current modification
-                elif current_mod:
-                    if 'Sets/reps:' in line or 'sets/reps:' in line:
-                        sets_reps = line.split(':', 1)[1].strip()
-                        sets_match = re.search(r'(\d+)', sets_reps)
-                        reps_match = re.search(r'(\d+(?:-\d+)?)', sets_reps)
-                        if sets_match:
-                            current_mod['sets'] = int(sets_match.group(1))
-                        if reps_match:
-                            current_mod['reps'] = reps_match.group(1)
-
-                    elif 'Reasoning:' in line:
-                        current_mod['reasoning'] = line.split(':', 1)[1].strip()
-
-                    elif 'Weight:' in line or '@' in line:
-                        weight_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg)', line)
-                        if weight_match:
-                            current_mod['weight'] = f"{weight_match.group(1)}lbs"
-
-            # Add the last modification
-            if current_mod:
-                modifications.append(current_mod)
-
-        # If we found structured modifications, return them
-        if modifications:
-            return {'type': 'plan_modification', 'data': modifications[0] if len(modifications) == 1 else modifications}
-
-        # Fallback to original parsing logic for unstructured responses
-        response_lower = ai_response.lower()
-
-        if not any(phrase in response_lower for phrase in ['can make', 'i can', 'absolutely', 'change', 'modify', 'update', 'recommend', 'suggest']):
-            return None
-
-        # Look for trainer-style language indicating modifications
-        trainer_patterns = [
-            r'your current (.+?) volume is already high, so instead of adding more, let\'s replace (.+?) with (.+)',
-            r'i\'d recommend replacing (.+?) with (.+?) because',
-            r'instead of adding more (.+?), let\'s swap (.+?) for (.+)',
-            r'your (.+?) day already has (.+?), so let\'s replace (.+?) with (.+)'
-        ]
-
-        for pattern in trainer_patterns:
-            match = re.search(pattern, response_lower)
-            if match:
-                return {
-                    'type': 'replace',
-                    'exercise_name': match.group(3) if len(match.groups()) >= 3 else 'Unknown Exercise',
-                    'old_exercise': match.group(2) if len(match.groups()) >= 2 else None,
-                    'day': None,  # Will be inferred
-                    'sets': 3,
-                    'reps': '8-12',
-                    'weight': 'bodyweight',
-                    'reasoning': f"Trainer recommendation: {match.group(0)}"
-                }
-
-        # Extract exercise, sets, reps, weight from either user request or AI response
-        exercise_pattern = r'(?:tricep|bicep|chest|shoulder|leg|back|ab|core)[\s\w]*(?:press|curl|extension|raise|pushdown|pulldown|fly|row|squat|deadlift)'
-        sets_pattern = r'(\d+)\s*(?:sets?|x)'
-        reps_pattern = r'(?:x|sets?\s*of\s*)(\d+(?:-\d+)?)'
-        weight_pattern = r'(\d+(?:\.\d+)?)\s*(?:lbs?|kg|pounds?)'
-        day_pattern = r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
-
-        # Try to find these patterns in either the user request or AI response
-        combined_text = f"{user_request} {ai_response}".lower()
-
-        exercise_match = re.search(exercise_pattern, combined_text)
-        sets_match = re.search(sets_pattern, combined_text)
-        reps_match = re.search(reps_pattern, combined_text)
-        weight_match = re.search(weight_pattern, combined_text)
-        day_match = re.search(day_pattern, combined_text)
-
-        if exercise_match:
-            return {
-                'type': 'update',  # assume update unless specified
-                'exercise_name': exercise_match.group(0),
-                'day': day_match.group(1) if day_match else None,
-                'sets': int(sets_match.group(1)) if sets_match else None,
-                'reps': reps_match.group(1) if reps_match else None,
-                'weight': f"{weight_match.group(1)}lbs" if weight_match else None,
-                'reasoning': f"Modified based on conversation about {exercise_match.group(0)}"
-            }
-
-    except Exception as e:
-        print(f"Error parsing plan modification: {e}")
-
-    return None
-
-def remove_loose_skin_references_comprehensive(target_text="loose skin"):
-    """Comprehensively remove all mentions of specified text from all relevant database fields"""
-    try:
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-
-        changes_made = []
-
-        # 1. Update plan_context table - all text fields
-        plan_context_fields = ['plan_philosophy', 'weekly_structure', 'progression_strategy', 'special_considerations']
-
-        for field in plan_context_fields:
-            cursor.execute(f'SELECT id, {field} FROM plan_context WHERE user_id = 1 AND {field} IS NOT NULL')
-            records = cursor.fetchall()
-
-            for record_id, current_text in records:
-                if current_text and target_text.lower() in current_text.lower():
-                    # Remove the target text and clean up
-                    updated_text = remove_text_and_cleanup(current_text, target_text)
-                    cursor.execute(f'UPDATE plan_context SET {field} = ?, updated_date = ? WHERE id = ?',
-                                 (updated_text, datetime.now().strftime('%Y-%m-%d'), record_id))
-                    changes_made.append(f"Updated {field} in plan_context")
-
-        # 2. Update exercise_metadata table
-        metadata_fields = ['primary_purpose', 'ai_notes']
-
-        for field in metadata_fields:
-            cursor.execute(f'SELECT id, exercise_name, {field} FROM exercise_metadata WHERE user_id = 1 AND {field} IS NOT NULL')
-            records = cursor.fetchall()
-
-            for record_id, exercise_name, current_text in records:
-                if current_text and target_text.lower() in current_text.lower():
-                    updated_text = remove_text_and_cleanup(current_text, target_text)
-                    cursor.execute(f'UPDATE exercise_metadata SET {field} = ? WHERE id = ?',
-                                 (updated_text, record_id))
-                    changes_made.append(f"Updated {field} for {exercise_name}")
-
-        # 3. Update weekly_plan notes
-        cursor.execute('SELECT id, exercise_name, notes FROM weekly_plan WHERE notes IS NOT NULL')
-        records = cursor.fetchall()
-
-        for record_id, exercise_name, current_notes in records:
-            if current_notes and target_text.lower() in current_notes.lower():
-                updated_notes = remove_text_and_cleanup(current_notes, target_text)
-                cursor.execute('UPDATE weekly_plan SET notes = ? WHERE id = ?',
-                             (updated_notes, record_id))
-                changes_made.append(f"Updated notes for {exercise_name}")
-
-        conn.commit()
+    finally:
         conn.close()
 
-        return changes_made
-
-    except Exception as e:
-        print(f"Error in comprehensive removal: {e}")
-        return []
-
-def remove_text_and_cleanup(original_text, target_text):
-    """Remove target text and clean up the resulting string"""
-    import re
-
-    # Case-insensitive removal
-    pattern = re.compile(re.escape(target_text), re.IGNORECASE)
-    updated_text = pattern.sub('', original_text)
-
-    # Clean up common artifacts
-    # Remove "for " if it's left hanging
-    updated_text = re.sub(r'\bfor\s*$', '', updated_text, flags=re.IGNORECASE)
-    updated_text = re.sub(r'\bfor\s*\,', ',', updated_text, flags=re.IGNORECASE)
-    updated_text = re.sub(r'\bfor\s*\.', '.', updated_text, flags=re.IGNORECASE)
-
-    # Clean up extra spaces and punctuation
-    updated_text = re.sub(r'\s+', ' ', updated_text)  # Multiple spaces to single
-    updated_text = re.sub(r'\s*,\s*,', ',', updated_text)  # Double commas
-    updated_text = re.sub(r'^\s*,\s*', '', updated_text)  # Leading comma
-    updated_text = re.sub(r'\s*,\s*$', '', updated_text)  # Trailing comma
-    updated_text = updated_text.strip()
-
-    return updated_text
-
-
-
-def should_include_conversation_context(message, query_intent):
-    """Determine if recent conversation context is needed for this message"""
-    message_lower = message.lower()
-
-    # Extract intent string if it's in dict format
-    actual_intent = query_intent
-    if isinstance(query_intent, dict):
-        actual_intent = query_intent.get('intent', 'general')
-
-    # Always include context for these scenarios
-    context_needed_scenarios = [
-        # Follow-up responses and corrections
-        message_lower.strip() in ['yes', 'no', 'confirm', 'cancel', 'go ahead', 'do it', 'make the change'],
-
-        # References that need context
-        any(ref in message_lower for ref in ['it', 'that', 'this exercise', 'the one', 'instead', 'other']),
-
-        # Continuation words
-        any(word in message_lower for word in ['also', 'additionally', 'but', 'however', 'actually', 'wait']),
-
-        # Negation/correction phrases
-        any(phrase in message_lower for phrase in ['no not', 'i meant', 'actually i', 'correction', 'change that']),
-
-        # Plan modification intents (need context for what was discussed)
-        actual_intent == 'plan_modification',
-
-        # Multi-intent scenarios
-        actual_intent == 'multi_intent',
-
-        # Questions about suggestions or recommendations (clearly follow-ups)
-        any(phrase in message_lower for phrase in ['is this smart', 'is that good', 'does that make sense', 'should i', 'would that work']),
-
-        # Exercise-related questions with day references (likely plan follow-ups)
-        ('i already' in message_lower and any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])),
-
-        # Short messages that likely need context
-        len(message.strip()) < 20 and not message_lower.strip() in ['hello', 'hi', 'help', 'thanks', 'thank you']
-    ]
-
-    # Skip context for these scenarios (standalone queries)
-    context_not_needed_scenarios = [
-        # Simple greetings
-        message_lower.strip() in ['hello', 'hi', 'hey', 'thanks', 'thank you'],
-
-        # Complete standalone questions that don't reference previous suggestions
-        (message_lower.startswith('what ') and len(message) > 30 and 'is this' not in message_lower),
-        (message_lower.startswith('how ') and len(message) > 30 and 'is this' not in message_lower),
-        (message_lower.startswith('show me') and len(message) > 20 and 'is this' not in message_lower),
-
-        # Historical queries (they build their own context)
-        actual_intent == 'historical',
-    ]
-
-    # Check if context is explicitly not needed
-    if any(context_not_needed_scenarios):
-        return False
-
-    # Check if context is needed
-    if any(context_needed_scenarios):
-        return True
-
-    # CRITICAL: For "general" intent messages that mention exercises and days, likely need context
-    if actual_intent == 'general':
-        # If message mentions exercises AND days AND seems like a follow-up question
-        mentions_exercise = any(ex in message_lower for ex in ['tricep', 'bicep', 'chest', 'back', 'leg', 'shoulder', 'workout'])
-        mentions_days = any(day in message_lower for day in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
-        seems_like_question = any(word in message_lower for word in ['?', 'smart', 'good', 'right', 'correct', 'okay', 'should', 'would'])
-
-        if mentions_exercise and mentions_days and seems_like_question:
-            return True
-
-    # Default: include context for shorter unclear messages
-    return len(message.strip()) < 50
-
-def parse_preference_updates_from_conversation(ai_response, user_request):
-    """Parse conversation to detect AI preference changes"""
-    try:
-        combined_text = f"{user_request} {ai_response}".lower()
-
-        preference_updates = {}
-
-        # Look for tone updates
-        if 'change tone to' in combined_text or 'tone to' in combined_text:
-            tone_keywords = ['casual', 'formal', 'motivational', 'friendly', 'professional']
-            for tone in tone_keywords:
-                if tone in combined_text:
-                    preference_updates['grok_tone'] = tone
-                    break
-
-        # Look for detail level updates
-        if 'more detailed' in combined_text or 'brief' in combined_text or 'concise' in combined_text:
-            if 'more detailed' in combined_text:
-                preference_updates['grok_detail_level'] = 'detailed'
-            elif 'brief' in combined_text or 'concise' in combined_text:
-                preference_updates['grok_detail_level'] = 'brief'
-
-        return preference_updates if preference_updates else None
-
-    except Exception as e:
-        print(f"Error parsing preference updates: {e}")
-        return None
-
-def parse_philosophy_update_from_conversation(ai_response, user_request):
-    """Parse conversation to detect philosophy/approach changes"""
-    try:
-        combined_text = f"{user_request} {ai_response}".lower()
-        user_request_lower = user_request.lower()
-        ai_response_lower = ai_response.lower()
-
-        # Check for targeted removal requests
-        removal_patterns = [
-            r'remove.*?(?:mention|reference).*?(?:of|to)\s*([^.]+)',
-            r'remove\s+([^.]+?)\s+from',
-            r'get rid of.*?([^.]+)',
-            r'eliminate.*?([^.]+)'
-        ]
-
-        for pattern in removal_patterns:
-            match = re.search(pattern, user_request_lower)
-            if match:
-                target_text = match.group(1).strip()
-                if target_text:
-                    print(f"🎯 Detected targeted removal request for: '{target_text}'")
-                    changes_made = remove_loose_skin_references_comprehensive(target_text)
-
-                    if changes_made:
-                        print(f"✅ Comprehensive removal complete:")
-                        for change in changes_made:
-                            print(f"  • {change}")
-
-                        return {
-                            'comprehensive_removal': True,
-                            'target_text': target_text,
-                            'changes_made': changes_made,
-                            'reasoning': f"✅ COMPLETED: Removed all mentions of '{target_text}' from {len(changes_made)} locations in your training plan",
-                            'success_message': f"Successfully removed '{target_text}' from {len(changes_made)} places in your training plan!"
-                        }
-                    else:
-                        return {
-                            'comprehensive_removal': True,
-                            'target_text': target_text,
-                            'changes_made': [],
-                            'reasoning': f"No mentions of '{target_text}' found to remove",
-                            'success_message': f"No mentions of '{target_text}' were found in your plan"
-                        }
-
-        # Look for EXPLICIT user requests that are asking for changes (NOT just asking questions)
-        user_change_requests = [
-            'update my philosophy with',
-            'change my approach to',
-            'modify my philosophy to',
-            'rewrite my philosophy to',
-            'set my philosophy to',
-            'replace my philosophy with',
-            'remove any mention of',
-            'remove from my philosophy'
-        ]
-
-        user_wants_change = any(request in user_request_lower for request in user_change_requests)
-
-        # CRITICAL: Exclude discussion-only requests
-        discussion_only_requests = [
-            'talk about my philosophy',
-            'discuss my philosophy', 
-            'what is my philosophy',
-            'show me my philosophy',
-            'tell me about my approach'
-        ]
-
-        if any(discussion in user_request_lower for discussion in discussion_only_requests):
-            user_wants_change = False
-
-        # If user wants a philosophy change, we need to help Grok by providing current context
-        if user_wants_change:
-            # Get current philosophy from database
-            conn = sqlite3.connect('workout_logs.db')
-            cursor = conn.cursor()
-
-            cursor.execute('''
-                SELECT plan_philosophy, weekly_structure, progression_strategy, special_considerations
-                FROM plan_context
-                WHERE user_id = 1
-                ORDER BY created_date DESC
-                LIMIT 1
-            ''')
-
-            current_context = cursor.fetchone()
-            conn.close()
-
-            if current_context:
-                current_philosophy, weekly_structure, progression_strategy, special_considerations = current_context
-
-                # Create a comprehensive rewrite prompt for Grok using new 2-field structure
-                rewrite_prompt = f"""Here is my current training philosophy:
-
-CURRENT PHILOSOPHY:
-Core Philosophy: {current_philosophy or 'Not set'}
-Current Plan Priorities: {progression_strategy or 'Not set'}
-
-USER REQUEST: {user_request}
-
-Please provide a complete updated philosophy that addresses the user's request. Format your response with these exact sections:
-
-CORE_PHILOSOPHY: [the foundational training approach and principles that don't change often]
-CURRENT_PLAN_PRIORITIES: [specific current focuses, goals, and priorities for this training phase]
-
-Make sure to provide complete, updated versions of both sections, not just acknowledgments."""
-
-                # Get Grok's structured rewrite
-                # progression_analysis = get_grok_response_with_context(rewrite_prompt, user_background) # Grok API call
-                response = get_grok_response_with_context(rewrite_prompt, user_background)
-
-                # For natural language philosophy (like from ChatGPT), use intelligent parsing for new 2-field structure
-                if any(phrase in user_request_lower for phrase in ['update my philosophy with', 'update my philosophy to', 'update my philisophy to']):
-                    # Extract the actual philosophy content after "with:" or "to:"
-                    philosophy_content = user_request.split(':', 1)[1].strip() if ':' in user_request else response
-
-                    # Parse the natural language philosophy into new 2-field structure
-                    extracted_data = {}
-
-                    # Split content into core philosophy (foundational) vs current priorities (specific)
-                    # Look for structural/foundational elements vs specific current focuses
-                    core_parts = []
-                    priority_parts = []
-
-                    sentences = philosophy_content.split('.')
-                    for sentence in sentences:
-                        sentence = sentence.strip()
-                        if not sentence:
-                            continue
-
-                        # Core philosophy indicators (foundational approaches)
-                        if any(word in sentence.lower() for word in ['machine-', 'cable-focused', 'joint safety', 'free weights', 'progressive overload', 'recovery']):
-                            core_parts.append(sentence + '.')
-                        # Current priority indicators (specific focuses)
-                        elif any(word in sentence.lower() for word in ['midsection', 'pelvis', 'abs', '5-day split', 'top priority', 'custom-built', 'balanced muscle']):
-                            priority_parts.append(sentence + '.')
-                        else:
-                            # Default to priorities for specific content
-                            priority_parts.append(sentence + '.')
-
-                    extracted_data['plan_philosophy'] = ' '.join(core_parts) if core_parts else philosophy_content[:len(philosophy_content)//2]
-                    extracted_data['progression_strategy'] = ' '.join(priority_parts) if priority_parts else philosophy_content[len(philosophy_content)//2:]
-
-                    extracted_data['reasoning'] = f"Updated with natural language philosophy from user using new 2-field structure"
-                    print(f"🧠 Successfully parsed natural language philosophy into core philosophy + current priorities")
-                    return extracted_data
-
-                # Parse ChatGPT's structured response using new 2-field structure
-                lines = response.split('\n')
-                extracted_data = {}
-                current_section = None
-                current_content = []
-
-                for line in lines:
-                    line = line.strip()
-
-                    # Look for section headers (more flexible matching)
-                    if any(header in line.upper() for header in ['CORE_PHILOSOPHY:', 'CORE PHILOSOPHY:']):
-                        # Save previous section
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-
-                        current_section = 'plan_philosophy'
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-
-                    elif any(header in line.upper() for header in ['CURRENT_PLAN_PRIORITIES:', 'CURRENT PLAN PRIORITIES:', 'PLAN_PRIORITIES:', 'PRIORITIES:']):
-                        # Save previous section  
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-
-                        current_section = 'progression_strategy'
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-
-                    elif any(header in line.upper() for header in ['REASONING:', 'REASON:']):
-                        # Save previous section
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-
-                        current_section = 'reasoning'
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-
-                    # Legacy compatibility
-                    elif 'TRAINING_PHILOSOPHY:' in line.upper() and not extracted_data.get('plan_philosophy'):
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-                        current_section = 'plan_philosophy'
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-
-                    elif 'PROGRESSION_STRATEGY:' in line.upper() and not extracted_data.get('progression_strategy'):
-                        if current_section and current_content:
-                            extracted_data[current_section] = ' '.join(current_content).strip()
-                        current_section = 'progression_strategy' 
-                        current_content = [line.split(':', 1)[1].strip()] if ':' in line else []
-
-                    else:
-                        # Add to current section if we're in one
-                        if current_section and line:
-                            current_content.append(line)
-
-                # Save final section
-                if current_section and current_content:
-                    extracted_data[current_section] = ' '.join(current_content).strip()
-
-                # If no structured sections found, try to use the whole response
-                if not extracted_data.get('plan_philosophy') and not extracted_data.get('progression_strategy'):
-                    # Split the response roughly in half
-                    full_response = response.strip()
-                    sentences = full_response.split('.')
-                    mid_point = len(sentences) // 2
-
-                    extracted_data['plan_philosophy'] = '. '.join(sentences[:mid_point]).strip() + '.'
-                    extracted_data['progression_strategy'] = '. '.join(sentences[mid_point:]).strip()
-
-                # Ensure we have reasoning
-                if not extracted_data.get('reasoning'):
-                    extracted_data['reasoning'] = f"Updated based on user request: {user_request[:100]}..."
-
-                print(f"🧠 Successfully parsed philosophy update - Core: {len(extracted_data.get('plan_philosophy', ''))} chars, Priorities: {len(extracted_data.get('progression_strategy', ''))} chars")
-                return extracted_data
-
-        # No philosophy update detected
-        return None
-
-    except Exception as e:
-        print(f"Error parsing philosophy update: {e}")
-
-    return None
-
-def analyze_day_progression(date_str):
-    """Analyze progression for all exercises completed on a specific day"""
+    print(f"NORMALIZE rows={len(normalized_rows)} for date={date_str}")
+    return normalized_rows
+
+def get_daily_progression_status(date_str):
+    """Get progression status for exercises on a specific date"""
     try:
         conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
@@ -1259,7 +538,7 @@ def analyze_day_progression(date_str):
         planned_exercises = cursor.fetchall()
 
         # Get recent workout history for context (last 4 weeks)
-        four_weeks_ago = (datetime.strptime(date_str, '%Y-%m-%d') - timedelta(weeks=4)).strftime('%Y-%m-%d')
+        four_weeks_ago = (datetime.now().strptime(date_str, '%Y-%m-%d') - timedelta(weeks=4)).strftime('%Y-%m-%d')
         cursor.execute('''
             SELECT exercise_name, sets, reps, weight, date_logged, notes
             FROM workouts
@@ -1629,10 +908,8 @@ The user is providing a new training philosophy to replace their current one. Yo
 REQUIRED OUTPUT FORMAT:
 After your natural response, include this structured data:
 
-TRAINING_PHILOSOPHY: [the main philosophy text]
-WEEKLY_STRUCTURE: [reasoning about how the week is organized]
-PROGRESSION_STRATEGY: [approach to progressive overload]
-SPECIAL_CONSIDERATIONS: [any limitations, safety considerations, etc.]
+CORE_PHILOSOPHY: [the foundational training approach and principles]
+CURRENT_PLAN_PRIORITIES: [specific current focuses and priorities for this training phase]
 REASONING: [brief note about the update]
 
 TONE: Respond naturally and conversationally, then provide the structured sections for database parsing."""
@@ -2190,7 +1467,7 @@ def chat_stream():
                         # Parse conversation history if needed
                         # For now, pass the raw conversation context
                         pass
-                    
+
                     print("MAIN_CHAT: using V2 tool calling")
                     result = ai_service_v2.get_ai_response(message, conversation_history_list)
                     response = result.get('response', 'No response from AI service')
@@ -4094,8 +3371,8 @@ def save_workout():
             comprehensive_notes += f" Environment: {environmental_factors}"
 
         cursor.execute('''
-            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, 
-                                substitution_reason, performance_context, environmental_factors, 
+            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged,
+                                substitution_reason, performance_context, environmental_factors,
                                 difficulty_rating, gym_location, day_completed, complex_exercise_data)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (exercise_name, sets, final_reps, weight, comprehensive_notes, date,
@@ -4105,8 +3382,8 @@ def save_workout():
         # Clear newly_added flag if this exercise was recently added to plan
         try:
             cursor.execute('''
-                UPDATE weekly_plan 
-                SET newly_added = FALSE 
+                UPDATE weekly_plan
+                SET newly_added = FALSE
                 WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
             ''', (exercise_name,))
         except sqlite3.OperationalError:
@@ -4117,7 +3394,7 @@ def save_workout():
         conn.close()
 
         return jsonify({
-            'status': 'success', 
+            'status': 'success',
             'message': 'Workout logged successfully',
             'workout_id': workout_id
         })
