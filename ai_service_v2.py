@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from typing import Dict, List, Any, Optional
 from openai import OpenAI
 from models import Database, User, TrainingPlan, Workout
@@ -48,6 +49,9 @@ class AIServiceV2:
         self.conversation_store = ConversationStore(db.db_path)
 
         # Define the tools/functions that the AI can call
+        # In-memory proposal storage for two-step write flow
+        self.pending_proposals = {}
+        
         self.tools = [
             {
                 "type": "function",
@@ -73,7 +77,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "get_weekly_plan",
-                    "description": "Get weekly workout plan including circuit blocks. Use when user asks about their plan, schedule, or what they should do on specific days.",
+                    "description": "Returns normalized blocks (single/superset/circuit) for a day or full week; circuits include rounds + members.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -82,6 +86,70 @@ class AIServiceV2:
                                 "description": "Specific day to get plan for (optional): monday, tuesday, wednesday, thursday, friday, saturday, sunday"
                             }
                         }
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "propose_plan_update",
+                    "description": "Use this to add complex workouts (circuits, supersets, rounds), not just simple sets. Pass a block with block_type (e.g., 'circuit'), label, order_index, meta_json (e.g., {rounds, rest_between_rounds_sec}), and members (array of mini-exercises with reps/weight/tempo). Returns a confirmation summary and a proposal_id.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day to add block to: monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
+                            "action": {
+                                "type": "string",
+                                "description": "Action to take: add_block, update_block, remove_block"
+                            },
+                            "block": {
+                                "type": "object",
+                                "description": "Block definition with block_type, label, meta_json, and members",
+                                "properties": {
+                                    "block_type": {
+                                        "type": "string",
+                                        "description": "Type: single, circuit, superset, rounds"
+                                    },
+                                    "label": {
+                                        "type": "string",
+                                        "description": "Display name for the block"
+                                    },
+                                    "order_index": {
+                                        "type": "integer",
+                                        "description": "Position in the day (optional, will auto-assign)"
+                                    },
+                                    "meta_json": {
+                                        "type": "object",
+                                        "description": "Metadata like rounds, rest_between_rounds_sec"
+                                    },
+                                    "members": {
+                                        "type": "array",
+                                        "description": "Array of exercises with reps/weight/tempo"
+                                    }
+                                }
+                            }
+                        },
+                        "required": ["day", "action", "block"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "commit_plan_update",
+                    "description": "Persist the previously proposed plan update. Returns {status:'ok', block_id, wrote: true} on success.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "proposal_id": {
+                                "type": "string",
+                                "description": "The proposal_id returned from propose_plan_update"
+                            }
+                        },
+                        "required": ["proposal_id"]
                     }
                 }
             },
@@ -127,7 +195,7 @@ class AIServiceV2:
                 "type": "function",
                 "function": {
                     "name": "compare_workout_to_plan",
-                    "description": "Compare actual workout performance to planned workout. Use when user asks how they did vs their plan.",
+                    "description": "Compares normalized plan (including circuits/rounds) vs. actual and returns a diff.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -249,6 +317,16 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
                     continue  # Continue the loop to get final response
                 else:
+                    # Check for phantom writes before finalizing response
+                    response_content = response_message.content.lower()
+                    if any(phrase in response_content for phrase in ['added to', 'created', 'updated your plan', 'wrote']) and not any('commit_plan_update' in str(result) for result in tool_results_for_response):
+                        # Phantom write detected - nudge the model to commit
+                        messages.append({
+                            "role": "system",
+                            "content": "Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}."
+                        })
+                        continue  # Go back to model for commit
+                    
                     # No more tools needed, save conversation turn and return final response
                     self.conversation_store.append_turn(message, response_message.content)
 
@@ -357,6 +435,18 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 return self._get_exercise_progression(
                     exercise_name=args.get('exercise_name'),
                     limit=args.get('limit', 10)
+                )
+            
+            elif function_name == "propose_plan_update":
+                return self._propose_plan_update(
+                    day=args.get('day'),
+                    action=args.get('action'),
+                    block=args.get('block')
+                )
+            
+            elif function_name == "commit_plan_update":
+                return self._commit_plan_update(
+                    proposal_id=args.get('proposal_id')
                 )
 
             else:
@@ -566,61 +656,87 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
     def _get_weekly_plan(self, day: str = None) -> Dict[str, Any]:
         """Get weekly workout plan, optionally filtered by day, including circuit blocks"""
-        from models import get_weekly_plan as get_plan
-        import json
-
-        all_plan = get_plan()
+        # Use the existing workout model to get plan data
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get plan data with circuit support
+            cursor.execute('''
+                SELECT day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                       COALESCE(block_type, 'single') as block_type, 
+                       COALESCE(meta_json, '{}') as meta_json,
+                       COALESCE(members_json, '[]') as members_json
+                FROM weekly_plan
+                ORDER BY day_of_week, exercise_order
+            ''')
+            
+            all_plan = cursor.fetchall()
+        except Exception as e:
+            print(f"Error fetching weekly plan: {e}")
+            all_plan = []
+        finally:
+            conn.close()
+            
         if not all_plan:
-            return []
+            return [] if day else {}
 
         # Group by day with circuit support
         plan_by_day = {}
-        for item in all_plan:
-            if isinstance(item, dict) and item.get('block_type') == 'circuit':
-                # Handle circuit block
-                day_name = item['day_of_week']
-                if day_name not in plan_by_day:
-                    plan_by_day[day_name] = []
+        for row in all_plan:
+            day_name, exercise_name, sets, reps, weight, order, block_type, meta_json, members_json = row
+            
+            if day_name not in plan_by_day:
+                plan_by_day[day_name] = []
 
-                # Expand circuit to planned sets
-                meta = item.get('meta', {})
-                members = item.get('members', [])
-                rounds = meta.get('rounds', 1)
+            if block_type == 'circuit':
+                # Parse circuit data
+                try:
+                    meta = json.loads(meta_json) if meta_json else {}
+                    members = json.loads(members_json) if members_json else []
+                    rounds = meta.get('rounds', 1)
 
-                circuit_sets = []
-                for round_idx in range(rounds):
-                    for member_idx, member in enumerate(members):
-                        circuit_sets.append({
-                            'exercise': member.get('exercise', ''),
-                            'block_type': 'circuit',
-                            'member_idx': member_idx,
-                            'set_idx': round_idx,
-                            'reps': member.get('reps'),
-                            'weight': member.get('weight'),
-                            'tempo': member.get('tempo'),
-                            'status': 'planned'
-                        })
+                    circuit_sets = []
+                    for round_idx in range(rounds):
+                        for member_idx, member in enumerate(members):
+                            circuit_sets.append({
+                                'exercise': member.get('exercise', ''),
+                                'block_type': 'circuit',
+                                'member_idx': member_idx,
+                                'set_idx': round_idx,
+                                'reps': member.get('reps'),
+                                'weight': member.get('weight'),
+                                'tempo': member.get('tempo'),
+                                'status': 'planned'
+                            })
 
-                plan_by_day[day_name].append({
-                    'block_type': 'circuit',
-                    'label': item.get('exercise_name', 'Circuit'),
-                    'order_index': item.get('exercise_order', 0),
-                    'meta': meta,
-                    'members': members,
-                    'sets': circuit_sets
-                })
+                    plan_by_day[day_name].append({
+                        'block_type': 'circuit',
+                        'label': exercise_name,
+                        'order_index': order,
+                        'meta': meta,
+                        'members': members,
+                        'sets': circuit_sets
+                    })
+                except json.JSONDecodeError:
+                    # Fallback to simple format
+                    plan_by_day[day_name].append({
+                        'exercise': exercise_name,
+                        'sets': sets,
+                        'reps': reps,
+                        'weight': weight,
+                        'block_type': 'single',
+                        'order': order
+                    })
             else:
-                # Handle standard format
-                row = item if isinstance(item, tuple) else (item.get('id'), item.get('day_of_week'), item.get('exercise_name'), item.get('sets'), item.get('reps'), item.get('weight'))
-                day_name, exercise, sets, reps, weight = row[1], row[2], row[3], row[4], row[5]
-                if day_name not in plan_by_day:
-                    plan_by_day[day_name] = []
+                # Standard exercise
                 plan_by_day[day_name].append({
-                    'exercise': exercise,
+                    'exercise': exercise_name,
                     'sets': sets,
                     'reps': reps,
                     'weight': weight,
-                    'block_type': 'single'
+                    'block_type': 'single',
+                    'order': order
                 })
 
         if day:
@@ -1041,3 +1157,133 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         except Exception as e:
             conn.close()
             return {'error': f'Failed to get exercise progression: {str(e)}'}
+    
+    def _propose_plan_update(self, day: str, action: str, block: dict) -> Dict[str, Any]:
+        """Validate and normalize a plan update, return proposal_id for commit"""
+        import uuid
+        
+        try:
+            # Generate unique proposal ID
+            proposal_id = f"pr_{uuid.uuid4().hex[:8]}"
+            
+            # Normalize and validate the block
+            normalized_block = {
+                'block_type': block.get('block_type', 'single'),
+                'label': block.get('label', 'Untitled'),
+                'order_index': block.get('order_index', 99),
+                'meta_json': block.get('meta_json', {}),
+                'members': block.get('members', [])
+            }
+            
+            # Validate required fields
+            if not day or day.lower() not in ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
+                return {'error': 'Invalid day specified'}
+            
+            if not action or action not in ['add_block', 'update_block', 'remove_block']:
+                return {'error': 'Invalid action specified'}
+            
+            # Store the proposal
+            self.pending_proposals[proposal_id] = {
+                'day': day.lower(),
+                'action': action,
+                'block': normalized_block,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Generate user-friendly summary
+            block_type = normalized_block['block_type']
+            label = normalized_block['label']
+            
+            if block_type == 'circuit':
+                rounds = normalized_block['meta_json'].get('rounds', 1)
+                members_count = len(normalized_block['members'])
+                summary = f"Add '{label}' (circuit, {rounds} rounds, {members_count} members) to {day.title()}"
+            else:
+                summary = f"Add '{label}' ({block_type}) to {day.title()}"
+            
+            print(f"PROPOSE id={proposal_id} day={day} action={action} type={block_type} rounds={normalized_block['meta_json'].get('rounds', 1)} members={len(normalized_block['members'])}")
+            
+            return {
+                'proposal_id': proposal_id,
+                'summary': summary,
+                'normalized_block': normalized_block,
+                'action': action,
+                'day': day.lower()
+            }
+            
+        except Exception as e:
+            return {'error': f'Failed to create proposal: {str(e)}'}
+    
+    def _commit_plan_update(self, proposal_id: str) -> Dict[str, Any]:
+        """Persist the previously proposed plan update"""
+        try:
+            # Get the proposal
+            proposal = self.pending_proposals.get(proposal_id)
+            if not proposal:
+                return {'error': f'Proposal {proposal_id} not found or expired'}
+            
+            day = proposal['day']
+            action = proposal['action']
+            block = proposal['block']
+            
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            block_id = None
+            
+            if action == 'add_block':
+                # Get next order if not specified
+                if block['order_index'] == 99:
+                    cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+                    block['order_index'] = cursor.fetchone()[0]
+                
+                if block['block_type'] == 'circuit':
+                    # Insert circuit block
+                    cursor.execute('''
+                        INSERT INTO weekly_plan
+                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                         block_type, meta_json, members_json, created_by, newly_added, date_added)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (day, block['label'], 
+                          block['meta_json'].get('rounds', 1), 
+                          f"{len(block['members'])} exercises",
+                          'circuit', 
+                          block['order_index'],
+                          'circuit', 
+                          json.dumps(block['meta_json']), 
+                          json.dumps(block['members']), 
+                          'ai_v2', True, 
+                          datetime.now().strftime('%Y-%m-%d')))
+                    
+                    block_id = cursor.lastrowid
+                else:
+                    # Insert simple block
+                    cursor.execute('''
+                        INSERT INTO weekly_plan
+                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (day, block['label'], 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
+                    
+                    block_id = cursor.lastrowid
+            
+            conn.commit()
+            conn.close()
+            
+            # Clean up the proposal
+            del self.pending_proposals[proposal_id]
+            
+            print(f"COMMIT id={proposal_id} wrote=True block_id={block_id}")
+            
+            # Post-write verification
+            updated_plan = self._get_weekly_plan(day)
+            print(f"POST_WRITE_VERIFY day={day} blocks={len(updated_plan)}")
+            
+            return {
+                'status': 'ok',
+                'block_id': block_id,
+                'wrote': True,
+                'updated_plan': updated_plan
+            }
+            
+        except Exception as e:
+            return {'error': f'Failed to commit proposal: {str(e)}'}
