@@ -45,16 +45,21 @@
                                 {{ exercise.meta.rounds or 1 }} rounds • Complex block
                               </div>
                               <div class="mt-1 text-sm">
-                                {# compact one-line summary of members #}
+                                {# compact one-line summary without using the 'do' extension #}
                                 {% if exercise.members and exercise.members|length > 0 %}
-                                  {% set parts = [] %}
                                   {% for m in exercise.members %}
-                                    {% set p = (m.exercise or 'Exercise') ~
-                                               ((' ' ~ m.reps ~ ' reps') if m.reps is defined and m.reps is not none else '') ~
-                                               ((' @ ' ~ m.weight) if m.weight is defined and m.weight is not none else '') %}
-                                    {% do parts.append(p) %}
+                                    {% set exname = m.exercise or m.name or 'Movement' %}
+                                    {% if m.reps is not none and m.weight %}
+                                      {{ exname }} ({{ m.reps }} @ {{ m.weight }})
+                                    {% elif m.reps is not none %}
+                                      {{ exname }} ({{ m.reps }} reps)
+                                    {% elif m.weight %}
+                                      {{ exname }} ({{ m.weight }})
+                                    {% else %}
+                                      {{ exname }}
+                                    {% endif %}
+                                    {% if not loop.last %} • {% endif %}
                                   {% endfor %}
-                                  {{ parts|join(' • ') }}
                                 {% endif %}
                               </div>
                             {% else %}
