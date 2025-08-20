@@ -1329,45 +1329,101 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 }
 
             elif action == 'add_block':
-                # Get next order if not specified
-                if block['order_index'] == 99:
-                    cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
-                    block['order_index'] = cursor.fetchone()[0]
+                import json
 
-                # Extract normalized block data from proposal
-                nb = proposal.get("normalized_block", {})
-                block_type = (nb.get("block_type") or "single").lower()
-                label = nb.get("label") or nb.get("exercise") or "Block"
-                rounds = int(nb.get("rounds") or 1)
-                members = nb.get("members") or []
-                meta = (nb.get("meta_json") or nb.get("meta") or {}).copy()
-                meta["rounds"] = rounds
+                # ---------- Unified add_block circuit/rounds path ----------
+                # Pull from either key; some versions store only 'block'
+                nb = proposal.get("normalized_block") or {}
+                blk = proposal.get("block") or {}
+                if not isinstance(nb, dict):
+                    try: nb = json.loads(nb)
+                    except Exception: nb = {}
+                if not isinstance(blk, dict):
+                    try: blk = json.loads(blk)
+                    except Exception: blk = {}
 
-                # Force commit_plan_update to write to DB
-                if block_type in ("circuit", "rounds"):
-                    # Insert circuit/rounds block
-                    cursor.execute('''
-                        INSERT INTO weekly_plan
-                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
-                         block_type, meta_json, members_json, created_by, newly_added, date_added)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (day, label, rounds, '', '', block['order_index'],
-                          block_type, json.dumps(meta), json.dumps(members), 
-                          'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
-
-                    block_id = cursor.lastrowid
-                else:
-                    # Insert simple block
-                    cursor.execute('''
-                        INSERT INTO weekly_plan
-                        (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (day, label, 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
-
-                    block_id = cursor.lastrowid
+                # Prefer normalized
+                u = nb or blk
+                block_type = (u.get("block_type") or "single").lower()
+                if block_type == "complex":
+                    block_type = "circuit"
+                label      = (u.get("label") or u.get("exercise") or "Block").strip()
+                order_idx  = u.get("order_index") or 99
+                rounds     = int(u.get("rounds") or u.get("meta_json", {}).get("rounds") or 1)
+                members    = u.get("members") or []
+                meta       = (u.get("meta_json") or u.get("meta") or {}).copy()
+                meta.setdefault("rounds", rounds)
 
                 # Add debug print statement after assembling block_type/label/rounds/members
                 print(f"COMMIT_ADD inspect type={block_type} label={label} rounds={rounds} members={len(members)}")
+
+                # If this is a complex block, write it as circuit/rounds and RETURN EARLY
+                if block_type in ("circuit", "rounds"):
+                    # Compute order if not specified
+                    if order_idx == 99:
+                        cursor.execute(
+                            "SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE LOWER(day_of_week) = ?",
+                            (day.lower(),)
+                        )
+                        order_idx = int(cursor.fetchone()[0] or 1)
+
+                    cursor.execute(
+                        """
+                        INSERT INTO weekly_plan
+                            (day_of_week, exercise_name, target_sets, target_reps, target_weight,
+                             block_type, meta_json, members_json, exercise_order, created_by, newly_added, date_added)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            day.lower(),
+                            label,                     # store block label in exercise_name
+                            rounds,                    # target_sets helps template fallback
+                            "",                        # reps blank at block-level
+                            "",                        # weight blank at block-level
+                            block_type,                # "circuit" or "rounds"
+                            json.dumps(meta),
+                            json.dumps(members),
+                            int(order_idx),
+                            "ai_v2",
+                            True,
+                            datetime.now().strftime("%Y-%m-%d"),
+                        ),
+                    )
+                    conn.commit()
+                    block_id = cursor.lastrowid
+
+                    # Clean up the proposal NOW and return early so the single-fallback never runs
+                    try:
+                        del self.pending_proposals[proposal_id]
+                    except Exception:
+                        pass
+
+                    print(f"COMMIT_ADD branch=circuit label={label!r} rounds={rounds} members={len(members)}")
+
+                    updated_plan = self._get_weekly_plan(day)
+                    print(f"POST_WRITE_VERIFY day={day} blocks={len(updated_plan)}")
+                    return {
+                        "status": "ok",
+                        "block_id": block_id,
+                        "wrote": True,
+                        "updated_plan": updated_plan,
+                    }
+                # ---------- end unified circuit/rounds path ----------
+
+                # Single block fallback (only executes if not circuit/rounds)
+                # Get next order if not specified
+                if order_idx == 99:
+                    cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
+                    order_idx = cursor.fetchone()[0]
+
+                # Insert simple block
+                cursor.execute('''
+                    INSERT INTO weekly_plan
+                    (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (day, label, 3, '8-12', 'bodyweight', order_idx, 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
+
+                block_id = cursor.lastrowid
 
 
             conn.commit()
