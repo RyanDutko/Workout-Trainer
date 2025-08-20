@@ -1597,7 +1597,6 @@ def chat_stream():
                             prev_ai_text = prev_response[0].lower()
 
                             # Look for ChatGPT's structured JSON modification commands
-                            import re
                             json_pattern = r'PLAN_MODIFICATION:\s*({[^}]+})'
                             json_match = re.search(json_pattern, prev_response[0])
 
@@ -1864,99 +1863,91 @@ def weekly_plan():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Get all exercises for the week including block metadata
+    # Pull a superset of columns and coalesce legacy names so this works on old DBs too
     cursor.execute("""
-        SELECT id, day_of_week, exercise_name,
-               COALESCE(target_sets, 0) AS target_sets,
-               COALESCE(target_reps, '') AS target_reps,
-               COALESCE(target_weight, '') AS target_weight,
-               COALESCE(block_type, 'single') AS block_type,
-               COALESCE(meta_json, '{}') AS meta_json,
-               COALESCE(members_json, '[]') AS members_json,
-               exercise_order,
-               COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "")
-        FROM weekly_plan 
-        ORDER BY day_of_week, exercise_order
+        SELECT
+            id,
+            day_of_week,
+            exercise_name,
+            COALESCE(target_sets, sets) AS sets,
+            COALESCE(target_reps, reps) AS reps,
+            COALESCE(target_weight, weight) AS weight,
+            COALESCE(exercise_order, order_index) AS ord,
+            COALESCE(notes, "") AS notes,
+            COALESCE(newly_added, 0) AS newly_added,
+            COALESCE(progression_notes, "") AS progression_notes,
+            COALESCE(block_type, 'single') AS block_type,
+            COALESCE(meta_json, '{}') AS meta_json,
+            COALESCE(members_json, '[]') AS members_json
+        FROM weekly_plan
+        ORDER BY day_of_week, ord
     """)
 
+    import json
     rows = cursor.fetchall()
     conn.close()
 
-    import json
-
-    # Group exercises by day with enhanced display data
     plan_by_day = {}
-    for r in rows:
-        (row_id, dow, name, t_sets, t_reps, t_weight, btype, meta_js, members_js, order_idx, notes, newly_added, progression_notes) = r
+    for row in rows:
+        (row_id, day, exercise_name, sets, reps, weight, ord_idx, notes,
+         newly_added, progression_notes, block_type, meta_json, members_json) = row
 
-        try:
-            meta = json.loads(meta_js) if meta_js else {}
-        except Exception:
-            meta = {}
-        try:
-            members = json.loads(members_js) if members_js else []
-        except Exception:
-            members = []
+        if day not in plan_by_day:
+            plan_by_day[day] = []
 
-        item = {
-            "id": row_id,
-            "name": name,
-            "block_type": (btype or "single").lower(),
-            "sets": t_sets,
-            "reps": t_reps,
-            "weight": t_weight,
-            "order": order_idx,
-            "notes": notes,
-            "newly_added": newly_added,
-            "progression_notes": progression_notes,
-            # new fields used by the template/UI:
-            "subtitle": "",
-            "sets_label": "",
-        }
+        if block_type == 'circuit':
+            # Parse circuit metadata
+            try:
+                meta = json.loads(meta_json) if meta_json else {}
+            except Exception:
+                meta = {}
+            try:
+                members = json.loads(members_json) if members_json else []
+            except Exception:
+                members = []
 
-        if item["block_type"] in ("circuit", "rounds"):
-            rounds = None
-            if isinstance(meta, dict) and "rounds" in meta:
-                try: 
-                    rounds = int(meta["rounds"])
-                except Exception: 
-                    rounds = None
-            if rounds is None:
-                try: 
-                    rounds = int(t_sets or 1)
-                except Exception: 
-                    rounds = 1
-            rounds = max(1, rounds)
+            # Optional: prebuild a "sets" list so UI can show round-by-round if desired
+            rounds = int(meta.get('rounds', 1)) if str(meta.get('rounds', 1)).isdigit() else 1
+            circuit_sets = []
+            for round_idx in range(rounds):
+                for member_idx, member in enumerate(members):
+                    circuit_sets.append({
+                        'exercise': member.get('exercise', ''),
+                        'block_type': 'circuit',
+                        'member_idx': member_idx,
+                        'set_idx': round_idx,
+                        'reps': member.get('reps'),
+                        'weight': member.get('weight'),
+                        'tempo': member.get('tempo'),
+                        'status': 'planned'
+                    })
 
-            # Build a compact summary like:
-            # "2 rounds • Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs), Hammer curls (10 @ 15 lbs)"
-            parts = []
-            for m in members:
-                ex = m.get("exercise") or m.get("name") or "Movement"
-                reps = m.get("reps")
-                wt = m.get("weight")
-                if reps is not None and wt:
-                    parts.append(f"{ex} ({reps} @ {wt})")
-                elif reps is not None:
-                    parts.append(f"{ex} ({reps} reps)")
-                elif wt:
-                    parts.append(f"{ex} ({wt})")
-                else:
-                    parts.append(ex)
-
-            item["sets_label"] = f"{rounds} rounds"
-            item["subtitle"] = " • ".join([item["sets_label"], ", ".join(parts)]) if parts else item["sets_label"]
-
-            # For circuits, blank the old single-exercise fields so the template won't show "2 @"
-            item["reps"] = ""
-            item["weight"] = ""
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'circuit',
+                'label': exercise_name,         # block title (e.g., "Bicep Finisher Rounds")
+                'order_index': ord_idx,
+                'meta': meta,                   # includes rounds
+                'members': members,             # array of { exercise, reps, weight, tempo }
+                'sets': circuit_sets,           # round-expanded if you want to show it
+                'notes': notes or "",
+                'newly_added': bool(newly_added),
+                'progression_notes': progression_notes or ""
+            })
         else:
-            # single: keep old labels
-            item["sets_label"] = f"{t_sets} × {t_reps}" if t_reps else f"{t_sets} sets"
-
-        if dow not in plan_by_day:
-            plan_by_day[dow] = []
-        plan_by_day[dow].append(item)
+            # Simple exercise
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'single',
+                'exercise': exercise_name,      # name string for simple item
+                'sets': sets,
+                'reps': reps,
+                'weight': weight,
+                'order': ord_idx,
+                'notes': notes or "",
+                'newly_added': bool(newly_added),
+                'progression_notes': progression_notes or ""
+            })
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
@@ -2326,6 +2317,7 @@ Please be concise but capture the key insights from our discussion."""
                             datetime.now().strftime('%Y-%m-%d')
                         ))
                         created_contexts += 1
+
             else:
                 # Single instance of the exercise
                 if any(word in exercise_lower for word in ['ab', 'crunch', 'woodchop', 'back extension', 'strap ab']):

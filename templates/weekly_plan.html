@@ -30,46 +30,38 @@
                                 <div class="d-flex justify-content-between align-items-start mb-3">
                                     <div class="flex-grow-1 me-3">
                                         <h6 class="fw-bold mb-2 text-dark">
-                                            {{ (exercise.exercise or exercise.exercise_name or exercise.label or 'Block')|title }}
+                                            {% if exercise.block_type == 'circuit' %}
+                                                {{ exercise.label }}
+                                            {% else %}
+                                                {{ exercise.exercise }}
+                                            {% endif %}
                                             {% if exercise.newly_added %}
                                                 <span class="badge bg-success ms-2" style="font-size: 0.65rem;">New!</span>
                                             {% endif %}
                                         </h6>
                                         <div class="exercise-info">
-                            {% if exercise.block_type in ['circuit', 'rounds'] %}
-                              {# figure out rounds #}
-                              {% set rounds = 1 %}
-                              {% if exercise.meta is mapping and 'rounds' in exercise.meta %}
-                                {% set rounds = exercise.meta.rounds %}
-                              {% elif exercise.sets %}
-                                {% set rounds = exercise.sets %}
-                              {% endif %}
-                              <div class="plan-meta">
-                                {{ rounds }} rounds
-                                {% if exercise.members %}
-                                  •
-                                  {# list members like: Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs) #}
+                            {% if exercise.block_type == 'circuit' %}
+                              <div class="text-sm text-muted-foreground">
+                                {{ exercise.meta.rounds or 1 }} rounds • Complex block
+                              </div>
+                              <div class="mt-1 text-sm">
+                                {# compact one-line summary of members #}
+                                {% if exercise.members and exercise.members|length > 0 %}
+                                  {% set parts = [] %}
                                   {% for m in exercise.members %}
-                                    {% set exname = m.exercise or m.name or 'Movement' %}
-                                    {% if m.reps and m.weight %}
-                                      {{ exname }} ({{ m.reps }} @ {{ m.weight }})
-                                    {% elif m.reps %}
-                                      {{ exname }} ({{ m.reps }} reps)
-                                    {% elif m.weight %}
-                                      {{ exname }} ({{ m.weight }})
-                                    {% else %}
-                                      {{ exname }}
-                                    {% endif %}
-                                    {% if not loop.last %}, {% endif %}
+                                    {% set p = (m.exercise or 'Exercise') ~
+                                               ((' ' ~ m.reps ~ ' reps') if m.reps is defined and m.reps is not none else '') ~
+                                               ((' @ ' ~ m.weight) if m.weight is defined and m.weight is not none else '') %}
+                                    {% do parts.append(p) %}
                                   {% endfor %}
+                                  {{ parts|join(' • ') }}
                                 {% endif %}
                               </div>
-                              <div class="plan-type">Complex block</div>
                             {% else %}
-                              <div class="plan-meta">
+                              <div class="text-sm text-muted-foreground">
                                 {{ exercise.sets }} × {{ exercise.reps }}{% if exercise.weight %} @ {{ exercise.weight }}{% endif %}
                               </div>
-                              <div class="plan-type">Single</div>
+                              <div class="text-xs">Single</div>
                             {% endif %}
                             {% if exercise.notes %}
                                 <small class="text-muted d-block">{{ exercise.notes }}</small>
