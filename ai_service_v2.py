@@ -127,7 +127,16 @@ class AIServiceV2:
                                     },
                                     "members": {
                                         "type": "array",
-                                        "description": "Array of exercises with reps/weight/tempo"
+                                        "description": "Array of exercises with reps/weight/tempo",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "exercise": {"type": "string"},
+                                                "reps": {"type": "integer"},
+                                                "weight": {"type": "string"},
+                                                "tempo": {"type": "string"}
+                                            }
+                                        }
                                     }
                                 }
                             }
