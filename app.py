@@ -1917,6 +1917,112 @@ def weekly_plan():
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 
+@app.route('/logging_template', methods=['GET'])
+def logging_template():
+    try:
+        date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+        day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A').lower()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT
+                id,
+                day_of_week,
+                exercise_name,
+                COALESCE(target_sets, 0),
+                COALESCE(target_reps, ''),
+                COALESCE(target_weight, ''),
+                COALESCE(block_type, 'single') AS block_type,
+                COALESCE(meta_json, '{}')      AS meta_json,
+                COALESCE(members_json, '[]')   AS members_json,
+                exercise_order
+            FROM weekly_plan
+            WHERE LOWER(day_of_week) = ?
+            ORDER BY exercise_order
+        ''', (day_name,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        # Build a dynamic template the UI can render
+        blocks = []
+        for (row_id, _dow, name, t_sets, t_reps, t_weight, btype, meta_json, members_json, _order) in rows:
+            try:
+                meta = json.loads(meta_json) if meta_json else {}
+            except Exception:
+                meta = {}
+            try:
+                members = json.loads(members_json) if members_json else []
+            except Exception:
+                members = []
+
+            btype_l = (btype or "single").lower()
+
+            # Simple block
+            if btype_l == "single":
+                blocks.append({
+                    "block_id": f"BLK-{row_id}",
+                    "type": "simple",
+                    "title": name,
+                    "members": [{
+                        "name": name,
+                        "input_id": f"BLK-{row_id}.S1",
+                        "planned_reps": t_reps,
+                        "planned_weight": t_weight
+                    }]
+                })
+                continue
+
+            # Circuit / Rounds block
+            rounds = None
+            # Prefer explicit meta.rounds; fall back to target_sets
+            if isinstance(meta, dict) and "rounds" in meta:
+                try:
+                    rounds = int(meta["rounds"])
+                except Exception:
+                    rounds = None
+            if rounds is None:
+                try:
+                    rounds = int(t_sets or 1)
+                except Exception:
+                    rounds = 1
+            if rounds < 1:
+                rounds = 1
+
+            # Members should contain at least name/reps/weight
+            # Expected shape: [{"exercise": "...", "reps": 10, "weight": "20 lbs", ...}, ...]
+            # Map to UI-friendly fields
+            round_list = []
+            for r in range(1, rounds+1):
+                r_members = []
+                for mi, m in enumerate(members):
+                    ex_name = m.get("exercise") or m.get("name") or name
+                    planned_reps = m.get("reps", t_reps)
+                    planned_weight = m.get("weight", t_weight)
+                    r_members.append({
+                        "name": ex_name,
+                        "input_id": f"BLK-{row_id}.R{r}.{mi}",
+                        "planned_reps": planned_reps,
+                        "planned_weight": planned_weight
+                    })
+                round_list.append({
+                    "round_index": r,
+                    "members": r_members
+                })
+
+            blocks.append({
+                "block_id": f"BLK-{row_id}",
+                "type": "rounds",
+                "title": name,
+                "rounds": round_list
+            })
+
+        template = {"date": date, "blocks": blocks}
+        return jsonify({"success": True, "template": template}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/get_plan/<date>')
 def get_plan(date):
     """Get workout plan for a specific date"""

@@ -1180,11 +1180,14 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             proposal_id = f"pr_{uuid.uuid4().hex[:8]}"
 
             # Extract block details
-            block_type = block.get("block_type", "single")
+            block_type = (block.get("block_type") or "single").lower()
+            if block_type == "complex":
+                block_type = "circuit"
+            
             label = block.get("label", f"New {block_type.title()} Block")
             order_index = block.get("order_index", 99)
             members = block.get("members", [])
-            rounds = int(block.get("rounds", 1))
+            rounds = int(block.get("rounds") or 1)
 
             # Normalize the block structure
             normalized_block = {
@@ -1192,21 +1195,21 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 "label": label,
                 "order_index": order_index,
                 "rounds": rounds,
-                "meta_json": block.get("meta", {}) or {},
+                "meta_json": (block.get("meta_json") or block.get("meta") or {}),
                 "members": members,
                 "sets": []
             }
 
-            # Create planned sets for complex blocks
-            if block_type in ["circuit", "rounds"]:
+            # Create planned sets for circuit/rounds blocks
+            if block_type in ("circuit", "rounds"):
                 for r in range(rounds):
                     for mi, m in enumerate(members):
                         normalized_block["sets"].append({
                             **m,
                             "block_type": block_type,
                             "member_idx": mi,
-                            "set_idx": r,
-                            "round_index": r + 1,  # 1-based for UI
+                            "set_idx": r,        # 0-based
+                            "round_index": r+1,  # 1-based for UI
                             "status": "planned"
                         })
 
