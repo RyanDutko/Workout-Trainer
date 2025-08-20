@@ -9,11 +9,11 @@
     </div>
 
     <!-- Date Selection & Plan Loading -->
-    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
-      <div class="flex items-center justify-center gap-4">
-        <label for="logDate" class="font-semibold text-gray-700">Select Date:</label>
-        <input id="logDate" type="date" class="border-2 border-gray-300 px-4 py-2 rounded-lg focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all">
-        <button id="loadDayBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-2 rounded-lg font-semibold transition-all transform hover:scale-105">Load Day</button>
+    <div class="bg-gradient-to-r from-white to-gray-50 rounded-xl shadow-xl p-8 mb-8 border border-gray-200">
+      <div class="flex items-center justify-center gap-6">
+        <label for="logDate" class="font-bold text-gray-800 text-lg">Select Date:</label>
+        <input id="logDate" type="date" class="border-2 border-gray-300 px-6 py-3 rounded-xl text-lg font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all shadow-md">
+        <button id="loadDayBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-xl">Load Day</button>
       </div>
     </div>
 
@@ -163,15 +163,15 @@ function displayPlannedWorkouts(date) {
 
   workoutPlan.forEach((exercise, index) => {
     const card = document.createElement("div");
-    card.className = "bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow";
+    card.className = "bg-gradient-to-r from-blue-500 to-indigo-600 border border-blue-300 rounded-xl p-4 shadow-lg hover:shadow-xl transition-all transform hover:scale-102 text-white";
     
     let description = "";
     let exerciseName = "";
     
     if (exercise.type === "simple") {
       exerciseName = exercise.title;
-      // Fix: Look for sets in multiple places and ensure we get the correct value
-      const sets = exercise.members?.[0]?.planned_sets || exercise.planned_sets || exercise.sets || 1;
+      // Check weekly plan data structure for sets
+      const sets = exercise.sets || exercise.members?.[0]?.planned_sets || exercise.planned_sets || 1;
       const reps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
       const weight = exercise.members?.[0]?.planned_weight?.value || exercise.members?.[0]?.planned_weight || exercise.weight || '';
       description = `${sets} sets × ${reps} @ ${weight}lbs`;
@@ -189,12 +189,12 @@ function displayPlannedWorkouts(date) {
     card.innerHTML = `
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+          <div class="w-10 h-10 bg-white text-blue-600 rounded-full flex items-center justify-center text-sm font-bold shadow-md">
             ${index + 1}
           </div>
-          <span class="font-semibold text-gray-800">${exerciseName}</span>
+          <span class="font-bold text-lg">${exerciseName}</span>
         </div>
-        <span class="text-sm font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded">${description}</span>
+        <span class="text-sm font-semibold bg-white bg-opacity-20 text-white px-3 py-1 rounded-full">${description}</span>
       </div>
     `;
     
@@ -255,35 +255,45 @@ function displaySimpleInterface(exercise) {
   const container = $("setsContainer");
   container.innerHTML = "";
   
-  // Handle both old and new exercise formats - fix the sets calculation
-  const plannedSets = exercise.members?.[0]?.planned_sets || exercise.planned_sets || exercise.sets || 1;
+  // Better sets detection - check the original data structure from weekly plan
+  let plannedSets = 1;
+  if (exercise.sets && !isNaN(exercise.sets)) {
+    plannedSets = parseInt(exercise.sets);
+  } else if (exercise.members && exercise.members[0] && exercise.members[0].planned_sets) {
+    plannedSets = parseInt(exercise.members[0].planned_sets);
+  } else if (exercise.planned_sets && !isNaN(exercise.planned_sets)) {
+    plannedSets = parseInt(exercise.planned_sets);
+  }
+  
   const plannedReps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
   const plannedWeight = exercise.members?.[0]?.planned_weight?.value || exercise.members?.[0]?.planned_weight || exercise.weight || '';
   
+  console.log(`Creating ${plannedSets} sets for ${exercise.title || exercise.exercise_name}`);
+  
   for (let setNum = 1; setNum <= plannedSets; setNum++) {
     const setDiv = document.createElement("div");
-    setDiv.className = "flex items-center gap-4 p-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-sm mb-3 hover:shadow-md transition-shadow";
+    setDiv.className = "flex items-center gap-4 p-4 bg-gradient-to-r from-gray-50 to-blue-50 border-l-4 border-blue-500 rounded-lg shadow-md mb-3 hover:shadow-lg transition-all transform hover:scale-102";
     
     const existingData = workoutData[currentIndex]?.sets?.[setNum - 1] || {};
     
     setDiv.innerHTML = `
       <div class="w-20 text-center">
-        <div class="bg-blue-500 text-white rounded-full w-12 h-12 flex items-center justify-center font-bold text-lg">
+        <div class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-full w-14 h-14 flex items-center justify-center font-bold text-xl shadow-lg">
           ${setNum}
         </div>
       </div>
       <div class="flex-1">
-        <label class="block text-sm font-semibold text-gray-700 mb-1">Reps</label>
+        <label class="block text-sm font-bold text-gray-700 mb-2">Reps</label>
         <input type="number" 
-               class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 text-lg font-medium focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all" 
+               class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all shadow-sm" 
                placeholder="${plannedReps}"
                value="${existingData.reps || ''}"
                onchange="updateSetData(${setNum - 1}, 'reps', this.value)">
       </div>
       <div class="flex-1">
-        <label class="block text-sm font-semibold text-gray-700 mb-1">Weight (lbs)</label>
+        <label class="block text-sm font-bold text-gray-700 mb-2">Weight (lbs)</label>
         <input type="text" 
-               class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 text-lg font-medium focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all" 
+               class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 text-lg font-medium focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all shadow-sm" 
                placeholder="${plannedWeight}"
                value="${existingData.weight || ''}"
                onchange="updateSetData(${setNum - 1}, 'weight', this.value)">
