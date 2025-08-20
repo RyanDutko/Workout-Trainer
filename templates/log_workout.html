@@ -91,7 +91,12 @@ function loadWorkoutTemplate() {
     const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
 
     fetch(`/logging_template?date=${selectedDate}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(data => {
             workoutTemplate = data;
             currentExerciseIndex = 0;

@@ -4280,23 +4280,29 @@ def logging_template():
         try:
             day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
         except ValueError:
-            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD", "date": date, "blocks": []}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
         # Get weekly plan for this day, including circuit blocks
-        cursor.execute('''
-            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
-                   COALESCE(block_type, 'single') as block_type,
-                   COALESCE(meta_json, '{}') as meta_json,
-                   COALESCE(members_json, '[]') as members_json
-            FROM weekly_plan 
-            WHERE day_of_week = ? 
-            ORDER BY exercise_order
-        ''', (day_name.lower(),))
+        try:
+            cursor.execute('''
+                SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
+                       COALESCE(block_type, 'single') as block_type,
+                       COALESCE(meta_json, '{}') as meta_json,
+                       COALESCE(members_json, '[]') as members_json
+                FROM weekly_plan 
+                WHERE day_of_week = ? 
+                ORDER BY exercise_order
+            ''', (day_name.lower(),))
 
-        plan_exercises = cursor.fetchall()
+            plan_exercises = cursor.fetchall()
+        except Exception as db_error:
+            print(f"Database error in logging_template: {db_error}")
+            conn.close()
+            return jsonify({"error": "Database error", "date": date, "blocks": []})
+
         conn.close()
 
         template = {
@@ -4304,6 +4310,11 @@ def logging_template():
             "day": day_name,
             "blocks": []
         }
+
+        # If no exercises found, return empty template (not an error)
+        if not plan_exercises:
+            print(f"No exercises found for {day_name} ({date})")
+            return jsonify(template)
 
         for exercise in plan_exercises:
             exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
@@ -4376,7 +4387,12 @@ def logging_template():
 
     except Exception as e:
         print(f"Error generating logging template: {e}")
-        return jsonify({"error": str(e), "date": date}), 500
+        # Always return valid JSON, even on error
+        return jsonify({
+            "error": str(e), 
+            "date": request.args.get('date', datetime.now().strftime('%Y-%m-%d')), 
+            "blocks": []
+        })
 
 if __name__ == '__main__':
     init_db()
