@@ -1,0 +1,120 @@
+Goal: Make plan writes real and verifiable, and support adding circuit/rounds blocks through the chat. Keep V2 tool calling intact. Small diffs only. Show unified diffs.
+
+1) Add a two-step write flow (proposal → commit)
+
+Create two tools to prevent phantom writes and guarantee persistence:
+
+propose_plan_update({ "day": "tuesday", "action": "add_block", "block": { ... } })
+Description: “Validate and normalize a plan update (including complex blocks). Return a compact, user-readable summary and a proposal_id with the exact payload that will be written. Do not write.”
+
+commit_plan_update({ "proposal_id": "string" })
+Description: “Persist the previously proposed plan update. Returns {status:'ok', block_id, wrote: true} on success.”
+
+Server behavior:
+
+propose_plan_update stores the normalized payload in a short-lived in-memory map (and/or DB) keyed by proposal_id. Return a friendly text summary for the user and the structured payload you’ll write.
+
+Only commit_plan_update performs the DB insert(s).
+
+Guardrails:
+
+If the model claims “added it” without calling commit_plan_update, the app must not change data.
+
+After a successful commit, automatically call get_weekly_plan(day) and include a brief “post-write verify” diff in the assistant response.
+
+Console prints:
+
+PROPOSE id=... day=... action=add_block type=circuit rounds=2 members=3
+
+COMMIT id=... wrote=True block_id=...
+
+POST_WRITE_VERIFY day=... blocks=...
+
+2) Update tool descriptions to be complex-aware
+
+Change descriptions so the model stops asking for only sets/reps/weight:
+
+propose_plan_update
+
+“Use this to add complex workouts (circuits, supersets, rounds), not just simple sets. Pass a block with block_type (e.g., 'circuit'), label, order_index, meta_json (e.g., {rounds, rest_between_rounds_sec}), and members (array of mini-exercises with reps/weight/tempo). Returns a confirmation summary and a proposal_id.”
+
+get_weekly_plan
+
+“Returns normalized blocks (single/superset/circuit) for a day or full week; circuits include rounds + members.”
+
+compare_workout_to_plan
+
+“Compares normalized plan (including circuits/rounds) vs. actual and returns a diff.”
+
+3) Implement the circuit/rounds payload (server canonical shape)
+
+When the user asks to add your Bicep Finisher Rounds, propose_plan_update should accept and normalize exactly this structure:
+
+{
+  "day": "thursday",
+  "action": "add_block",
+  "block": {
+    "block_type": "circuit",
+    "label": "Bicep Finisher Rounds",
+    "order_index": 99,
+    "meta_json": { "rounds": 2, "rest_between_rounds_sec": 90 },
+    "members": [
+      { "exercise": "DB Bicep Curl",  "reps": 10, "weight": 20, "tempo": "slow" },
+      { "exercise": "DB Bicep Curl",  "reps": 15, "weight": 15, "tempo": "fast" },
+      { "exercise": "DB Hammer Curl", "reps": 10, "weight": 15, "tempo": "slow" }
+    ]
+  }
+}
+
+
+Return from propose_plan_update:
+
+{
+  "proposal_id": "pr_abc123",
+  "summary": "Add 'Bicep Finisher Rounds' (circuit, 2 rounds, 3 members) to Thursday at position 99.",
+  "normalized_block": { ...exact payload that will be written... }
+}
+
+
+On commit_plan_update, write it to the plan store (your new plan blocks table or the existing weekly plan with JSON fields), then immediately read back via get_weekly_plan('thursday') and include a verification.
+
+4) Enforce “no phantom success” in the chat loop
+
+In the V2 planner loop, add a small check:
+
+If the assistant responds with language indicating completion (e.g., “added to your plan”) but the last model message included no commit_plan_update tool call, append a system message:
+
+“Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}.”
+
+(This keeps the model honest without bloating the system prompt up front.)
+
+5) Tiny UX tweak in the chat
+
+After propose_plan_update returns, have the assistant say:
+
+“Here’s what I’ll add: … Confirm?”
+If user says confirm, the model should call commit_plan_update. Your loop guard already prevents infinite retries.
+
+6) Acceptance tests (please run & show console)
+
+Add complex block via chat
+
+U: “Add ‘Bicep Finisher Rounds’ to Thursday … 2 rounds …”
+
+A: Calls propose_plan_update → returns proposal_id and summary.
+
+U: “Confirm.”
+
+A: Calls commit_plan_update → POST_WRITE_VERIFY runs → final answer cites the block now present in get_weekly_plan('thursday').
+
+Console shows: PROPOSE …, COMMIT … wrote=True, POST_WRITE_VERIFY …
+
+No phantom write
+
+If user confirms but the model forgets to call commit_plan_update, the assistant must not claim success; the loop should nudge it to commit.
+
+Compare works with circuits
+
+U: “How does Thursday’s finisher compare to my plan?”
+
+A: Calls compare_workout_to_plan and reports matched/modified/missing rows (including circuit members/rounds).
