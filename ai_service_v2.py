@@ -1334,23 +1334,25 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
                     block['order_index'] = cursor.fetchone()[0]
 
-                if block['block_type'] == 'circuit':
-                    # Insert circuit block
+                # Extract normalized block data from proposal
+                nb = proposal.get("normalized_block", {})
+                block_type = (nb.get("block_type") or "single").lower()
+                label = nb.get("label") or nb.get("exercise") or "Block"
+                rounds = int(nb.get("rounds") or 1)
+                members = nb.get("members") or []
+                meta = (nb.get("meta_json") or nb.get("meta") or {}).copy()
+                meta["rounds"] = rounds
+
+                if block_type in ("circuit", "rounds"):
+                    # Insert circuit/rounds block
                     cursor.execute('''
                         INSERT INTO weekly_plan
                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
                          block_type, meta_json, members_json, created_by, newly_added, date_added)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (day, block['label'], 
-                          block['meta_json'].get('rounds', 1), 
-                          f"{len(block['members'])} exercises",
-                          'circuit', 
-                          block['order_index'],
-                          'circuit', 
-                          json.dumps(block['meta_json']), 
-                          json.dumps(block['members']), 
-                          'ai_v2', True, 
-                          datetime.now().strftime('%Y-%m-%d')))
+                    ''', (day, label, rounds, '', '', block['order_index'],
+                          block_type, json.dumps(meta), json.dumps(members), 
+                          'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
 
                     block_id = cursor.lastrowid
                 else:
@@ -1359,7 +1361,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         INSERT INTO weekly_plan
                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (day, block['label'], 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
+                    ''', (day, label, 3, '8-12', 'bodyweight', block['order_index'], 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
 
                     block_id = cursor.lastrowid
 
