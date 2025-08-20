@@ -1,42 +1,56 @@
 
 {% extends "base.html" %}
 {% block content %}
-<div class="container mx-auto p-4">
-  <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+  <div class="container mx-auto p-6">
+    <div class="text-center mb-8">
+      <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">Log Workout</h1>
+      <p class="text-gray-600">Track your performance and stay on plan</p>
+    </div>
 
-  <!-- Date Selection & Plan Loading -->
-  <div class="mb-4 flex items-center gap-2">
-    <label for="logDate" class="font-medium">Date:</label>
-    <input id="logDate" type="date" class="border px-2 py-1 rounded">
-    <button id="loadDayBtn" class="bg-blue-600 text-white px-3 py-1 rounded">Load Day</button>
-  </div>
-
-  <!-- Planned Workouts Preview -->
-  <div id="viewPreview" class="mb-6 hidden">
-    <h2 class="text-xl font-semibold mb-2">Planned for <span id="previewDate"></span></h2>
-    <div id="previewList" class="space-y-2 mb-4"></div>
-    <button id="beginBtn" class="bg-green-600 text-white px-4 py-2 rounded font-semibold">Begin Logging</button>
-  </div>
-
-  <!-- Workout Logging Wizard -->
-  <div id="viewLogger" class="hidden">
-    <!-- Progress Bar -->
-    <div class="mb-4">
-      <div class="flex justify-between text-sm text-gray-600 mb-1">
-        <span>Exercise <span id="currentExercise">1</span> of <span id="totalExercises">1</span></span>
-        <span id="progressPercent">0%</span>
-      </div>
-      <div class="w-full bg-gray-200 rounded-full h-2">
-        <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+    <!-- Date Selection & Plan Loading -->
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+      <div class="flex items-center justify-center gap-4">
+        <label for="logDate" class="font-semibold text-gray-700">Select Date:</label>
+        <input id="logDate" type="date" class="border-2 border-gray-300 px-4 py-2 rounded-lg focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all">
+        <button id="loadDayBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-2 rounded-lg font-semibold transition-all transform hover:scale-105">Load Day</button>
       </div>
     </div>
 
-    <!-- Current Exercise -->
-    <div class="bg-white border rounded-lg p-4 mb-4">
-      <div class="flex items-center justify-between mb-3">
-        <h2 id="exerciseTitle" class="text-xl font-semibold"></h2>
-        <span id="exerciseType" class="text-sm bg-gray-100 px-2 py-1 rounded"></span>
+    <!-- Planned Workouts Preview -->
+    <div id="viewPreview" class="mb-8 hidden">
+      <div class="bg-white rounded-xl shadow-lg p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-1">Planned for <span id="previewDate"></span></h2>
+        <p class="text-gray-600 mb-6">Ready to crush these exercises?</p>
+        <div id="previewList" class="space-y-3 mb-6"></div>
+        <div class="text-center">
+          <button id="beginBtn" class="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all transform hover:scale-105 shadow-lg">
+            🚀 Begin Logging
+          </button>
+        </div>
       </div>
+    </div>
+
+  <!-- Workout Logging Wizard -->
+    <div id="viewLogger" class="hidden">
+      <div class="bg-white rounded-xl shadow-lg p-6">
+        <!-- Progress Bar -->
+        <div class="mb-6">
+          <div class="flex justify-between text-sm font-medium text-gray-700 mb-2">
+            <span>Exercise <span id="currentExercise" class="text-blue-600 font-bold">1</span> of <span id="totalExercises" class="text-blue-600 font-bold">1</span></span>
+            <span id="progressPercent" class="text-blue-600 font-bold">0%</span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div id="progressBar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Current Exercise -->
+        <div class="bg-gradient-to-r from-gray-50 to-slate-50 border border-gray-200 rounded-xl p-6 mb-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 id="exerciseTitle" class="text-2xl font-bold text-gray-800"></h2>
+            <span id="exerciseType" class="text-sm font-semibold bg-blue-100 text-blue-800 px-3 py-1 rounded-full"></span>
+          </div>
       
       <!-- Simple Exercise Interface -->
       <div id="simpleInterface" class="hidden">
@@ -52,42 +66,46 @@
       </div>
 
       <!-- Notes Section -->
-      <div class="mt-4">
-        <label class="block text-sm font-medium mb-1">Exercise Notes</label>
-        <textarea id="exerciseNotes" rows="2" class="w-full border rounded p-2 text-sm" placeholder="Any notes about this exercise..."></textarea>
+          <div class="mt-6">
+            <label class="block text-sm font-semibold text-gray-700 mb-2">Exercise Notes</label>
+            <textarea id="exerciseNotes" rows="3" class="w-full border-2 border-gray-300 rounded-lg p-4 text-sm focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all" placeholder="How did it feel? Any adjustments needed?"></textarea>
+          </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex justify-between items-center pt-6">
+          <button id="prevBtn" class="border-2 border-gray-300 px-6 py-3 rounded-lg text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center gap-2">
+            ← Previous
+          </button>
+          <button id="nextBtn" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-8 py-3 rounded-lg font-bold transition-all transform hover:scale-105 shadow-lg flex items-center gap-2">
+            Log & Continue →
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Navigation -->
-    <div class="flex justify-between">
-      <button id="prevBtn" class="border border-gray-300 px-4 py-2 rounded text-gray-700 hover:bg-gray-50">
-        ← Previous
-      </button>
-      <button id="nextBtn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-        Log & Continue →
-      </button>
+    <!-- Completion Screen -->
+    <div id="viewComplete" class="hidden">
+      <div class="bg-white rounded-xl shadow-lg p-8 text-center">
+        <div class="text-green-500 mb-6">
+          <i class="fas fa-check-circle text-8xl"></i>
+        </div>
+        <h2 class="text-3xl font-bold text-gray-800 mb-3">Workout Complete!</h2>
+        <p class="text-gray-600 mb-8 text-lg">All exercises have been logged successfully. Great job crushing your workout! 💪</p>
+        <div class="flex justify-center gap-4">
+          <button onclick="window.location.href='/'" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-lg font-semibold transition-all transform hover:scale-105">
+            Back to Dashboard
+          </button>
+          <button onclick="window.location.reload()" class="border-2 border-gray-300 px-6 py-3 rounded-lg text-gray-700 font-semibold hover:bg-gray-50 transition-all">
+            Log Another Day
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
 
-  <!-- Completion Screen -->
-  <div id="viewComplete" class="hidden text-center py-8">
-    <div class="text-green-600 mb-4">
-      <i class="fas fa-check-circle text-6xl"></i>
-    </div>
-    <h2 class="text-2xl font-bold mb-2">Workout Complete!</h2>
-    <p class="text-gray-600 mb-4">All exercises have been logged successfully.</p>
-    <div class="space-x-4">
-      <button onclick="window.location.href='/'" class="bg-blue-600 text-white px-4 py-2 rounded">
-        Back to Dashboard
-      </button>
-      <button onclick="window.location.reload()" class="border border-gray-300 px-4 py-2 rounded text-gray-700">
-        Log Another Day
-      </button>
-    </div>
+    <div id="msg" class="mt-4 text-center text-gray-600"></div>
+    <div id="templateError" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-4 text-center"></div>
   </div>
-
-  <div id="msg" class="mt-4 text-sm"></div>
-  <div id="templateError" class="hidden text-red-600 text-sm mt-2"></div>
 </div>
 
 <script>
@@ -145,17 +163,18 @@ function displayPlannedWorkouts(date) {
 
   workoutPlan.forEach((exercise, index) => {
     const card = document.createElement("div");
-    card.className = "bg-gray-50 border rounded p-3";
+    card.className = "bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow";
     
     let description = "";
     let exerciseName = "";
     
     if (exercise.type === "simple") {
       exerciseName = exercise.title;
-      const sets = exercise.planned_sets || exercise.sets || 1;
+      // Fix: Look for sets in multiple places and ensure we get the correct value
+      const sets = exercise.members?.[0]?.planned_sets || exercise.planned_sets || exercise.sets || 1;
       const reps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
-      const weight = exercise.members?.[0]?.planned_weight || exercise.weight || '';
-      description = `${sets} sets x ${reps} @ ${weight}`;
+      const weight = exercise.members?.[0]?.planned_weight?.value || exercise.members?.[0]?.planned_weight || exercise.weight || '';
+      description = `${sets} sets × ${reps} @ ${weight}lbs`;
     } else if (exercise.rounds && exercise.rounds.length > 0) {
       exerciseName = exercise.title;
       description = `${exercise.rounds.length} round${exercise.rounds.length > 1 ? 's' : ''}`;
@@ -164,13 +183,18 @@ function displayPlannedWorkouts(date) {
       const sets = exercise.sets || 1;
       const reps = exercise.reps || '';
       const weight = exercise.weight || '';
-      description = `${sets} sets x ${reps} @ ${weight}`;
+      description = `${sets} sets × ${reps} @ ${weight}`;
     }
 
     card.innerHTML = `
       <div class="flex items-center justify-between">
-        <span class="font-medium">${exerciseName}</span>
-        <span class="text-sm text-gray-600">${description}</span>
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+            ${index + 1}
+          </div>
+          <span class="font-semibold text-gray-800">${exerciseName}</span>
+        </div>
+        <span class="text-sm font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded">${description}</span>
       </div>
     `;
     
@@ -231,31 +255,35 @@ function displaySimpleInterface(exercise) {
   const container = $("setsContainer");
   container.innerHTML = "";
   
-  // Handle both old and new exercise formats
-  const plannedSets = exercise.planned_sets || exercise.sets || 1;
+  // Handle both old and new exercise formats - fix the sets calculation
+  const plannedSets = exercise.members?.[0]?.planned_sets || exercise.planned_sets || exercise.sets || 1;
   const plannedReps = exercise.members?.[0]?.planned_reps || exercise.reps || '';
-  const plannedWeight = exercise.members?.[0]?.planned_weight || exercise.weight || '';
+  const plannedWeight = exercise.members?.[0]?.planned_weight?.value || exercise.members?.[0]?.planned_weight || exercise.weight || '';
   
   for (let setNum = 1; setNum <= plannedSets; setNum++) {
     const setDiv = document.createElement("div");
-    setDiv.className = "flex items-center gap-3 p-3 bg-gray-50 rounded";
+    setDiv.className = "flex items-center gap-4 p-4 bg-white border-l-4 border-blue-500 rounded-lg shadow-sm mb-3 hover:shadow-md transition-shadow";
     
     const existingData = workoutData[currentIndex]?.sets?.[setNum - 1] || {};
     
     setDiv.innerHTML = `
-      <div class="w-16 text-center font-medium">Set ${setNum}</div>
+      <div class="w-20 text-center">
+        <div class="bg-blue-500 text-white rounded-full w-12 h-12 flex items-center justify-center font-bold text-lg">
+          ${setNum}
+        </div>
+      </div>
       <div class="flex-1">
-        <label class="block text-xs text-gray-600 mb-1">Reps</label>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Reps</label>
         <input type="number" 
-               class="w-full border rounded px-2 py-1" 
+               class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 text-lg font-medium focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all" 
                placeholder="${plannedReps}"
                value="${existingData.reps || ''}"
                onchange="updateSetData(${setNum - 1}, 'reps', this.value)">
       </div>
       <div class="flex-1">
-        <label class="block text-xs text-gray-600 mb-1">Weight</label>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Weight (lbs)</label>
         <input type="text" 
-               class="w-full border rounded px-2 py-1" 
+               class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 text-lg font-medium focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all" 
                placeholder="${plannedWeight}"
                value="${existingData.weight || ''}"
                onchange="updateSetData(${setNum - 1}, 'weight', this.value)">
@@ -278,35 +306,43 @@ function displayComplexInterface(exercise) {
   
   rounds.forEach((round, roundIndex) => {
     const roundDiv = document.createElement("div");
-    roundDiv.className = "border rounded p-3";
+    roundDiv.className = "bg-white border-l-4 border-indigo-500 rounded-lg p-4 shadow-sm mb-4";
     
     const roundHeader = document.createElement("h4");
-    roundHeader.className = "font-medium mb-2";
-    roundHeader.textContent = `Round ${round.round_index}`;
+    roundHeader.className = "font-bold text-lg text-indigo-700 mb-3 flex items-center gap-2";
+    roundHeader.innerHTML = `
+      <div class="bg-indigo-500 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold">
+        ${round.round_index}
+      </div>
+      Round ${round.round_index}
+    `;
     roundDiv.appendChild(roundHeader);
     
     const membersDiv = document.createElement("div");
-    membersDiv.className = "space-y-2";
+    membersDiv.className = "space-y-3";
     
     (round.members || []).forEach((member, memberIndex) => {
       const memberDiv = document.createElement("div");
-      memberDiv.className = "flex items-center gap-2 text-sm";
+      memberDiv.className = "flex items-center gap-3 p-3 bg-gray-50 rounded-lg";
       
       const existingData = workoutData[currentIndex]?.rounds?.[roundIndex]?.[memberIndex] || {};
       
       memberDiv.innerHTML = `
-        <div class="w-24 font-medium">${member.name}</div>
-        <input type="number" 
-               class="w-16 border rounded px-1 py-0.5" 
-               placeholder="${member.planned_reps || ''}"
-               value="${existingData.reps || ''}"
-               onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'reps', this.value)">
-        <span class="text-xs">reps @</span>
-        <input type="text" 
-               class="w-20 border rounded px-1 py-0.5" 
-               placeholder="${member.planned_weight || ''}"
-               value="${existingData.weight || ''}"
-               onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'weight', this.value)">
+        <div class="w-32 font-semibold text-gray-700">${member.name}</div>
+        <div class="flex items-center gap-2">
+          <input type="number" 
+                 class="w-16 border-2 border-gray-300 rounded-lg px-2 py-1 text-center font-medium focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition-all" 
+                 placeholder="${member.planned_reps || ''}"
+                 value="${existingData.reps || ''}"
+                 onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'reps', this.value)">
+          <span class="text-sm text-gray-600 font-medium">reps @</span>
+          <input type="text" 
+                 class="w-20 border-2 border-gray-300 rounded-lg px-2 py-1 text-center font-medium focus:border-indigo-500 focus:ring focus:ring-indigo-200 transition-all" 
+                 placeholder="${member.planned_weight?.value || member.planned_weight || ''}"
+                 value="${existingData.weight || ''}"
+                 onchange="updateRoundData(${roundIndex}, ${memberIndex}, 'weight', this.value)">
+          <span class="text-sm text-gray-600">lbs</span>
+        </div>
       `;
       
       membersDiv.appendChild(memberDiv);
