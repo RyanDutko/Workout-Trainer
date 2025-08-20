@@ -1,0 +1,83 @@
+*** a/app.py
+--- b/app.py
+@@
+ from flask import Flask, request, jsonify, render_template
++from datetime import datetime
++import json
+@@
+ app = Flask(__name__)
+ 
+@@
+ # ... existing routes ...
+ 
++@app.route('/logging_template', methods=['GET'])
++def logging_template():
++    """
++    Build the dynamic logging template for a given date using the
++    WorkoutTemplateGenerator (supports singles and circuit/rounds).
++    """
++    try:
++        date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
++        day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A').lower()
++
++        conn = get_db_connection()
++        cursor = conn.cursor()
++        cursor.execute('''
++            SELECT
++                id,
++                exercise_name,
++                COALESCE(target_sets, 0),
++                COALESCE(target_reps, ''),
++                COALESCE(target_weight, ''),
++                COALESCE(block_type, 'single') AS block_type,
++                COALESCE(meta_json, '{}') AS meta_json,
++                COALESCE(members_json, '[]') AS members_json,
++                exercise_order
++            FROM weekly_plan
++            WHERE LOWER(day_of_week) = ?
++            ORDER BY exercise_order
++        ''', (day_name,))
++
++        rows = cursor.fetchall()
++        conn.close()
++
++        # Adapt DB rows to generator input
++        plan_blocks = []
++        for (row_id, name, t_sets, t_reps, t_weight, btype, meta_json, members_json, _order) in rows:
++            try:
++                meta = json.loads(meta_json) if meta_json else {}
++            except Exception:
++                meta = {}
++            try:
++                members = json.loads(members_json) if members_json else []
++            except Exception:
++                members = []
++
++            block = {
++                'id': row_id,
++                'block_type': btype,
++                'label': name,              # for circuits
++                'exercise_name': name,      # for singles
++                'reps': t_reps,
++                'weight': t_weight,
++                'meta': meta,
++                'members': members
++            }
++            # Provide a rounds hint if not present in meta (use target_sets)
++            if btype in ('circuit', 'rounds'):
++                if 'rounds' not in block and 'rounds' not in block['meta']:
++                    try:
++                        block['rounds'] = int(t_sets or 1)
++                    except Exception:
++                        block['rounds'] = block['meta'].get('rounds', 1)
++
++            plan_blocks.append(block)
++
++        # Generate the template
++        from models import Database, WorkoutTemplateGenerator
++        generator = WorkoutTemplateGenerator(Database())
++        template = generator.generate_logging_template(plan_blocks, date)
++
++        return jsonify({'success': True, 'template': template})
++    except Exception as e:
++        return jsonify({'success': False, 'error': str(e)}), 500
