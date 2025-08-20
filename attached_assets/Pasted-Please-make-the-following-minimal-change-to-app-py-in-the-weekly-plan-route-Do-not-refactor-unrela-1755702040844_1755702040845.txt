@@ -1,0 +1,98 @@
+Please make the following minimal change to app.py in the /weekly_plan route. Do not refactor unrelated code.
+
+Replace the SQL and row unpacking so we don’t reference non-existent columns. Use only the columns that are guaranteed to exist and alias them to stable names.
+
+@app.route('/weekly_plan')
+def weekly_plan():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            id,
+            day_of_week,
+            exercise_name,
+            COALESCE(target_sets, 0)      AS t_sets,
+            COALESCE(target_reps, '')     AS t_reps,
+            COALESCE(target_weight, '')   AS t_weight,
+            COALESCE(exercise_order, 999) AS ord,
+            COALESCE(block_type, 'single')  AS block_type,
+            COALESCE(meta_json, '{}')       AS meta_json,
+            COALESCE(members_json, '[]')    AS members_json
+        FROM weekly_plan
+        ORDER BY day_of_week, ord
+    """)
+
+    import json
+    rows = cursor.fetchall()
+    conn.close()
+
+    plan_by_day = {}
+    for row in rows:
+        (row_id, day, exercise_name, t_sets, t_reps, t_weight, ord_idx,
+         block_type, meta_json, members_json) = row
+
+        if day not in plan_by_day:
+            plan_by_day[day] = []
+
+        if (block_type or '').lower() == 'circuit':
+            # Parse circuit metadata safely
+            try:
+                meta = json.loads(meta_json) if meta_json else {}
+            except Exception:
+                meta = {}
+            try:
+                members = json.loads(members_json) if members_json else []
+            except Exception:
+                members = []
+
+            # Round-expanded sets (optional for UI)
+            try:
+                rounds = int(meta.get('rounds', 1))
+            except Exception:
+                rounds = 1
+            rounds = max(1, rounds)
+
+            circuit_sets = []
+            for r in range(rounds):
+                for mi, m in enumerate(members):
+                    circuit_sets.append({
+                        'exercise': m.get('exercise', ''),
+                        'block_type': 'circuit',
+                        'member_idx': mi,
+                        'set_idx': r,
+                        'reps': m.get('reps'),
+                        'weight': m.get('weight'),
+                        'tempo': m.get('tempo'),
+                        'status': 'planned'
+                    })
+
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'circuit',
+                'label': exercise_name,   # block title
+                'order_index': ord_idx,
+                'meta': meta,             # includes rounds
+                'members': members,       # [{exercise, reps, weight, ...}]
+                'sets': circuit_sets
+            })
+        else:
+            # Simple exercise
+            plan_by_day[day].append({
+                'id': row_id,
+                'block_type': 'single',
+                'exercise': exercise_name,
+                'sets': t_sets,
+                'reps': t_reps,
+                'weight': t_weight,
+                'order': ord_idx
+            })
+
+    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
+
+
+Keep the template conditionals you added earlier:
+
+Title: use exercise.label for circuits, exercise.exercise for singles.
+
+Meta: for circuits show “{{ exercise.meta.rounds or 1 }} rounds” and a compact members summary; for singles show “sets × reps @ weight”.
