@@ -10,9 +10,12 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">
                         <i class="fas fa-dumbbell text-primary"></i>
-                        Log Today's Workout
+                        Log Workout
                     </h4>
-                    <small class="text-muted" id="currentDate"></small>
+                    <div class="d-flex align-items-center">
+                        <label for="workoutDate" class="form-label me-2 mb-0 text-muted">Date:</label>
+                        <input type="date" id="workoutDate" class="form-control form-control-sm" style="width: 150px;">
+                    </div>
                 </div>
 
                 <div class="card-body">
@@ -55,21 +58,39 @@ let completedExercises = [];
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
-    const currentDate = new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+    const workoutDateInput = document.getElementById('workoutDate');
+    const today = new Date();
+    workoutDateInput.valueAsDate = today; // Set default to today
+
+    // Update header date display based on selected date
+    const updateHeaderDate = () => {
+        const selectedDate = new Date(workoutDateInput.value);
+        const formattedDate = selectedDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        document.getElementById('currentDate').textContent = formattedDate;
+    };
+
+    // Initial header date update
+    updateHeaderDate();
+
+    // Add event listener to update header when date changes
+    workoutDateInput.addEventListener('change', function() {
+        updateHeaderDate();
+        loadWorkoutTemplate(); // Reload template for the selected date
     });
-    document.getElementById('currentDate').textContent = currentDate;
 
     loadWorkoutTemplate();
 });
 
 function loadWorkoutTemplate() {
-    const today = new Date().toISOString().split('T')[0];
+    const workoutDateInput = document.getElementById('workoutDate');
+    const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
 
-    fetch(`/logging_template?date=${today}`)
+    fetch(`/logging_template?date=${selectedDate}`)
         .then(response => response.json())
         .then(data => {
             workoutTemplate = data;
@@ -87,8 +108,9 @@ function loadWorkoutTemplate() {
 function renderCurrentExercise() {
     const container = document.getElementById('dynamicLoggingContainer');
 
-    if (!workoutTemplate.blocks || workoutTemplate.blocks.length === 0) {
-        container.innerHTML = '<p class="text-muted text-center">No exercises planned for today</p>';
+    if (!workoutTemplate || !workoutTemplate.blocks || workoutTemplate.blocks.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">No exercises planned for this date or template not found.</p>';
+        document.getElementById('submitBtn').disabled = true;
         return;
     }
 
@@ -103,7 +125,7 @@ function renderCurrentExercise() {
 
     let html = `
         <div class="progress mb-4">
-            <div class="progress-bar" role="progressbar" style="width: ${(exerciseNumber / totalExercises) * 100}%" 
+            <div class="progress-bar" role="progressbar" style="width: ${(exerciseNumber / totalExercises) * 100}%"
                  aria-valuenow="${exerciseNumber}" aria-valuemin="0" aria-valuemax="${totalExercises}">
                 Exercise ${exerciseNumber} of ${totalExercises}
             </div>
@@ -140,15 +162,15 @@ function renderSingleSimpleBlock(block) {
                         <h6 class="card-title">Set ${set.set_number}</h6>
                         <div class="mb-2">
                             <label class="form-label">Reps</label>
-                            <input type="number" class="form-control text-center" 
-                                   placeholder="${set.planned_reps}" 
+                            <input type="number" class="form-control text-center"
+                                   placeholder="${set.planned_reps}"
                                    data-set-number="${set.set_number}"
                                    data-field="actual_reps">
                         </div>
                         <div>
                             <label class="form-label">Weight</label>
-                            <input type="text" class="form-control text-center" 
-                                   placeholder="${set.planned_weight.value}" 
+                            <input type="text" class="form-control text-center"
+                                   placeholder="${set.planned_weight.value}"
                                    data-set-number="${set.set_number}"
                                    data-field="actual_weight">
                         </div>
@@ -160,7 +182,7 @@ function renderSingleSimpleBlock(block) {
 
     html += `
                 </div>
-                
+
                 <!-- Quick Actions Bar -->
                 <div class="mt-3 mb-4">
                     <div class="d-flex justify-content-center">
@@ -169,10 +191,10 @@ function renderSingleSimpleBlock(block) {
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="mt-4">
                     <label class="form-label">Exercise Notes</label>
-                    <textarea class="form-control" rows="2" id="exerciseNotes" 
+                    <textarea class="form-control" rows="2" id="exerciseNotes"
                               placeholder="Any notes about this exercise (form, difficulty, substitutions, etc.)"></textarea>
                 </div>
             </div>
@@ -213,16 +235,16 @@ function renderSingleRoundsBlock(block) {
                             <div class="row">
                                 <div class="col-6">
                                     <label class="form-label">Reps</label>
-                                    <input type="number" class="form-control" 
-                                           placeholder="${member.planned_reps}" 
+                                    <input type="number" class="form-control"
+                                           placeholder="${member.planned_reps}"
                                            data-round="${round.round_index}"
                                            data-exercise="${member.name}"
                                            data-field="actual_reps">
                                 </div>
                                 <div class="col-6">
                                     <label class="form-label">Weight</label>
-                                    <input type="text" class="form-control" 
-                                           placeholder="${member.planned_weight.value}" 
+                                    <input type="text" class="form-control"
+                                           placeholder="${member.planned_weight.value}"
                                            data-round="${round.round_index}"
                                            data-exercise="${member.name}"
                                            data-field="actual_weight">
@@ -249,10 +271,10 @@ function renderSingleRoundsBlock(block) {
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="mt-4">
                     <label class="form-label">Exercise Notes</label>
-                    <textarea class="form-control" rows="2" id="exerciseNotes" 
+                    <textarea class="form-control" rows="2" id="exerciseNotes"
                               placeholder="Any notes about this circuit/rounds exercise"></textarea>
                 </div>
             </div>
@@ -273,7 +295,7 @@ function renderWorkoutComplete() {
             </div>
             <div class="card-body text-center">
                 <h5>Great job!</h5>
-                <p class="mb-4">You've logged all ${workoutTemplate.blocks.length} exercises for today.</p>
+                <p class="mb-4">You've logged all ${workoutTemplate.blocks.length} exercises.</p>
                 <a href="/dashboard" class="btn btn-primary btn-lg">
                     <i class="fas fa-home"></i> Back to Dashboard
                 </a>
@@ -286,7 +308,7 @@ function renderWorkoutComplete() {
 function updateSubmitButton() {
     const isLastExercise = currentExerciseIndex === workoutTemplate.blocks.length - 1;
     const submitBtnText = document.getElementById('submitBtnText');
-    
+
     if (isLastExercise) {
         submitBtnText.innerHTML = '<i class="fas fa-save"></i> Finish Workout';
     } else {
@@ -296,19 +318,19 @@ function updateSubmitButton() {
 
 function fillAsPlanned(blockType) {
     const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
-    
+
     if (blockType === 'simple') {
         // Fill simple exercise fields with planned values
         const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
         const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
-        
+
         repsInputs.forEach((input, idx) => {
             const plannedReps = currentBlock.sets[idx]?.planned_reps || currentBlock.planned_reps;
             if (plannedReps) {
                 input.value = plannedReps;
             }
         });
-        
+
         weightInputs.forEach((input, idx) => {
             const plannedWeight = currentBlock.sets[idx]?.planned_weight?.value || currentBlock.planned_weight;
             if (plannedWeight) {
@@ -319,14 +341,14 @@ function fillAsPlanned(blockType) {
         // Fill rounds/circuit fields with planned values
         const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
         const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
-        
+
         repsInputs.forEach(input => {
             const plannedReps = input.getAttribute('placeholder');
             if (plannedReps) {
                 input.value = plannedReps;
             }
         });
-        
+
         weightInputs.forEach(input => {
             const plannedWeight = input.getAttribute('placeholder');
             if (plannedWeight) {
@@ -334,14 +356,14 @@ function fillAsPlanned(blockType) {
             }
         });
     }
-    
+
     // Add visual feedback
     const button = event.target.closest('button');
     const originalText = button.innerHTML;
     button.innerHTML = '<i class="fas fa-check"></i> Applied!';
     button.classList.remove('btn-outline-primary');
     button.classList.add('btn-success');
-    
+
     setTimeout(() => {
         button.innerHTML = originalText;
         button.classList.remove('btn-success');
@@ -361,6 +383,7 @@ function renderFallbackUI() {
         </div>
         <div id="manualEntries"></div>
     `;
+    document.getElementById('submitBtn').disabled = false; // Enable submit for manual logging
 }
 
 function addManualExercise() {
@@ -408,41 +431,61 @@ function removeManualExercise(entryId) {
 document.getElementById('workoutForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
-    if (workoutTemplate) {
+    if (workoutTemplate && currentExerciseIndex < workoutTemplate.blocks.length) {
         submitCurrentExercise();
-    } else {
+    } else if (!workoutTemplate) { // Handle manual logging when template failed to load
         submitManualWorkout();
+    } else { // Workout complete or no template
+        // This case should ideally be handled by renderWorkoutComplete()
+        // or if no template was loaded, submitManualWorkout() would be called.
+        // If workoutTemplate exists but currentExerciseIndex is out of bounds,
+        // it means renderWorkoutComplete should have been called.
+        // For robustness, we can redirect or show a message.
+        console.log("No active exercise or template to submit.");
+        // Optionally redirect or show a message
+        // window.location.href = '/dashboard';
     }
 });
 
 function submitCurrentExercise() {
     const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
-    const exerciseNotes = document.getElementById('exerciseNotes')?.value || '';
+    const exerciseNotesElement = document.getElementById('exerciseNotes');
+    const exerciseNotes = exerciseNotesElement ? exerciseNotesElement.value : '';
+
 
     if (currentBlock.type === 'simple') {
         // Collect set data
-        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
-        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
-        
-        const repsArray = [];
-        const weightsArray = [];
-        
+        const repsInputs = document.querySelectorAll('#dynamicLoggingContainer [data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('#dynamicLoggingContainer [data-field="actual_weight"]');
+
+        const setsData = [];
+
         repsInputs.forEach((input, idx) => {
-            const value = input.value || currentBlock.sets[idx]?.planned_reps || '';
-            repsArray.push(value);
-        });
-        
-        weightInputs.forEach((input, idx) => {
-            const value = input.value || currentBlock.sets[idx]?.planned_weight?.value || '';
-            weightsArray.push(value);
+            const setNumber = parseInt(input.getAttribute('data-set-number'));
+            const reps = input.value || currentBlock.sets[idx]?.planned_reps || '';
+            const weightInput = weightInputs[idx];
+            const weight = weightInput.value || currentBlock.sets[idx]?.planned_weight?.value || '';
+            const weightUnit = currentBlock.sets[idx]?.planned_weight?.unit || 'lbs'; // Default to lbs
+
+            setsData.push({
+                set_number: setNumber,
+                actual_reps: reps,
+                actual_weight: weight,
+                weight_unit: weightUnit
+            });
         });
 
         // Format for legacy single exercise logging
         const exerciseData = {
             exercise_name: currentBlock.title,
-            sets: currentBlock.planned_sets,
-            reps: repsArray.join('/'),
-            weight: weightsArray[0] + (weightsArray[0] && !weightsArray[0].includes('lb') ? 'lbs' : ''),
+            sets: setsData.length, // Number of sets logged
+            // For simplicity, we'll just take the first set's weight as the primary weight logged
+            weight: setsData.length > 0 ? `${setsData[0].actual_weight}${setsData[0].weight_unit}` : '',
+            // Reps for a simple exercise might be logged per set, or a summary.
+            // For this integration, let's assume we can provide a summary or just the first set's reps.
+            // A better approach would be to modify the backend to accept array of sets.
+            // For now, let's make it flexible by sending a summary if possible or first set.
+            reps: setsData.length > 0 ? `${setsData[0].actual_reps}` : '',
             notes: exerciseNotes,
             date: workoutTemplate.date
         };
@@ -453,9 +496,9 @@ function submitCurrentExercise() {
         // For rounds/circuits, log as a summary
         const exerciseData = {
             exercise_name: currentBlock.title,
-            sets: currentBlock.rounds.length,
-            reps: 'Circuit',
-            weight: 'Mixed',
+            sets: currentBlock.rounds.length, // Number of rounds
+            reps: 'Circuit', // Indicate it's a circuit
+            weight: 'Mixed', // Indicate mixed weights
             notes: exerciseNotes + ' [Circuit/Rounds Exercise]',
             date: workoutTemplate.date
         };
@@ -478,7 +521,7 @@ function submitExerciseData(exerciseData) {
             // Move to next exercise
             completedExercises.push(exerciseData);
             currentExerciseIndex++;
-            
+
             if (currentExerciseIndex >= workoutTemplate.blocks.length) {
                 // Workout complete
                 renderWorkoutComplete();
@@ -499,6 +542,7 @@ function submitExerciseData(exerciseData) {
 function submitManualWorkout() {
     const exercises = [];
     const manualEntries = document.querySelectorAll('#manualEntries .card');
+    const workoutDateInput = document.getElementById('workoutDate');
 
     manualEntries.forEach(entry => {
         const inputs = entry.querySelectorAll('input');
@@ -519,7 +563,7 @@ function submitManualWorkout() {
 
     const submitData = {
         exercises: exercises,
-        date: new Date().toISOString().split('T')[0]
+        date: workoutDateInput.value || new Date().toISOString().split('T')[0]
     };
 
     fetch('/save_workout', {
