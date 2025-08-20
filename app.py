@@ -14,41 +14,6 @@ app = Flask(__name__)
 # Add enumerate filter for templates
 app.jinja_env.filters['enumerate'] = enumerate
 
-# Database initialization
-def get_db_connection():
-    """Get a database connection with proper timeout and thread safety"""
-    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
-    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
-    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
-    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
-    return conn
-
-def ensure_logging_tables():
-    conn = get_db_connection()
-    c = conn.cursor()
-    # Main logs table (one row per input_id on a given date)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS workout_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT NOT NULL,
-            block_id INTEGER NOT NULL,
-            block_type TEXT NOT NULL,
-            member_idx INTEGER NOT NULL,
-            round_index INTEGER,
-            actual_reps INTEGER,
-            actual_weight TEXT,
-            notes TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE(date, block_id, member_idx, round_index)
-        );
-    """)
-    conn.commit()
-    conn.close()
-
-# Call this once during startup
-ensure_logging_tables()
-
 # Import V2 AI service for testing
 try:
     from ai_service_v2 import AIServiceV2
@@ -60,6 +25,15 @@ except ImportError:
 
 # Feature flag for legacy intent detection
 ENABLE_LEGACY_INTENT = False # Set to True to re-enable legacy intent analysis
+
+# Database initialization
+def get_db_connection():
+    """Get a database connection with proper timeout and thread safety"""
+    conn = sqlite3.connect('workout_logs.db', timeout=60.0, check_same_thread=False)
+    conn.execute('PRAGMA journal_mode=WAL')  # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA busy_timeout=30000')  # 30 second busy timeout
+    conn.execute('PRAGMA synchronous=NORMAL')  # Better performance while still safe
+    return conn
 
 def get_user_ai_preferences():
     """Get user's AI preferences for personalized responses"""
@@ -93,10 +67,10 @@ def get_user_ai_preferences():
 
 def init_db():
     conn = sqlite3.connect('workout_logs.db')
-    cursor = conn.cursor()
 
     # Add circuit support columns to weekly_plan if they don't exist
     try:
+        cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(weekly_plan)")
         columns = [col[1] for col in cursor.fetchall()]
 
@@ -815,7 +789,7 @@ Extract the philosophy content after the colon (:) in the user's message and str
         print(f"Error building philosophy update context: {e}")
         return prompt
 
-def build_smart_context(prompt, user_background=None, conversation_context=None):
+def build_smart_context(prompt, query_intent, user_background=None):
     """Route to appropriate context builder based on query intent"""
     from context_builders.historical import build_historical_context
     from context_builders.plan import build_plan_context
@@ -825,7 +799,13 @@ def build_smart_context(prompt, user_background=None, conversation_context=None)
 
 
     print(f"\n🔍 ===== SMART CONTEXT ROUTING =====")
+    print(f"🔍 Intent: {query_intent}")
     print(f"🔍 Prompt: '{prompt}'")
+
+    # Extract the actual intent string if it's in a dict format
+    actual_intent = query_intent
+    if isinstance(query_intent, dict):
+        actual_intent = query_intent.get('intent', 'general')
 
     prompt_lower = prompt.lower()
 
@@ -873,16 +853,11 @@ def build_smart_context(prompt, user_background=None, conversation_context=None)
         return build_philosophy_update_context(prompt)
 
     # FALLBACK: Use original intent detection
-    # Analyze query intent and build appropriate context
-    query_intent = analyze_query_intent(prompt)
-    actual_intent = query_intent.get('intent', 'general')
-
-
     if actual_intent == 'historical':
         return build_historical_context(prompt)
     elif actual_intent == 'progression':
         return build_progression_context()
-    elif actual_intent == 'plan_modification' or actual_intent == 'plan_discussion':
+    elif actual_intent in ['plan_modification', 'plan_discussion']:
         return build_plan_context()
     elif actual_intent == 'philosophy_update':
         return build_philosophy_update_context(prompt)
@@ -944,7 +919,7 @@ def get_grok_response_with_context(prompt, user_background=None, conversation_co
 
         # Analyze query intent and build appropriate context
         query_intent = analyze_query_intent(prompt)
-        context_info = build_smart_context(prompt, user_background, conversation_context)
+        context_info = build_smart_context(prompt, query_intent, user_background)
 
         # Add AI preferences to context
         if ai_preferences:
@@ -1863,202 +1838,6 @@ def chat_stream():
 
     return Response(generate(user_message, conversation_history), mimetype='text/plain')
 
-@app.route('/logging_template')
-def logging_template():
-    """Generate workout logging template for a specific date"""
-    try:
-        date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-
-        # Get the day name from the date
-        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-        day_name = date_obj.strftime('%A').lower()
-
-        # Import the models to use the template generator
-        from models import Database, WorkoutTemplateGenerator
-
-        db = Database()
-        template_gen = WorkoutTemplateGenerator(db)
-
-        # Get the weekly plan for this day
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order,
-                   COALESCE(block_type, 'single') as block_type,
-                   COALESCE(meta_json, '{}') as meta_json,
-                   COALESCE(members_json, '[]') as members_json
-            FROM weekly_plan
-            WHERE day_of_week = ?
-            ORDER BY exercise_order
-        ''', (day_name,))
-
-        plan_data = cursor.fetchall()
-        conn.close()
-
-        if not plan_data:
-            # No plan for this day - return empty template
-            return jsonify({
-                'date': date_str,
-                'blocks': []
-            })
-
-        # Convert plan data to the format expected by the template generator
-        plan_json = []
-        for row in plan_data:
-            row_id, exercise_name, sets, reps, weight, order, block_type, meta_json, members_json = row
-
-            if block_type == 'circuit':
-                import json
-                try:
-                    meta = json.loads(meta_json) if meta_json else {}
-                    members = json.loads(members_json) if members_json else []
-
-                    plan_json.append({
-                        'id': f"block_{row_id}",
-                        'block_type': 'circuit',
-                        'label': exercise_name,
-                        'rounds': meta.get('rounds', 2),
-                        'meta': meta,
-                        'members': members
-                    })
-                except json.JSONDecodeError:
-                    # Fallback to simple if JSON parsing fails
-                    plan_json.append({
-                        'id': f"block_{row_id}",
-                        'block_type': 'single',
-                        'exercise_name': exercise_name,
-                        'sets': sets,
-                        'reps': reps,
-                        'weight': weight
-                    })
-            else:
-                # simple block
-                plan_json.append({
-                    'id': f"block_{row_id}",
-                    'block_type': 'single',
-                    'exercise_name': exercise_name,
-                    'sets': sets,
-                    'reps': reps,
-                    'weight': weight
-                })
-
-        # Generate the template
-        template = template_gen.generate_logging_template(plan_json, date_str)
-
-        return jsonify(template)
-
-    except Exception as e:
-        print(f"Error generating logging template: {e}")
-        return jsonify({
-            'date': date_str,
-            'blocks': [],
-            'error': str(e)
-        }), 500
-
-@app.route('/log_from_template', methods=['POST'])
-def log_from_template():
-    try:
-        payload = request.get_json(force=True) or {}
-        date_str = payload.get("date")
-        entries  = payload.get("entries") or []
-        block_notes = payload.get("block_notes") or []  # [{block_id, notes}]
-
-        # Basic date sanity
-        try:
-            _ = datetime.strptime(date_str, "%Y-%m-%d")
-        except Exception:
-            return jsonify({"success": False, "error": "Invalid or missing date"}), 400
-
-        def parse_input_id(s: str):
-            # "BLK-109.S0"  (single → member_idx = set index, round_index = NULL)
-            # "BLK-109.R2.1" (rounds → round_index=2, member_idx=1)
-            if not s or not s.startswith("BLK-") or "." not in s:
-                raise ValueError("Bad input_id")
-            rest = s[4:]              # "109.S0" or "109.R2.1"
-            blk, seg = rest.split(".", 1)
-            block_id = int(blk)
-            if seg.startswith("S"):
-                # S{idx}
-                member_idx = int(seg[1:])
-                return block_id, None, member_idx, "single"
-            if seg.startswith("R"):
-                rpart, mpart = seg.split(".", 1)  # "R2", "1"
-                round_index = int(rpart[1:])
-                member_idx  = int(mpart)
-                return block_id, round_index, member_idx, "circuit"
-            raise ValueError("Bad input_id segment")
-
-        conn = get_db_connection()
-        c = conn.cursor()
-
-        saved = 0
-        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Upsert each entry
-        for e in entries:
-            iid = e.get("input_id")
-            reps = e.get("actual_reps")
-            wt   = e.get("actual_weight")
-            if not iid:
-                continue
-            try:
-                block_id, round_idx, member_idx, block_type = parse_input_id(iid)
-            except Exception:
-                continue
-
-            # SQLite UPSERT with unique(date, block_id, member_idx, round_index)
-            c.execute("""
-                INSERT INTO workout_logs
-                  (date, block_id, block_type, member_idx, round_index,
-                   actual_reps, actual_weight, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(date, block_id, member_idx, round_index)
-                DO UPDATE SET
-                  actual_reps=excluded.actual_reps,
-                  actual_weight=excluded.actual_weight,
-                  updated_at=excluded.updated_at
-            """, (
-                date_str, block_id, block_type, int(member_idx),
-                round_idx if round_idx is not None else None,
-                reps if reps not in ("", None) else None,
-                wt if wt not in ("", None) else None,
-                None,
-                now_ts, now_ts
-            ))
-            saved += 1
-
-        # Optional: block-level notes
-        for bn in block_notes:
-            try:
-                block_id = int(bn.get("block_id"))
-            except Exception:
-                continue
-            note_text = (bn.get("notes") or "").strip()
-            if not note_text:
-                continue
-            # store note once using member_idx= -1 and round_index = NULL
-            c.execute("""
-                INSERT INTO workout_logs
-                  (date, block_id, block_type, member_idx, round_index,
-                   actual_reps, actual_weight, notes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(date, block_id, member_idx, round_index)
-                DO UPDATE SET
-                  notes=excluded.notes,
-                  updated_at=excluded.updated_at
-            """, (
-                date_str, block_id, "meta", -1, None,
-                None, None, note_text, now_ts, now_ts
-            ))
-
-        conn.commit()
-        conn.close()
-        return jsonify({"success": True, "saved": saved}), 200
-    except Exception as e:
-        print("/log_from_template error:", e)
-        return jsonify({"success": False, "error": str(e)}), 500
-
 @app.route('/log_workout')
 def log_workout():
     today = datetime.now().strftime('%Y-%m-%d')
@@ -2627,7 +2406,7 @@ def execute_auto_actions():
                         action_data['sets'],
                         action_data['reps'],
                         action_data['weight'],
-                        action_data['notes'],
+                        'Auto-logged from conversation',
                         datetime.now().strftime('%Y-%m-%d'),
                         action_data.get('substitution_reason', '')
                     ))
@@ -2686,7 +2465,7 @@ def add_progression_guidance():
         if not exercise_name or not guidance_note:
             return jsonify({'success': False, 'error': 'Exercise name and guidance note required'})
 
-        conn = get_db_connection()
+        conn = sqlite3.connect('workout_logs.db')
         cursor = conn.cursor()
 
         # Update progression_notes for the exercise
@@ -2748,9 +2527,9 @@ def modify_plan():
 
             cursor.execute('''
                 INSERT INTO weekly_plan
-                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai')
-            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning))
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
+            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
 
             message = f"Added {exercise_name} to {day}: {sets}x{reps}@{weight}"
 
@@ -3526,8 +3305,6 @@ def delete_workout():
         print(f"Error deleting workout: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-
-
 @app.route('/save_workout', methods=['POST'])
 def save_workout():
     """Save a single workout entry or circuit data"""
@@ -3695,7 +3472,7 @@ def debug_newly_added():
         # Get all exercises from weekly plan
         exercises = []
         try:
-            cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan')
+            cursor.execute('SELECT exercise_name, newly_added, date_added, created_by FROM weekly_plan ORDER BY day_of_week, exercise_order')
             exercises = cursor.fetchall()
         except sqlite3.OperationalError as e:
             print(f"Error fetching exercises for fix_newly_added: {e}")
