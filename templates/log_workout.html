@@ -62,28 +62,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const today = new Date();
     workoutDateInput.valueAsDate = today; // Set default to today
 
-    // Update header date display based on selected date
-    const updateHeaderDate = () => {
-        const selectedDate = new Date(workoutDateInput.value);
-        const formattedDate = selectedDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-        document.getElementById('currentDate').textContent = formattedDate;
-    };
-
-    // Initial header date update
-    updateHeaderDate();
-
-    // Add event listener to update header when date changes
+    // Add event listener to load template when date changes
     workoutDateInput.addEventListener('change', function() {
-        updateHeaderDate();
-        loadWorkoutTemplate(); // Reload template for the selected date
+        loadWorkoutTemplate(); // Load template for the selected date
     });
 
-    loadWorkoutTemplate();
+    // Show initial message
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="text-center py-5">
+            <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Select a date above to load your workout template</h5>
+        </div>
+    `;
 });
 
 function loadWorkoutTemplate() {
