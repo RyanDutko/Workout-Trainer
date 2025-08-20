@@ -1837,6 +1837,99 @@ def chat_stream():
 
     return Response(generate(user_message, conversation_history), mimetype='text/plain')
 
+@app.route('/logging_template')
+def logging_template():
+    """Generate workout logging template for a specific date"""
+    try:
+        date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        
+        # Get the day name from the date
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        day_name = date_obj.strftime('%A').lower()
+        
+        # Import the models to use the template generator
+        from models import Database, WorkoutTemplateGenerator
+        
+        db = Database()
+        template_gen = WorkoutTemplateGenerator(db)
+        
+        # Get the weekly plan for this day
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                   COALESCE(block_type, 'single') as block_type,
+                   COALESCE(meta_json, '{}') as meta_json,
+                   COALESCE(members_json, '[]') as members_json
+            FROM weekly_plan 
+            WHERE day_of_week = ?
+            ORDER BY exercise_order
+        ''', (day_name,))
+        
+        plan_data = cursor.fetchall()
+        conn.close()
+        
+        if not plan_data:
+            # No plan for this day - return empty template
+            return jsonify({
+                'date': date_str,
+                'blocks': []
+            })
+        
+        # Convert plan data to the format expected by the template generator
+        plan_json = []
+        for row in plan_data:
+            row_id, exercise_name, sets, reps, weight, order, block_type, meta_json, members_json = row
+            
+            if block_type == 'circuit':
+                import json
+                try:
+                    meta = json.loads(meta_json) if meta_json else {}
+                    members = json.loads(members_json) if members_json else []
+                    
+                    plan_json.append({
+                        'id': f"block_{row_id}",
+                        'block_type': 'circuit',
+                        'label': exercise_name,
+                        'rounds': meta.get('rounds', 2),
+                        'meta': meta,
+                        'members': members
+                    })
+                except json.JSONDecodeError:
+                    # Fallback to simple if JSON parsing fails
+                    plan_json.append({
+                        'id': f"block_{row_id}",
+                        'block_type': 'single',
+                        'exercise_name': exercise_name,
+                        'sets': sets,
+                        'reps': reps,
+                        'weight': weight
+                    })
+            else:
+                # Simple exercise
+                plan_json.append({
+                    'id': f"block_{row_id}",
+                    'block_type': 'single',
+                    'exercise_name': exercise_name,
+                    'sets': sets,
+                    'reps': reps,
+                    'weight': weight
+                })
+        
+        # Generate the template
+        template = template_gen.generate_logging_template(plan_json, date_str)
+        
+        return jsonify(template)
+        
+    except Exception as e:
+        print(f"Error generating logging template: {e}")
+        return jsonify({
+            'date': date_str,
+            'blocks': [],
+            'error': str(e)
+        }), 500
+
 @app.route('/log_workout')
 def log_workout():
     today = datetime.now().strftime('%Y-%m-%d')
@@ -3302,6 +3395,88 @@ def delete_workout():
 
     except Exception as e:
         print(f"Error deleting workout: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/log_from_template', methods=['POST'])
+def log_from_template():
+    """Log workout from dynamic template data"""
+    try:
+        data = request.json
+        date_str = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        blocks = data.get('blocks', [])
+        
+        if not blocks:
+            return jsonify({'success': False, 'error': 'No workout data provided'})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        logged_exercises = []
+        
+        for block in blocks:
+            block_type = block.get('type', 'simple')
+            
+            if block_type == 'simple':
+                # Handle simple exercise
+                member = block['members'][0]
+                exercise_name = member['name']
+                actual_reps = member.get('actual_reps', member.get('planned_reps', ''))
+                actual_weight = member.get('actual_weight', member.get('planned_weight', {}).get('value', ''))
+                notes = member.get('notes', '')
+                
+                # Determine sets (assume 1 set for simple logging)
+                sets = 1
+                
+                cursor.execute('''
+                    INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
+                    VALUES (?, ?, ?, ?, ?, ?, FALSE)
+                ''', (exercise_name, sets, actual_reps, actual_weight, notes, date_str))
+                
+                logged_exercises.append(f"{exercise_name}: {sets}x{actual_reps}@{actual_weight}")
+                
+            elif block_type == 'rounds':
+                # Handle rounds/circuit exercise
+                block_title = block.get('title', 'Circuit')
+                rounds = block.get('rounds', [])
+                
+                for round_idx, round_data in enumerate(rounds, 1):
+                    for member in round_data.get('members', []):
+                        exercise_name = member['name']
+                        actual_reps = member.get('actual_reps', member.get('planned_reps', ''))
+                        actual_weight = member.get('actual_weight', member.get('planned_weight', {}).get('value', ''))
+                        
+                        # Create descriptive exercise name for circuit
+                        circuit_exercise_name = f"{block_title} - {exercise_name} (Round {round_idx})"
+                        sets = 1
+                        
+                        cursor.execute('''
+                            INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed, complex_exercise_data)
+                            VALUES (?, ?, ?, ?, ?, ?, FALSE, ?)
+                        ''', (circuit_exercise_name, sets, actual_reps, actual_weight, 
+                             f"Part of {block_title} circuit", date_str, f"Round {round_idx} of {len(rounds)}"))
+                        
+                        logged_exercises.append(f"{circuit_exercise_name}: {actual_reps}@{actual_weight}")
+        
+        # Clear newly_added flags for logged exercises
+        for block in blocks:
+            if block.get('type') == 'simple':
+                exercise_name = block['members'][0]['name']
+                cursor.execute('''
+                    UPDATE weekly_plan SET newly_added = FALSE 
+                    WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
+                ''', (exercise_name,))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Logged {len(logged_exercises)} exercises successfully',
+            'exercises_logged': logged_exercises
+        })
+        
+    except Exception as e:
+        print(f"Error logging from template: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/save_workout', methods=['POST'])
