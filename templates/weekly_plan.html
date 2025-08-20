@@ -30,22 +30,46 @@
                                 <div class="d-flex justify-content-between align-items-start mb-3">
                                     <div class="flex-grow-1 me-3">
                                         <h6 class="fw-bold mb-2 text-dark">
-                                            {{ exercise.exercise.title() }}
+                                            {{ (exercise.exercise or exercise.exercise_name or exercise.label or 'Block')|title }}
                                             {% if exercise.newly_added %}
                                                 <span class="badge bg-success ms-2" style="font-size: 0.65rem;">New!</span>
                                             {% endif %}
                                         </h6>
                                         <div class="exercise-info">
-                            <h6 class="exercise-name">{{ exercise.name }}</h6>
                             {% if exercise.block_type in ['circuit', 'rounds'] %}
-                                <p class="exercise-details">{{ exercise.subtitle }}</p>
-                                <small class="text-primary">Complex block</small>
+                              {# figure out rounds #}
+                              {% set rounds = 1 %}
+                              {% if exercise.meta is mapping and 'rounds' in exercise.meta %}
+                                {% set rounds = exercise.meta.rounds %}
+                              {% elif exercise.sets %}
+                                {% set rounds = exercise.sets %}
+                              {% endif %}
+                              <div class="plan-meta">
+                                {{ rounds }} rounds
+                                {% if exercise.members %}
+                                  •
+                                  {# list members like: Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs) #}
+                                  {% for m in exercise.members %}
+                                    {% set exname = m.exercise or m.name or 'Movement' %}
+                                    {% if m.reps and m.weight %}
+                                      {{ exname }} ({{ m.reps }} @ {{ m.weight }})
+                                    {% elif m.reps %}
+                                      {{ exname }} ({{ m.reps }} reps)
+                                    {% elif m.weight %}
+                                      {{ exname }} ({{ m.weight }})
+                                    {% else %}
+                                      {{ exname }}
+                                    {% endif %}
+                                    {% if not loop.last %}, {% endif %}
+                                  {% endfor %}
+                                {% endif %}
+                              </div>
+                              <div class="plan-type">Complex block</div>
                             {% else %}
-                                <p class="exercise-details">
-                                    {{ exercise.sets }} sets × {{ exercise.reps }} 
-                                    {% if exercise.weight and exercise.weight != 'bodyweight' %}@ {{ exercise.weight }}{% endif %}
-                                </p>
-                                <small class="text-muted">Single exercise</small>
+                              <div class="plan-meta">
+                                {{ exercise.sets }} × {{ exercise.reps }}{% if exercise.weight %} @ {{ exercise.weight }}{% endif %}
+                              </div>
+                              <div class="plan-type">Single</div>
                             {% endif %}
                             {% if exercise.notes %}
                                 <small class="text-muted d-block">{{ exercise.notes }}</small>
