@@ -505,6 +505,41 @@ def parse_plan_modification_from_ai_response(response, user_message):
     # This function was referenced but missing - adding stub for now
     return None
 
+def parse_philosophy_update_from_conversation(response, user_message):
+    """Parse philosophy updates from conversation"""
+    # This function was referenced but missing - adding stub for now
+    return None
+
+def parse_preference_updates_from_conversation(response, user_message):
+    """Parse preference updates from conversation"""
+    # This function was referenced but missing - adding stub for now
+    return None
+
+def extract_actual_performed_weight(exercise_name, workout_logs):
+    """Extract actual performed weight from workout logs"""
+    # This function was referenced but missing - adding stub for now
+    return None
+
+def regenerate_exercise_metadata_from_plan():
+    """Regenerate exercise metadata from plan"""
+    # This function was referenced but missing - adding stub for now
+    pass
+
+def standardize_complex_exercise_format():
+    """Standardize complex exercise format"""
+    # This function was referenced but missing - adding stub for now
+    return True
+
+def analyze_query_intent(message, context=None):
+    """Analyze query intent"""
+    # This function was referenced but missing - adding stub for now
+    return {'intent': 'general', 'confidence': 0.5}
+
+def should_include_conversation_context(message, intent):
+    """Check if conversation context should be included"""
+    # This function was referenced but missing - adding stub for now
+    return False
+
 def get_daily_progression_status(date_str):
     """Get progression status for exercises on a specific date"""
     try:

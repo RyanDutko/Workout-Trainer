@@ -236,6 +236,8 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         # Execute the function
                         tool_result = self._execute_tool(function_name, function_args)
                         tool_results_for_response.append(tool_result)
+                        
+                        print(f"✅ Tool result: {json.dumps(tool_result, indent=2)}")  # Debug output
 
                         # Add tool result to conversation
                         messages.append({
@@ -343,6 +345,18 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             elif function_name == "get_session":
                 return self.get_session(
                     date=args.get('date')
+                )
+            
+            elif function_name == "get_workout_history":
+                return self._get_workout_history(
+                    date=args.get('date'),
+                    limit=args.get('limit', 10)
+                )
+            
+            elif function_name == "get_exercise_progression":
+                return self._get_exercise_progression(
+                    exercise_name=args.get('exercise_name'),
+                    limit=args.get('limit', 10)
                 )
 
             else:
@@ -953,3 +967,77 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         except Exception as e:
             conn.close()
             return {'success': False, 'error': f'Failed to add circuit: {str(e)}'}
+    
+    def _get_workout_history(self, date: str = None, limit: int = 10) -> Dict[str, Any]:
+        """Get workout history for a specific date or recent workouts"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if date:
+                cursor.execute('''
+                    SELECT exercise_name, sets, reps, weight, notes, date_logged
+                    FROM workouts
+                    WHERE date_logged = ?
+                    ORDER BY id
+                ''', (date,))
+            else:
+                cursor.execute('''
+                    SELECT exercise_name, sets, reps, weight, notes, date_logged
+                    FROM workouts
+                    ORDER BY date_logged DESC, id DESC
+                    LIMIT ?
+                ''', (limit,))
+            
+            workouts = []
+            for row in cursor.fetchall():
+                workouts.append({
+                    'exercise': row[0],
+                    'sets': row[1],
+                    'reps': row[2],
+                    'weight': row[3],
+                    'notes': row[4] or '',
+                    'date': row[5]
+                })
+            
+            conn.close()
+            return {'workouts': workouts, 'total_found': len(workouts)}
+            
+        except Exception as e:
+            conn.close()
+            return {'error': f'Failed to get workout history: {str(e)}'}
+    
+    def _get_exercise_progression(self, exercise_name: str, limit: int = 10) -> Dict[str, Any]:
+        """Get progression data for a specific exercise"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute('''
+                SELECT date_logged, sets, reps, weight, notes
+                FROM workouts
+                WHERE LOWER(exercise_name) LIKE LOWER(?)
+                ORDER BY date_logged DESC
+                LIMIT ?
+            ''', (f'%{exercise_name}%', limit))
+            
+            progression = []
+            for row in cursor.fetchall():
+                progression.append({
+                    'date': row[0],
+                    'sets': row[1],
+                    'reps': row[2],
+                    'weight': row[3],
+                    'notes': row[4] or ''
+                })
+            
+            conn.close()
+            return {
+                'exercise_name': exercise_name,
+                'progression': progression,
+                'total_found': len(progression)
+            }
+            
+        except Exception as e:
+            conn.close()
+            return {'error': f'Failed to get exercise progression: {str(e)}'}
