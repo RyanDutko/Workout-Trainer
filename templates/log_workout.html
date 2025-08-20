@@ -1,402 +1,251 @@
 {% extends "base.html" %}
-
-{% block title %}Log Workout{% endblock %}
-
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-8 mx-auto">
-            <div class="card shadow-sm">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h4 class="mb-0">
-                        <i class="fas fa-dumbbell text-primary"></i>
-                        Log Today's Workout
-                    </h4>
-                    <small class="text-muted" id="currentDate"></small>
-                </div>
+<div class="container mx-auto p-4">
+  <h1 class="text-2xl font-bold mb-4">Log Workout</h1>
 
-                <div class="card-body">
-                    <!-- Dynamic Logging Form -->
-                    <form id="workoutForm" class="needs-validation" novalidate>
-                        <div id="dynamicLoggingContainer">
-                            <div class="text-center py-4">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="sr-only">Loading...</span>
-                                </div>
-                                <p class="mt-2 mb-0">Loading your workout template...</p>
-                            </div>
-                        </div>
-                        <div id="templateError" class="hidden text-red-600 text-sm"></div>
+  <div class="mb-4 flex items-center gap-2">
+    <label for="logDate" class="font-medium">Date:</label>
+    <input id="logDate" type="date" class="border px-2 py-1 rounded">
+    <button id="loadDayBtn" class="bg-blue-600 text-white px-3 py-1 rounded">Load Day</button>
+  </div>
 
-                        <!-- Submit Button -->
-                        <div class="row mt-4">
-                            <div class="col-md-6">
-                                <button type="submit" class="btn btn-success btn-lg w-100" id="submitBtn" disabled>
-                                    <i class="fas fa-save"></i> Save Workout
-                                </button>
-                            </div>
-                            <div class="col-md-6">
-                                <a href="/dashboard" class="btn btn-secondary btn-lg w-100">
-                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
-                                </a>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
+  <div id="viewPreview" class="mb-6 hidden">
+    <h2 class="text-xl font-semibold mb-2">Planned for <span id="previewDate"></span></h2>
+    <div id="previewList" class="space-y-2"></div>
+    <button id="beginBtn" class="mt-4 bg-green-600 text-white px-4 py-2 rounded">Begin logging</button>
+  </div>
+
+  <div id="viewLogger" class="hidden">
+    <div class="flex items-baseline gap-2 mb-2">
+      <h2 id="blockTitle" class="text-xl font-semibold"></h2>
+      <span id="blockPlan" class="text-sm text-gray-600"></span>
     </div>
+    <div id="blockBody" class="space-y-3"></div>
+    <div class="mt-2">
+      <label class="block text-sm font-medium mb-1">Notes (for this block)</label>
+      <textarea id="blockNotes" rows="3" class="w-full border rounded p-2"></textarea>
+    </div>
+    <div class="mt-4 flex justify-between">
+      <button id="prevBtn" class="border px-4 py-2 rounded">Back</button>
+      <button id="saveNextBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Log &amp; continue</button>
+    </div>
+  </div>
+
+  <div id="msg" class="mt-4 text-sm"></div>
+  <div id="templateError" class="hidden text-red-600 text-sm mt-2"></div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-let workoutTemplate = null;
+let template = null;     // { date, blocks: [...] }
+let mode = "preview";    // "preview" | "active"
+let cursor = 0;          // index of current block
+let draft = {};          // input_id -> { reps, weight }
+let notesDraft = {};     // block_id -> notes
 
-// Initialize page
-document.addEventListener('DOMContentLoaded', function() {
-    const currentDate = new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-    document.getElementById('currentDate').textContent = currentDate;
+function $(id){ return document.getElementById(id); }
+function show(id){ $(id).classList.remove('hidden'); }
+function hide(id){ $(id).classList.add('hidden'); }
 
-    loadWorkoutTemplate();
-});
-
-function loadWorkoutTemplate() {
-    const today = new Date().toISOString().split('T')[0];
-    loadTemplate(today);
+async function fetchTemplate(dateStr) {
+  const resp = await fetch(`/logging_template?date=${encodeURIComponent(dateStr)}`);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  const tpl = data.template || { date: data.date, blocks: data.blocks };
+  if (!tpl || !Array.isArray(tpl.blocks)) throw new Error("Bad template payload");
+  return tpl;
 }
 
-async function loadTemplate(dateStr) {
-    try {
-        const resp = await fetch(`/logging_template?date=${encodeURIComponent(dateStr)}`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        // accept either shape
-        const tpl = data.template || { date: data.date, blocks: data.blocks };
-        if (!tpl || !Array.isArray(tpl.blocks)) throw new Error("Bad template payload");
-        renderDynamicLoggingUI(tpl); // your existing renderer that builds inputs
-        document.getElementById('templateError')?.classList.add('hidden');
-        document.getElementById('submitBtn').disabled = false; // Enable submit button once template is loaded
-    } catch (err) {
-        console.error("Template load failed:", err);
-        const el = document.getElementById('templateError');
-        if (el) {
-            el.textContent = "Template loading failed";
-            el.classList.remove('hidden');
-        }
-        renderFallbackUI(); // Render manual logging UI on error
-    }
-}
-
-function renderDynamicLoggingUI(template) {
-    const container = document.getElementById('dynamicLoggingContainer');
-
-    if (!template.blocks || template.blocks.length === 0) {
-        container.innerHTML = '<p class="text-muted text-center">No exercises planned for today</p>';
-        return;
-    }
-
-    let html = '';
-
-    template.blocks.forEach((block, blockIdx) => {
-        if (block.type === 'simple') {
-            html += renderSimpleBlock(block, blockIdx);
-        } else if (block.type === 'rounds') {
-            html += renderRoundsBlock(block, blockIdx);
-        }
-    });
-
-    container.innerHTML = html;
-}
-
-function renderSimpleBlock(block, blockIdx) {
-    const member = block.members[0];
-    return `
-        <div class="card mb-4" data-block-idx="${blockIdx}" data-block-type="simple">
-            <div class="card-header">
-                <h6 class="mb-0">${block.title}</h6>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4">
-                        <label class="form-label">Reps</label>
-                        <input type="number" class="form-control" 
-                               placeholder="${member.planned_reps}" 
-                               data-input-id="${member.input_id}"
-                               data-field="actual_reps">
-                        <small class="text-muted">Planned: ${member.planned_reps}</small>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Weight</label>
-                        <input type="text" class="form-control" 
-                               placeholder="${member.planned_weight.value}${member.planned_weight.unit}" 
-                               data-input-id="${member.input_id}"
-                               data-field="actual_weight">
-                        <small class="text-muted">Planned: ${member.planned_weight.value}${member.planned_weight.unit}</small>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Notes</label>
-                        <input type="text" class="form-control" 
-                               placeholder="Optional notes"
-                               data-input-id="${member.input_id}"
-                               data-field="notes">
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-function renderRoundsBlock(block, blockIdx) {
-    let html = `
-        <div class="card mb-4" data-block-idx="${blockIdx}" data-block-type="rounds">
-            <div class="card-header bg-primary text-white">
-                <h6 class="mb-0">
-                    <i class="fas fa-repeat"></i> ${block.title}
-                </h6>
-                <small>Log each exercise for each round</small>
-            </div>
-            <div class="card-body">
-    `;
-
-    block.rounds.forEach((round, roundIdx) => {
-        html += `
-            <div class="mb-4">
-                <h6 class="text-secondary border-bottom pb-2">Round ${round.round_index}</h6>
-                <div class="row">
-        `;
-
-        round.members.forEach((member, memberIdx) => {
-            html += `
-                <div class="col-md-4 mb-3">
-                    <div class="border rounded p-2">
-                        <label class="form-label small fw-bold">
-                            ${member.name}
-                            ${member.tempo ? `<span class="badge bg-secondary">${member.tempo}</span>` : ''}
-                        </label>
-                        <div class="input-group input-group-sm mb-1">
-                            <input type="number" class="form-control" 
-                                   placeholder="${member.planned_reps}" 
-                                   data-input-id="${member.input_id}"
-                                   data-field="actual_reps">
-                            <span class="input-group-text">reps</span>
-                        </div>
-                        <div class="input-group input-group-sm mb-1">
-                            <input type="text" class="form-control" 
-                                   placeholder="${member.planned_weight.value}" 
-                                   data-input-id="${member.input_id}"
-                                   data-field="actual_weight">
-                            <span class="input-group-text">${member.planned_weight.unit}</span>
-                        </div>
-                        <small class="text-muted">
-                            Planned: ${member.planned_reps} @ ${member.planned_weight.value}${member.planned_weight.unit}
-                        </small>
-                    </div>
-                </div>
-            `;
-        });
-
-        html += '</div></div>';
-    });
-
-    html += '</div></div>';
-    return html;
-}
-
-function renderFallbackUI() {
-    const container = document.getElementById('dynamicLoggingContainer');
-    container.innerHTML = `
-        <div class="alert alert-info">
-            <h6>Manual Logging</h6>
-            <p>Template loading failed. You can still log exercises manually.</p>
-            <button type="button" class="btn btn-primary btn-sm" onclick="addManualExercise()">
-                <i class="fas fa-plus"></i> Add Exercise
-            </button>
-        </div>
-        <div id="manualEntries"></div>
-    `;
-}
-
-function addManualExercise() {
-    const entriesContainer = document.getElementById('manualEntries');
-    const entryId = `manual-${Date.now()}`;
-
-    const html = `
-        <div class="card mb-3" id="${entryId}">
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3">
-                        <label class="form-label">Exercise</label>
-                        <input type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Sets</label>
-                        <input type="number" class="form-control" min="1" required>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Reps</label>
-                        <input type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Weight</label>
-                        <input type="text" class="form-control" required>
-                    </div>
-                    <div class="col-md-2 d-flex align-items-end">
-                        <button type="button" class="btn btn-outline-danger w-100" onclick="removeManualExercise('${entryId}')">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    entriesContainer.insertAdjacentHTML('beforeend', html);
-}
-
-function removeManualExercise(entryId) {
-    document.getElementById(entryId).remove();
-}
-
-// Form submission handler
-document.getElementById('workoutForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    if (workoutTemplate) {
-        submitFromTemplate();
+function renderPreview() {
+  $("previewDate").textContent = template.date;
+  const list = $("previewList");
+  list.innerHTML = "";
+  template.blocks.forEach((b) => {
+    const el = document.createElement("div");
+    el.className = "border rounded p-2";
+    if (b.type === "simple") {
+      el.textContent = `${b.title} — ${b.planned_sets || 1} sets`;
     } else {
-        submitManualWorkout();
+      const rounds = (b.rounds || []).length || 1;
+      el.textContent = `${b.title} — ${rounds} rounds`;
     }
+    list.appendChild(el);
+  });
+  show("viewPreview");
+}
+
+function inputRow(label, inputId, plannedReps, plannedWeight) {
+  const row = document.createElement("div");
+  row.className = "grid grid-cols-3 gap-2 items-center";
+  const lab = document.createElement("div");
+  lab.textContent = label;
+  const reps = document.createElement("input");
+  reps.type = "number";
+  reps.min = "0";
+  reps.placeholder = plannedReps ?? "";
+  reps.className = "border p-1 rounded";
+  reps.dataset.inputId = inputId;
+  reps.dataset.field = "reps";
+
+  const wt = document.createElement("input");
+  wt.type = "text";
+  wt.placeholder = plannedWeight ?? "";
+  wt.className = "border p-1 rounded";
+  wt.dataset.inputId = inputId;
+  wt.dataset.field = "weight";
+
+  reps.addEventListener("input", syncDraft);
+  wt.addEventListener("input", syncDraft);
+
+  row.appendChild(lab);
+  row.appendChild(reps);
+  row.appendChild(wt);
+  return row;
+}
+
+function syncDraft(e){
+  const iid = e.target.dataset.inputId;
+  const field = e.target.dataset.field;
+  draft[iid] = draft[iid] || {};
+  if (field === "reps") draft[iid].reps = e.target.value === "" ? null : Number(e.target.value);
+  if (field === "weight") draft[iid].weight = e.target.value;
+}
+
+function renderBlock() {
+  const b = template.blocks[cursor];
+  $("blockTitle").textContent = b.title;
+  $("blockBody").innerHTML = "";
+  $("blockNotes").value = notesDraft[b.block_id || b.title] || "";
+
+  if (b.type === "simple") {
+    // Expand N sets from planned_sets (default 1)
+    const sets = Math.max(1, Number(b.planned_sets || 1));
+    $("blockPlan").textContent = `Plan: ${sets} set${sets>1?"s":""}`;
+    // Build S0..S{N-1} input rows
+    for (let s = 0; s < sets; s++) {
+      const baseId = (b.block_id || "").replace("BLK-","") || "0";
+      const iid = `BLK-${baseId}.S${s}`;
+      const row = inputRow(`Set ${s+1}`, iid, (b.members?.[0]?.planned_reps ?? ""), (b.members?.[0]?.planned_weight ?? ""));
+      $("blockBody").appendChild(row);
+    }
+  } else {
+    const rounds = b.rounds || [];
+    $("blockPlan").textContent = `Plan: ${rounds.length || 1} round${rounds.length>1?"s":""}`;
+
+    rounds.forEach((r) => {
+      const det = document.createElement("details");
+      const sum = document.createElement("summary");
+      sum.textContent = `Round ${r.round_index}`;
+      det.appendChild(sum);
+
+      (r.members || []).forEach((m, i) => {
+        const row = inputRow(m.name || `Movement ${i+1}`, m.input_id, m.planned_reps, m.planned_weight);
+        row.classList.add("ml-4");
+        det.appendChild(row);
+      });
+      $("blockBody").appendChild(det);
+    });
+  }
+
+  $("prevBtn").disabled = (cursor === 0);
+  $("saveNextBtn").textContent = (cursor === template.blocks.length - 1) ? "Save day" : "Log & continue";
+}
+
+async function saveCurrentAndNext() {
+  const b = template.blocks[cursor];
+  const entries = [];
+  // Gather entries for this block
+  if (b.type === "simple") {
+    const sets = Math.max(1, Number(b.planned_sets || 1));
+    const baseId = (b.block_id || "").replace("BLK-","") || "0";
+    for (let s = 0; s < sets; s++) {
+      const iid = `BLK-${baseId}.S${s}`;
+      const d = draft[iid] || {};
+      if (d.reps != null || (d.weight && d.weight !== "")) {
+        entries.push({ input_id: iid, actual_reps: d.reps, actual_weight: d.weight });
+      }
+    }
+  } else {
+    (b.rounds || []).forEach((r) => {
+      (r.members || []).forEach((m) => {
+        const d = draft[m.input_id] || {};
+        if (d.reps != null || (d.weight && d.weight !== "")) {
+          entries.push({ input_id: m.input_id, actual_reps: d.reps, actual_weight: d.weight });
+        }
+      });
+    });
+  }
+
+  const blockIdKey = b.block_id || b.title; // prefer numeric id when present
+  const block_notes = [{
+    block_id: Number((b.block_id || "BLK-0").replace("BLK-","")) || 0,
+    notes: $("blockNotes").value || ""
+  }];
+
+  const body = {
+    date: $("logDate").value,
+    entries,
+    block_notes
+  };
+
+  $("msg").textContent = "Saving…";
+  const resp = await fetch("/log_from_template", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.success) {
+    $("msg").textContent = "Save failed: " + (data.error || resp.status);
+    return;
+  }
+  $("msg").textContent = `Saved ${data.saved} input(s).`;
+
+  // Advance
+  if (cursor < template.blocks.length - 1) {
+    cursor++;
+    renderBlock();
+  } else {
+    // Finished the day
+   mode = "preview";
+    hide("viewLogger");
+    show("viewPreview");
+  }
+}
+
+// Wire up UI
+window.addEventListener("DOMContentLoaded", () => {
+  const today = new Date().toISOString().slice(0,10);
+  $("logDate").value = today;
+
+  $("loadDayBtn").addEventListener("click", async () => {
+    try {
+      template = await fetchTemplate($("logDate").value);
+      hide("viewLogger");
+      show("viewPreview");
+      renderPreview();
+      $("templateError").classList.add("hidden");
+      $("msg").textContent = "";
+    } catch (e) {
+      $("templateError").textContent = "Template loading failed";
+      $("templateError").classList.remove("hidden");
+    }
+  });
+
+  $("beginBtn").addEventListener("click", () => {
+    if (!template || !template.blocks || template.blocks.length === 0) return;
+    cursor = 0;
+    hide("viewPreview");
+    show("viewLogger");
+    renderBlock();
+  });
+
+  $("prevBtn").addEventListener("click", () => {
+    if (cursor > 0) {
+      cursor--;
+      renderBlock();
+    }
+  });
+  $("saveNextBtn").addEventListener("click", saveCurrentAndNext);
 });
-
-function submitFromTemplate() {
-    const processedBlocks = [];
-
-    workoutTemplate.blocks.forEach((templateBlock, blockIdx) => {
-        const blockElement = document.querySelector(`[data-block-idx="${blockIdx}"]`);
-
-        if (templateBlock.type === 'simple') {
-            const member = templateBlock.members[0];
-            const inputs = blockElement.querySelectorAll(`[data-input-id="${member.input_id}"]`);
-
-            const processedMember = {
-                ...member,
-                actual_reps: inputs[0].value || member.planned_reps,
-                actual_weight: inputs[1].value || member.planned_weight.value,
-                notes: inputs[2].value || ''
-            };
-
-            processedBlocks.push({
-                ...templateBlock,
-                members: [processedMember]
-            });
-        } else if (templateBlock.type === 'rounds') {
-            const processedRounds = [];
-
-            templateBlock.rounds.forEach(round => {
-                const processedMembers = [];
-
-                round.members.forEach(member => {
-                    const repsInput = blockElement.querySelector(`[data-input-id="${member.input_id}"][data-field="actual_reps"]`);
-                    const weightInput = blockElement.querySelector(`[data-input-id="${member.input_id}"][data-field="actual_weight"]`);
-
-                    processedMembers.push({
-                        ...member,
-                        actual_reps: repsInput ? (repsInput.value || member.planned_reps) : member.planned_reps,
-                        actual_weight: weightInput ? (weightInput.value || member.planned_weight.value) : member.planned_weight.value
-                    });
-                });
-
-                processedRounds.push({
-                    ...round,
-                    members: processedMembers
-                });
-            });
-
-            processedBlocks.push({
-                ...templateBlock,
-                rounds: processedRounds
-            });
-        }
-    });
-
-    const submitData = {
-        date: workoutTemplate.date,
-        blocks: processedBlocks
-    };
-
-    fetch('/log_from_template', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(submitData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(`✅ Workout logged successfully!\n\n${data.message}`);
-            window.location.href = '/dashboard';
-        } else {
-            alert('Error logging workout: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error logging workout. Please try again.');
-    });
-}
-
-function submitManualWorkout() {
-    const exercises = [];
-    const manualEntries = document.querySelectorAll('#manualEntries .card');
-
-    manualEntries.forEach(entry => {
-        const inputs = entry.querySelectorAll('input');
-        if (inputs.length >= 4 && inputs[0].value.trim()) {
-            exercises.push({
-                exercise: inputs[0].value.trim(),
-                sets: parseInt(inputs[1].value) || 1,
-                reps: inputs[2].value.trim(),
-                weight: inputs[3].value.trim()
-            });
-        }
-    });
-
-    if (exercises.length === 0) {
-        alert('Please add at least one exercise');
-        return;
-    }
-
-    const submitData = {
-        exercises: exercises,
-        date: new Date().toISOString().split('T')[0]
-    };
-
-    fetch('/save_workout', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(submitData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert(`✅ Workout saved successfully!\n\n${data.message}`);
-            window.location.href = '/dashboard';
-        } else {
-            alert('Error saving workout: ' + (data.error || 'Unknown error'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Error saving workout. Please try again.');
-    });
-}
 </script>
 {% endblock %}

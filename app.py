@@ -14,6 +14,32 @@ app = Flask(__name__)
 # Add enumerate filter for templates
 app.jinja_env.filters['enumerate'] = enumerate
 
+def ensure_logging_tables():
+    conn = get_db_connection()
+    c = conn.cursor()
+    # Main logs table (one row per input_id on a given date)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS workout_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            block_id INTEGER NOT NULL,
+            block_type TEXT NOT NULL,
+            member_idx INTEGER NOT NULL,
+            round_index INTEGER,
+            actual_reps INTEGER,
+            actual_weight TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(date, block_id, member_idx, round_index)
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+# Call this once during startup
+ensure_logging_tables()
+
 # Import V2 AI service for testing
 try:
     from ai_service_v2 import AIServiceV2
@@ -1907,14 +1933,18 @@ def logging_template():
                         'weight': weight
                     })
             else:
-                # Simple exercise
+                # simple block
                 plan_json.append({
-                    'id': f"block_{row_id}",
-                    'block_type': 'single',
-                    'exercise_name': exercise_name,
-                    'sets': sets,
-                    'reps': reps,
-                    'weight': weight
+                    "block_id": f"BLK-{row_id}",
+                    "type": "simple",
+                    "title": exercise_name,
+                    "planned_sets": int(sets or 0),
+                    "members": [{
+                        "name": exercise_name,
+                        "input_id": f"BLK-{row_id}.S0",
+                        "planned_reps": reps,
+                        "planned_weight": weight
+                    }]
                 })
         
         # Generate the template
@@ -1929,6 +1959,109 @@ def logging_template():
             'blocks': [],
             'error': str(e)
         }), 500
+
+@app.route('/log_from_template', methods=['POST'])
+def log_from_template():
+    try:
+        payload = request.get_json(force=True) or {}
+        date_str = payload.get("date")
+        entries  = payload.get("entries") or []
+        block_notes = payload.get("block_notes") or []  # [{block_id, notes}]
+
+        # Basic date sanity
+        try:
+            _ = datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            return jsonify({"success": False, "error": "Invalid or missing date"}), 400
+
+        def parse_input_id(s: str):
+            # "BLK-109.S0"  (single → member_idx = set index, round_index = NULL)
+            # "BLK-109.R2.1" (rounds → round_index=2, member_idx=1)
+            if not s or not s.startswith("BLK-") or "." not in s:
+                raise ValueError("Bad input_id")
+            rest = s[4:]              # "109.S0" or "109.R2.1"
+            blk, seg = rest.split(".", 1)
+            block_id = int(blk)
+            if seg.startswith("S"):
+                # S{idx}
+                member_idx = int(seg[1:])
+                return block_id, None, member_idx, "single"
+            if seg.startswith("R"):
+                rpart, mpart = seg.split(".", 1)  # "R2", "1"
+                round_index = int(rpart[1:])
+                member_idx  = int(mpart)
+                return block_id, round_index, member_idx, "circuit"
+            raise ValueError("Bad input_id segment")
+
+        conn = get_db_connection()
+        c = conn.cursor()
+
+        saved = 0
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Upsert each entry
+        for e in entries:
+            iid = e.get("input_id")
+            reps = e.get("actual_reps")
+            wt   = e.get("actual_weight")
+            if not iid:
+                continue
+            try:
+                block_id, round_idx, member_idx, block_type = parse_input_id(iid)
+            except Exception:
+                continue
+
+            # SQLite UPSERT with unique(date, block_id, member_idx, round_index)
+            c.execute("""
+                INSERT INTO workout_logs
+                  (date, block_id, block_type, member_idx, round_index,
+                   actual_reps, actual_weight, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, block_id, member_idx, round_index)
+                DO UPDATE SET
+                  actual_reps=excluded.actual_reps,
+                  actual_weight=excluded.actual_weight,
+                  updated_at=excluded.updated_at
+            """, (
+                date_str, block_id, block_type, int(member_idx),
+                round_idx if round_idx is not None else None,
+                reps if reps not in ("", None) else None,
+                wt if wt not in ("", None) else None,
+                None,
+                now_ts, now_ts
+            ))
+            saved += 1
+
+        # Optional: block-level notes
+        for bn in block_notes:
+            try:
+                block_id = int(bn.get("block_id"))
+            except Exception:
+                continue
+            note_text = (bn.get("notes") or "").strip()
+            if not note_text:
+                continue
+            # store note once using member_idx= -1 and round_index = NULL
+            c.execute("""
+                INSERT INTO workout_logs
+                  (date, block_id, block_type, member_idx, round_index,
+                   actual_reps, actual_weight, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, block_id, member_idx, round_index)
+                DO UPDATE SET
+                  notes=excluded.notes,
+                  updated_at=excluded.updated_at
+            """, (
+                date_str, block_id, "meta", -1, None,
+                None, None, note_text, now_ts, now_ts
+            ))
+
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True, "saved": saved}), 200
+    except Exception as e:
+        print("/log_from_template error:", e)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/log_workout')
 def log_workout():
