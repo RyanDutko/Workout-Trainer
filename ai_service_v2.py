@@ -1226,26 +1226,37 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 'timestamp': datetime.now().isoformat()
             }
 
-            # Generate user-friendly summary
+            # Generate user-friendly summary based on action
             block_type = normalized_block['block_type']
             label = normalized_block['label']
 
-            if block_type == 'circuit':
-                rounds = normalized_block['rounds']
-                members_count = len(normalized_block['members'])
-                summary = f"Add '{label}' (circuit, {rounds} rounds, {members_count} members) to {day.title()}"
+            if action == "add_block":
+                if block_type == 'circuit':
+                    rounds = normalized_block['rounds']
+                    members_count = len(normalized_block['members'])
+                    summary = f"Add '{label}' (circuit, {rounds} rounds, {members_count} members) to {day.title()}"
+                else:
+                    summary = f"Add '{label}' ({block_type}) to {day.title()}"
+            elif action == "remove_block":
+                summary = f"Remove block titled '{label}' from {day.title()}"
             else:
-                summary = f"Add '{label}' ({block_type}) to {day.title()}"
+                summary = f"{action} '{label}' on {day.title()}"
 
             print(f"PROPOSE id={proposal_id} day={day} action={action} type={block_type} rounds={normalized_block['rounds']} members={len(normalized_block['members'])}")
 
-            return {
+            proposal_payload = {
                 'proposal_id': proposal_id,
                 'summary': summary,
                 'normalized_block': normalized_block,
                 'action': action,
                 'day': day.lower()
             }
+
+            # Add target_label for remove operations
+            if action == "remove_block":
+                proposal_payload['target_label'] = label
+
+            return proposal_payload
 
         except Exception as e:
             return {'error': f'Failed to create proposal: {str(e)}'}
@@ -1267,7 +1278,54 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
             block_id = None
 
-            if action == 'add_block':
+            if action == 'remove_block':
+                # Handle block removal
+                target_label = (proposal.get("target_label") 
+                               or proposal.get("block", {}).get("label") 
+                               or "").strip()
+                target_id = proposal.get("target_block_id")  # optional
+
+                # Get current day plan
+                day_plan = self._get_weekly_plan(day)
+                before_len = len(day_plan)
+
+                def _label(b):
+                    return (b.get("label") or b.get("exercise") or "").strip().casefold()
+
+                # Build predicate: match by id if present, else by label (case-insensitive)
+                conn = self.db.get_connection()
+                cursor = conn.cursor()
+
+                removed_count = 0
+                if target_id:
+                    # Remove by ID if provided
+                    cursor.execute('DELETE FROM weekly_plan WHERE id = ? AND day_of_week = ?', (target_id, day))
+                    removed_count = cursor.rowcount
+                elif target_label:
+                    # Remove by label (case-insensitive)
+                    cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, target_label))
+                    removed_count = cursor.rowcount
+
+                conn.commit()
+                conn.close()
+
+                # Get updated plan for verification
+                updated_plan = self._get_weekly_plan(day)
+
+                print(f"REMOVE_BLOCK day={day} removed={removed_count} before={before_len} after={len(updated_plan)}")
+
+                # Clean up the proposal
+                del self.pending_proposals[proposal_id]
+
+                return {
+                    "status": "ok",
+                    "block_id": None,
+                    "wrote": bool(removed_count > 0),
+                    "removed": removed_count,
+                    "updated_plan": updated_plan
+                }
+
+            elif action == 'add_block':
                 # Get next order if not specified
                 if block['order_index'] == 99:
                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
