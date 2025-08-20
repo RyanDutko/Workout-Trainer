@@ -129,7 +129,11 @@ def init_db():
         is_complex BOOLEAN DEFAULT FALSE,
         complex_structure TEXT,
         newly_added BOOLEAN DEFAULT FALSE,
-        date_added TEXT
+        date_added TEXT,
+        block_type TEXT DEFAULT 'single',
+        meta_json TEXT DEFAULT '{}',
+        members_json TEXT DEFAULT '[]',
+        progression_notes TEXT
     )
     ''')
 
@@ -700,11 +704,11 @@ Keep suggestions practical and progressive. Base recommendations on actual perfo
 
         # Update workout records with progression notes
         updated_count = 0
-        for workout_id, exercise_name, sets, reps, weight, notes, existing_progression in day_workouts:
+        for workout_id, exercise, sets, reps, weight, notes, existing_progression in day_workouts:
             # Find matching progression update
             progression_note = None
             for update in progression_updates:
-                if update['exercise'].lower() in exercise_name.lower() or exercise_name.lower() in update['exercise'].lower():
+                if update['exercise'].lower() in exercise.lower() or exercise.lower() in update['exercise'].lower():
                     full_note = f"{update['progression']}"
                     if update['reasoning']:
                         full_note += f" - {update['reasoning']}"
@@ -1006,23 +1010,6 @@ TRAINER LANGUAGE:
 - Think programming, not just exercise selection
 
 Be specific with exercise names, sets, reps, and weights. Always explain the programming logic behind your suggestions."""
-
-        elif query_intent == 'full_plan_review':
-            system_prompt = """You are Grok, providing a smart workout plan analysis. Be comprehensive but CONCISE.
-
-LENGTH CONSTRAINTS:
-- Keep total response under 600 words
-- Focus on 3-5 key insights maximum
-- Don't analyze every single exercise - pick the most important ones
-- Use bullet points for clarity
-
-ANALYSIS APPROACH:
-1. Quick overall assessment (2-3 sentences)
-2. Highlight 2-3 things working well
-3. Identify 2-3 main improvement areas with specific suggestions
-4. End with "What would you like me to elaborate on?" to encourage follow-up
-
-STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
             system_prompt = """You are the AI training assistant built into this fitness app.
 
@@ -1674,9 +1661,9 @@ def chat_stream():
                                         INSERT INTO weekly_plan
                                         (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
                                          notes, created_by, newly_added, date_added)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', True, ?)
                                     ''', ('monday', 'glute drive', 3, '12', '90lbs', next_order,
-                                          'Added per user request for extra glute volume', 'grok_ai', True, datetime.now().strftime('%Y-%m-%d')))
+                                          'Added per user request for extra glute volume', datetime.now().strftime('%Y-%m-%d')))
 
                                     plan_modifications = "✅ EXECUTED: Added glute drive to Monday (3x12@90lbs)"
                                     plan_change_executed = True
@@ -1873,246 +1860,103 @@ def history():
 
 @app.route('/weekly_plan')
 def weekly_plan():
+    """Display the weekly workout plan"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Check what columns actually exist
-    columns = []
-    try:
-        cursor.execute("PRAGMA table_info(weekly_plan)")
-        columns = [col[1] for col in cursor.fetchall()]
-    except sqlite3.OperationalError as e:
-        print(f"Error getting table info for weekly_plan: {e}")
+    # Get all exercises for the week including block metadata
+    cursor.execute("""
+        SELECT id, day_of_week, exercise_name,
+               COALESCE(target_sets, 0) AS target_sets,
+               COALESCE(target_reps, '') AS target_reps,
+               COALESCE(target_weight, '') AS target_weight,
+               COALESCE(block_type, 'single') AS block_type,
+               COALESCE(meta_json, '{}') AS meta_json,
+               COALESCE(members_json, '[]') AS members_json,
+               exercise_order,
+               COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "")
+        FROM weekly_plan 
+        ORDER BY day_of_week, exercise_order
+    """)
 
-    # Use the correct column names based on what exists
-    plan_data = []
-    try:
-        if 'target_sets' in columns:
-            cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
-        else:
-            cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
-        plan_data = cursor.fetchall()
-    except sqlite3.OperationalError as e:
-        print(f"Error fetching weekly plan data: {e}")
-
+    rows = cursor.fetchall()
     conn.close()
 
-    # Organize plan by day
+    import json
+
+    # Group exercises by day with enhanced display data
     plan_by_day = {}
-    for row in plan_data:
-        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
-        if day not in plan_by_day:
-            plan_by_day[day] = []
-        plan_by_day[day].append({
-            'id': id,
-            'exercise': exercise,
-            'sets': sets,
-            'reps': reps,
-            'weight': weight,
-            'order': order,
-            'notes': notes or "",
-            'newly_added': bool(newly_added),
-            'progression_notes': progression_notes or ""
-        })
+    for r in rows:
+        (row_id, dow, name, t_sets, t_reps, t_weight, btype, meta_js, members_js, order_idx, notes, newly_added, progression_notes) = r
 
-    return render_template('weekly_plan.html', plan_by_day=plan_by_day)
+        try:
+            meta = json.loads(meta_js) if meta_js else {}
+        except Exception:
+            meta = {}
+        try:
+            members = json.loads(members_js) if members_js else []
+        except Exception:
+            members = []
 
-@app.route('/logging_template', methods=['GET'])
-def logging_template():
-    try:
-        date = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
-        day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A').lower()
+        item = {
+            "id": row_id,
+            "name": name,
+            "block_type": (btype or "single").lower(),
+            "sets": t_sets,
+            "reps": t_reps,
+            "weight": t_weight,
+            "order": order_idx,
+            "notes": notes,
+            "newly_added": newly_added,
+            "progression_notes": progression_notes,
+            # new fields used by the template/UI:
+            "subtitle": "",
+            "sets_label": "",
+        }
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT
-                id,
-                day_of_week,
-                exercise_name,
-                COALESCE(target_sets, 0),
-                COALESCE(target_reps, ''),
-                COALESCE(target_weight, ''),
-                COALESCE(block_type, 'single') AS block_type,
-                COALESCE(meta_json, '{}')      AS meta_json,
-                COALESCE(members_json, '[]')   AS members_json,
-                exercise_order
-            FROM weekly_plan
-            WHERE LOWER(day_of_week) = ?
-            ORDER BY exercise_order
-        ''', (day_name,))
-        rows = cursor.fetchall()
-        conn.close()
-
-        # Build a dynamic template the UI can render
-        blocks = []
-        for (row_id, _dow, name, t_sets, t_reps, t_weight, btype, meta_json, members_json, _order) in rows:
-            try:
-                meta = json.loads(meta_json) if meta_json else {}
-            except Exception:
-                meta = {}
-            try:
-                members = json.loads(members_json) if members_json else []
-            except Exception:
-                members = []
-
-            btype_l = (btype or "single").lower()
-
-            # Simple block
-            if btype_l == "single":
-                blocks.append({
-                    "block_id": f"BLK-{row_id}",
-                    "type": "simple",
-                    "title": name,
-                    "members": [{
-                        "name": name,
-                        "input_id": f"BLK-{row_id}.S1",
-                        "planned_reps": t_reps,
-                        "planned_weight": t_weight
-                    }]
-                })
-                continue
-
-            # Circuit / Rounds block
+        if item["block_type"] in ("circuit", "rounds"):
             rounds = None
-            # Prefer explicit meta.rounds; fall back to target_sets
             if isinstance(meta, dict) and "rounds" in meta:
-                try:
+                try: 
                     rounds = int(meta["rounds"])
-                except Exception:
+                except Exception: 
                     rounds = None
             if rounds is None:
-                try:
+                try: 
                     rounds = int(t_sets or 1)
-                except Exception:
+                except Exception: 
                     rounds = 1
-            if rounds < 1:
-                rounds = 1
+            rounds = max(1, rounds)
 
-            # Members should contain at least name/reps/weight
-            # Expected shape: [{"exercise": "...", "reps": 10, "weight": "20 lbs", ...}, ...]
-            # Map to UI-friendly fields
-            round_list = []
-            for r in range(1, rounds+1):
-                r_members = []
-                for mi, m in enumerate(members):
-                    ex_name = m.get("exercise") or m.get("name") or name
-                    planned_reps = m.get("reps", t_reps)
-                    planned_weight = m.get("weight", t_weight)
-                    r_members.append({
-                        "name": ex_name,
-                        "input_id": f"BLK-{row_id}.R{r}.{mi}",
-                        "planned_reps": planned_reps,
-                        "planned_weight": planned_weight
-                    })
-                round_list.append({
-                    "round_index": r,
-                    "members": r_members
-                })
+            # Build a compact summary like:
+            # "2 rounds • Slow curls (10 @ 20 lbs), Fast curls (15 @ 15 lbs), Hammer curls (10 @ 15 lbs)"
+            parts = []
+            for m in members:
+                ex = m.get("exercise") or m.get("name") or "Movement"
+                reps = m.get("reps")
+                wt = m.get("weight")
+                if reps is not None and wt:
+                    parts.append(f"{ex} ({reps} @ {wt})")
+                elif reps is not None:
+                    parts.append(f"{ex} ({reps} reps)")
+                elif wt:
+                    parts.append(f"{ex} ({wt})")
+                else:
+                    parts.append(ex)
 
-            blocks.append({
-                "block_id": f"BLK-{row_id}",
-                "type": "rounds",
-                "title": name,
-                "rounds": round_list
-            })
+            item["sets_label"] = f"{rounds} rounds"
+            item["subtitle"] = " • ".join([item["sets_label"], ", ".join(parts)]) if parts else item["sets_label"]
 
-        template = {"date": date, "blocks": blocks}
-        return jsonify({"success": True, "template": template}), 200
+            # For circuits, blank the old single-exercise fields so the template won't show "2 @"
+            item["reps"] = ""
+            item["weight"] = ""
+        else:
+            # single: keep old labels
+            item["sets_label"] = f"{t_sets} × {t_reps}" if t_reps else f"{t_sets} sets"
 
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/get_plan/<date>')
-def get_plan(date):
-    """Get workout plan for a specific date"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Get day name from date
-        from datetime import datetime
-        date_obj = datetime.strptime(date, '%Y-%m-%d')
-        day_name = date_obj.strftime('%A').lower()
-
-        cursor.execute('''
-            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order,
-                   COALESCE(notes, ""), COALESCE(progression_notes, ""),
-                   COALESCE(block_type, "single"), COALESCE(meta_json, "{}"), COALESCE(members_json, "[]")
-            FROM weekly_plan
-            WHERE day_of_week = ?
-            ORDER BY exercise_order
-        ''', (day_name,))
-
-        exercises = []
-        for row in cursor.fetchall():
-            exercise_id, exercise_name, sets, reps, weight, order, notes, progression_notes, block_type, meta_json, members_json = row
-
-            exercise_data = {
-                'id': exercise_id,
-                'exercise_name': exercise_name,
-                'sets': sets,
-                'reps': reps,
-                'weight': weight,
-                'order': order,
-                'notes': notes,
-                'progression_notes': progression_notes,
-                'block_type': block_type
-            }
-
-            # Handle circuit blocks
-            if block_type == 'circuit':
-                try:
-                    import json
-                    exercise_data['label'] = exercise_name
-                    exercise_data['meta'] = json.loads(meta_json) if meta_json else {}
-                    exercise_data['members'] = json.loads(members_json) if members_json else []
-                except json.JSONDecodeError:
-                    # Fallback if JSON parsing fails
-                    exercise_data['meta'] = {'rounds': 2}
-                    exercise_data['members'] = []
-
-            exercises.append(exercise_data)
-
-        conn.close()
-        return jsonify({'exercises': exercises})
-
-    except Exception as e:
-        return jsonify({'exercises': [], 'error': str(e)})
-
-    # Check what columns actually exist
-    columns = []
-    try:
-        cursor.execute("PRAGMA table_info(weekly_plan)")
-        columns = [col[1] for col in cursor.fetchall()]
-    except sqlite3.OperationalError as e:
-        print(f"Error checking column existence: {e}")
-
-    if 'target_sets' in columns:
-        cursor.execute('SELECT id, day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, COALESCE(notes, ""), COALESCE(newly_added, 0), COALESCE(progression_notes, "") FROM weekly_plan ORDER BY day_of_week, exercise_order')
-    else:
-        cursor.execute('SELECT id, day_of_week, exercise_name, sets, reps, weight, order_index, COALESCE(notes, ""), 0, "" FROM weekly_plan ORDER BY day_of_week, order_index')
-
-    plan_data = cursor.fetchall()
-    conn.close()
-
-    # Organize plan by day
-    plan_by_day = {}
-    for row in plan_data:
-        id, day, exercise, sets, reps, weight, order, notes, newly_added, progression_notes = row
-        if day not in plan_by_day:
-            plan_by_day[day] = []
-        plan_by_day[day].append({
-            'id': id,
-            'exercise': exercise,
-            'sets': sets,
-            'reps': reps,
-            'weight': weight,
-            'order': order,
-            'notes': notes or "",
-            'newly_added': bool(newly_added),
-            'progression_notes': progression_notes or ""
-        })
+        if dow not in plan_by_day:
+            plan_by_day[dow] = []
+        plan_by_day[dow].append(item)
 
     return render_template('weekly_plan.html', plan_by_day=plan_by_day)
 

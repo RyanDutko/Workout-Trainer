@@ -1,4 +1,3 @@
-
 {% extends "base.html" %}
 
 {% block title %}Weekly Plan - Personal Trainer{% endblock %}
@@ -36,30 +35,31 @@
                                                 <span class="badge bg-success ms-2" style="font-size: 0.65rem;">New!</span>
                                             {% endif %}
                                         </h6>
-                                        <div class="mb-2">
-                                            <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2" style="font-size: 0.85rem;">
-                                                {{ exercise.sets }}×{{ exercise.reps }} @ {{ exercise.weight }}
-                                            </span>
-                                        </div>
-                                        {% if exercise.notes %}
-                                            <p class="text-muted mb-2" style="font-size: 0.9rem;">
-                                                <i class="fas fa-sticky-note me-1"></i>{{ exercise.notes }}
-                                            </p>
-                                        {% endif %}
-                                        {% if exercise.progression_notes %}
-                                            <p class="text-warning mb-2" style="font-size: 0.9rem;">
-                                                <i class="fas fa-chart-line me-1"></i>{{ exercise.progression_notes }}
-                                            </p>
-                                        {% endif %}
-                                        {% if 'burnout' in exercise.exercise.lower() or 'rounds' in exercise.exercise.lower() %}
-                                            <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">Complex Exercise</span>
-                                        {% endif %}
+                                        <div class="exercise-info">
+                            <h6 class="exercise-name">{{ exercise.name }}</h6>
+                            {% if exercise.block_type in ['circuit', 'rounds'] %}
+                                <p class="exercise-details">{{ exercise.subtitle }}</p>
+                                <small class="text-primary">Complex block</small>
+                            {% else %}
+                                <p class="exercise-details">
+                                    {{ exercise.sets }} sets × {{ exercise.reps }} 
+                                    {% if exercise.weight and exercise.weight != 'bodyweight' %}@ {{ exercise.weight }}{% endif %}
+                                </p>
+                                <small class="text-muted">Single exercise</small>
+                            {% endif %}
+                            {% if exercise.notes %}
+                                <small class="text-muted d-block">{{ exercise.notes }}</small>
+                            {% endif %}
+                            {% if exercise.progression_notes %}
+                                <small class="text-info d-block">📈 {{ exercise.progression_notes }}</small>
+                            {% endif %}
+                        </div>
                                     </div>
                                     <span class="badge bg-secondary bg-opacity-20 text-secondary fw-bold" style="font-size: 0.9rem; min-width: 30px;">
                                         {{ exercise.order }}
                                     </span>
                                 </div>
-                                
+
                                 <!-- Action Buttons - Now sleek and organized -->
                                 <div class="exercise-actions">
                                     <div class="btn-toolbar justify-content-between" role="toolbar">
@@ -76,7 +76,7 @@
                                                 <i class="fas fa-chevron-down"></i>
                                             </button>
                                         </div>
-                                        
+
                                         <!-- Edit/Delete buttons -->
                                         <div class="btn-group btn-group-sm" role="group">
                                             <button class="btn btn-outline-primary btn-sm edit-btn"
