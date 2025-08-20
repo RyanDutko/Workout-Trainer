@@ -2497,6 +2497,92 @@ def add_progression_guidance():
 
 @app.route('/modify_plan', methods=['POST'])
 def modify_plan():
+
+
+@app.route('/log_from_template', methods=['POST'])
+def log_from_template():
+    """Log workout from dynamic template submission"""
+    try:
+        data = request.json
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
+        blocks = data.get('blocks', [])
+
+        if not blocks:
+            return jsonify({'status': 'error', 'message': 'No workout data provided'})
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        logged_exercises = []
+
+        for block in blocks:
+            block_type = block.get('type', 'simple')
+            
+            if block_type == 'simple':
+                # Simple exercise logging
+                exercise_name = block.get('title', '')
+                actual_sets = block.get('actual_sets', block.get('planned_sets', 1))
+                actual_reps = block.get('actual_reps', block.get('planned_reps', ''))
+                actual_weight = block.get('actual_weight', block.get('planned_weight', ''))
+                notes = block.get('notes', '')
+
+                if exercise_name:
+                    cursor.execute('''
+                        INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
+                        VALUES (?, ?, ?, ?, ?, ?, FALSE)
+                    ''', (exercise_name, actual_sets, actual_reps, actual_weight, notes, date))
+
+                    logged_exercises.append(f"{exercise_name}: {actual_sets}x{actual_reps}@{actual_weight}")
+
+            elif block_type == 'circuit':
+                # Circuit logging
+                circuit_name = block.get('title', 'Circuit')
+                rounds = block.get('rounds', [])
+                
+                # Log each round as a separate set
+                for round_idx, round_data in enumerate(rounds, 1):
+                    members = round_data.get('members', [])
+                    
+                    for member in members:
+                        exercise_name = member.get('name', '')
+                        actual_reps = member.get('actual_reps', member.get('planned_reps', ''))
+                        actual_weight = member.get('actual_weight', member.get('planned_weight', ''))
+                        
+                        if exercise_name:
+                            circuit_notes = f"Round {round_idx} of {circuit_name}"
+                            
+                            cursor.execute('''
+                                INSERT INTO workouts (exercise_name, sets, reps, weight, notes, date_logged, day_completed)
+                                VALUES (?, ?, ?, ?, ?, ?, FALSE)
+                            ''', (exercise_name, 1, actual_reps, actual_weight, circuit_notes, date))
+
+                            logged_exercises.append(f"{exercise_name} (R{round_idx}): 1x{actual_reps}@{actual_weight}")
+
+        # Clear newly_added flags for logged exercises
+        for exercise_summary in logged_exercises:
+            exercise_name = exercise_summary.split(':')[0].split('(')[0].strip()
+            try:
+                cursor.execute('''
+                    UPDATE weekly_plan
+                    SET newly_added = FALSE
+                    WHERE LOWER(exercise_name) = LOWER(?) AND newly_added = TRUE
+                ''', (exercise_name,))
+            except sqlite3.OperationalError:
+                pass  # newly_added column might not exist
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Logged {len(logged_exercises)} exercises',
+            'logged_exercises': logged_exercises
+        })
+
+    except Exception as e:
+        print(f"Error logging from template: {e}")
+        return jsonify({'status': 'error', 'message': str(e)})
+
     """Allow Grok to propose and execute plan modifications"""
     try:
         data = request.json
@@ -4113,9 +4199,12 @@ def logging_template():
         date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
 
         # Get the day of week for the requested date
-        day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+        try:
+            day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
 
-        conn = sqlite3.connect('workout_logs.db')
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         # Get weekly plan for this day, including circuit blocks
@@ -4145,7 +4234,7 @@ def logging_template():
             try:
                 meta = json.loads(meta_json) if meta_json else {}
                 members = json.loads(members_json) if members_json else []
-            except:
+            except json.JSONDecodeError:
                 meta = {}
                 members = []
 
@@ -4182,11 +4271,12 @@ def logging_template():
                     "notes": notes
                 })
 
+        print(f"Generated template for {day_name} with {len(template['blocks'])} blocks")
         return jsonify(template)
 
     except Exception as e:
         print(f"Error generating logging template: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "date": date}), 500
 
 if __name__ == '__main__':
     init_db()
