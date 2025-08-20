@@ -53,7 +53,7 @@ def get_user_ai_preferences():
         if result:
             return {
                 'tone': result[0] or 'motivational',
-                'detail_level': result[1] or 'concise', 
+                'detail_level': result[1] or 'concise',
                 'format': result[2] or 'bullet_points',
                 'communication_style': result[3] or 'encouraging',
                 'technical_level': result[4] or 'beginner'
@@ -419,8 +419,8 @@ def normalize_session(date_or_id):
                 # Get blocks for this session
                 cursor.execute('''
                     SELECT id, block_type, label, order_index, meta_json
-                    FROM workout_blocks 
-                    WHERE session_id = ? 
+                    FROM workout_blocks
+                    WHERE session_id = ?
                     ORDER BY order_index
                 ''', (session_id,))
 
@@ -432,8 +432,8 @@ def normalize_session(date_or_id):
                     # Get sets for this block
                     cursor.execute('''
                         SELECT set_index, data_json, status
-                        FROM workout_sets 
-                        WHERE block_id = ? 
+                        FROM workout_sets
+                        WHERE block_id = ?
                         ORDER BY set_index
                     ''', (block_id,))
 
@@ -464,8 +464,8 @@ def normalize_session(date_or_id):
             else:
                 # Legacy adapter: convert old workout_logs to normalized format
                 cursor.execute('''
-                    SELECT exercise, sets, reps, weight, notes 
-                    FROM workout_logs 
+                    SELECT exercise, sets, reps, weight, notes
+                    FROM workout_logs
                     WHERE date = ?
                     ORDER BY id
                 ''', (date_str,))
@@ -832,7 +832,7 @@ def build_smart_context(prompt, query_intent, user_background=None):
         print(f"🎯 Detected plan-related follow-up question - routing to plan context")
         return build_plan_context()
 
-    # CLEAR HISTORICAL REQUESTS 
+    # CLEAR HISTORICAL REQUESTS
     historical_indicators = [
         'what did i do', 'show me what i did', 'my workout on', 'what i did on',
         'show me my logs', 'recent workout', 'my recent', 'last workout'
@@ -1024,7 +1024,7 @@ ANALYSIS APPROACH:
 
 STYLE: Direct, insightful, conversational. Think ChatGPT's balanced approach - thorough but not overwhelming. Focus on actionable insights, not exhaustive analysis."""
         else:
-            system_prompt = """You are the AI training assistant built into this fitness app. 
+            system_prompt = """You are the AI training assistant built into this fitness app.
 
 IMPORTANT: The AI preferences shown in the context data below are the user's actual settings that should shape how you respond. Pay attention to their chosen detail level, tone, and format preferences and adapt your response style accordingly. These preferences override any default behavior.
 
@@ -1721,6 +1721,7 @@ def chat_stream():
                                 except Exception as e:
                                     print(f"❌ Error executing weight change: {e}")
                                     response += f"\n\n❌ Sorry, there was an error updating your plan: {str(e)}"
+
                             break
 
                     # If we executed a plan change, return a simple confirmation without calling AI
@@ -1735,39 +1736,34 @@ def chat_stream():
                 # Parse potential philosophy updates from conversation
                 philosophy_update = parse_philosophy_update_from_conversation(response, message)
                 if philosophy_update:
-                    # Check if this was a comprehensive removal
-                    if philosophy_update.get('comprehensive_removal'):
-                        print(f"🎯 Executed comprehensive removal of '{philosophy_update.get('target_text')}'")
-                        plan_modifications = f"Comprehensive removal: {philosophy_update.get('reasoning')}"
-                    else:
-                        # Auto-update philosophy in database for regular updates using new 2-field structure
-                        try:
-                            cursor.execute('''
-                                INSERT OR REPLACE INTO plan_context
-                                (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
-                                 created_by_ai, creation_reasoning, created_date, updated_date)
-                                VALUES (1, ?, ?, '', '', TRUE, ?, ?, ?)
-                            ''', (
-                                philosophy_update.get('plan_philosophy', ''),
-                                philosophy_update.get('progression_strategy', ''),
-                                philosophy_update.get('reasoning', ''),
-                                datetime.now().strftime('%Y-%m-%d'),
-                                datetime.now().strftime('%Y-%m-%d')
-                            ))
-                            print(f"🧠 Auto-updated training philosophy based on conversation using new 2-field structure")
+                    # Auto-update philosophy in database for regular updates using new 2-field structure
+                    try:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO plan_context
+                            (user_id, plan_philosophy, progression_strategy, weekly_structure, special_considerations,
+                             created_by_ai, creation_reasoning, created_date, updated_date)
+                            VALUES (1, ?, ?, '', '', TRUE, ?, ?, ?)
+                        ''', (
+                            philosophy_update.get('plan_philosophy', ''),
+                            philosophy_update.get('progression_strategy', ''),
+                            philosophy_update.get('reasoning', ''),
+                            datetime.now().strftime('%Y-%m-%d'),
+                            datetime.now().strftime('%Y-%m-%d')
+                        ))
+                        print(f"🧠 Auto-updated training philosophy based on conversation using new 2-field structure")
 
-                            # Add confirmation message to response
-                            response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {philosophy_update.get('plan_philosophy', '')[:100]}...\n• **Current Priorities:** {philosophy_update.get('progression_strategy', '')[:100]}...\n\nCheck your Plan Philosophy page to see the full update!"
+                        # Add confirmation message to response
+                        response += f"\n\n✅ **PHILOSOPHY UPDATED!** Your training philosophy has been updated with:\n• **Core Philosophy:** {philosophy_update.get('plan_philosophy', '')[:100]}...\n• **Current Priorities:** {philosophy_update.get('progression_strategy', '')[:100]}...\n\nCheck your Plan Philosophy page to see the full update!"
 
-                            # If this was a comprehensive plan change, regenerate exercise metadata
-                            if any(keyword in message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
-                                regenerate_exercise_metadata_from_plan()
-                                print(f"🔄 Regenerated exercise metadata for plan changes")
+                        # If this was a comprehensive plan change, regenerate exercise metadata
+                        if any(keyword in message.lower() for keyword in ['change plan', 'update plan', 'new plan', 'compound lifts', 'remove exercises', 'add exercises']):
+                            regenerate_exercise_metadata_from_plan()
+                            print(f"🔄 Regenerated exercise metadata for plan changes")
 
-                        except sqlite3.OperationalError as e:
-                            print(f"⚠️ Failed to auto-update philosophy: {e}") # Handle potential missing columns
-                        except Exception as e:
-                            print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
+                    except sqlite3.OperationalError as e:
+                        print(f"⚠️ Failed to auto-update philosophy: {e}") # Handle potential missing columns
+                    except Exception as e:
+                        print(f"⚠️ Failed to auto-update philosophy: {str(e)}")
 
 
                 # Parse potential AI preference updates from conversation
@@ -1945,7 +1941,7 @@ def get_plan(date):
         exercises = []
         for row in cursor.fetchall():
             exercise_id, exercise_name, sets, reps, weight, order, notes, progression_notes, block_type, meta_json, members_json = row
-            
+
             exercise_data = {
                 'id': exercise_id,
                 'exercise_name': exercise_name,
@@ -2791,153 +2787,6 @@ def edit_exercise():
             print(f"Error checking column existence: {e}")
 
 
-def save_circuit_workout():
-    """Save circuit workout data with normalized structure"""
-    try:
-        date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
-        
-        # Parse circuit data from form
-        circuit_data = {}
-        for key, value in request.form.items():
-            if key.startswith('circuit[') and value.strip():
-                # Parse: circuit[block_id][round][member][field]
-                parts = key.replace('circuit[', '').replace(']', '').split('[')
-                if len(parts) == 4:
-                    block_id, round_idx, member_idx, field = parts
-                    
-                    if block_id not in circuit_data:
-                        circuit_data[block_id] = {}
-                    if round_idx not in circuit_data[block_id]:
-                        circuit_data[block_id][round_idx] = {}
-                    if member_idx not in circuit_data[block_id][round_idx]:
-                        circuit_data[block_id][round_idx][member_idx] = {}
-                    
-                    circuit_data[block_id][round_idx][member_idx][field] = value
-                    
-                    print(f"LOG_UI_PARSE circuit block={block_id} round={round_idx} member={member_idx} {field}={value}")
-
-        if not circuit_data:
-            return jsonify({'status': 'error', 'message': 'No circuit data found'})
-
-        # Initialize database tables if needed
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Create normalized tables if they don't exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date TEXT NOT NULL,
-                user_id INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_blocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL,
-                block_type TEXT NOT NULL,
-                label TEXT,
-                order_index INTEGER DEFAULT 1,
-                meta_json TEXT DEFAULT '{}',
-                FOREIGN KEY (session_id) REFERENCES workout_sessions (id)
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS workout_sets (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                block_id INTEGER NOT NULL,
-                set_index INTEGER NOT NULL,
-                data_json TEXT NOT NULL,
-                status TEXT DEFAULT 'completed',
-                FOREIGN KEY (block_id) REFERENCES workout_blocks (id)
-            )
-        ''')
-
-        # Get or create workout session for this date
-        cursor.execute('SELECT id FROM workout_sessions WHERE date = ? AND user_id = 1', (date,))
-        session_result = cursor.fetchone()
-        
-        if session_result:
-            session_id = session_result[0]
-        else:
-            cursor.execute('INSERT INTO workout_sessions (date, user_id) VALUES (?, 1)', (date,))
-            session_id = cursor.lastrowid
-
-        sets_saved = 0
-        
-        # Process each circuit block
-        for block_id, rounds in circuit_data.items():
-            # Get circuit label from weekly_plan
-            cursor.execute('SELECT exercise_name FROM weekly_plan WHERE id = ?', (int(block_id),))
-            block_result = cursor.fetchone()
-            circuit_label = block_result[0] if block_result else 'Circuit'
-            
-            # Create workout_block
-            cursor.execute('''
-                INSERT INTO workout_blocks (session_id, block_type, label, order_index, meta_json)
-                VALUES (?, 'circuit', ?, 1, '{}')
-            ''', (session_id, circuit_label))
-            workout_block_id = cursor.lastrowid
-            
-            # Process each round and member
-            for round_idx, members in rounds.items():
-                for member_idx, member_data in members.items():
-                    exercise = member_data.get('exercise', '')
-                    reps = member_data.get('reps', '')
-                    weight = member_data.get('weight', '')
-                    notes = member_data.get('notes', '')
-                    tempo = member_data.get('tempo', '')
-                    
-                    # Create set data JSON
-                    set_data = {
-                        'exercise': exercise,
-                        'reps': int(reps) if reps.isdigit() else 0,
-                        'weight': weight,
-                        'tempo': tempo,
-                        'member_idx': int(member_idx),
-                        'set_idx': int(round_idx),
-                        'notes': notes,
-                        'status': 'completed'
-                    }
-                    
-                    # Insert workout_set
-                    cursor.execute('''
-                        INSERT INTO workout_sets (block_id, set_index, data_json, status)
-                        VALUES (?, ?, ?, 'completed')
-                    ''', (workout_block_id, int(round_idx), json.dumps(set_data)))
-                    
-                    set_id = cursor.lastrowid
-                    sets_saved += 1
-                    
-                    print(f"DB_WRITE circuit set_id={set_id} block={block_id} r={round_idx} m={member_idx}")
-
-        # Clear newly_added flag if this exercise was recently added to plan
-        try:
-            cursor.execute('''
-                UPDATE weekly_plan
-                SET newly_added = FALSE
-                WHERE id = ? AND newly_added = TRUE
-            ''', (int(list(circuit_data.keys())[0]),))
-        except (ValueError, IndexError):
-            pass
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'status': 'success',
-            'message': f'Circuit logged successfully - {sets_saved} sets saved',
-            'sets_saved': sets_saved
-        })
-
-    except Exception as e:
-        print(f"Error saving circuit workout: {e}")
-        return jsonify({'status': 'error', 'message': str(e)})
-
-
         if progression_notes_col_exists:
             cursor.execute('''
                 UPDATE weekly_plan
@@ -3049,8 +2898,8 @@ def update_ai_preferences():
 
         # Update AI preferences in users table
         cursor.execute('''
-            UPDATE users 
-            SET grok_tone = ?, grok_detail_level = ?, grok_format = ?, 
+            UPDATE users
+            SET grok_tone = ?, grok_detail_level = ?, grok_format = ?,
                 communication_style = ?, technical_level = ?, preferred_units = ?
             WHERE id = 1
         ''', (tone, detail_level, format_pref, communication_style, technical_level, units))
@@ -3526,17 +3375,17 @@ def save_workout():
     try:
         # Check if this is a circuit submission
         circuit_keys = [key for key in request.form.keys() if key.startswith('circuit[')]
-        
+
         if circuit_keys:
             # Handle circuit data
             return save_circuit_workout()
-        
+
         # Handle regular workout data (JSON or form)
         if request.is_json:
             data = request.json
         else:
             data = request.form.to_dict()
-            
+
         exercise_name = data.get('exercise_name', '')
         sets = data.get('sets', 1)
         reps = data.get('reps', '')
@@ -3730,7 +3579,7 @@ def debug_duplicate_workouts():
         today = datetime.now().strftime('%Y-%m-%d')
         cursor.execute('''
             SELECT id, exercise_name, sets, reps, weight, date_logged, notes
-            FROM workouts 
+            FROM workouts
             WHERE date_logged = ?
             ORDER BY id DESC
         ''', (today,))
@@ -3762,7 +3611,7 @@ def debug_duplicate_workouts():
 
         return jsonify({
             'today_workouts': [{
-                'id': w[0], 'exercise': w[1], 'sets': w[2], 
+                'id': w[0], 'exercise': w[1], 'sets': w[2],
                 'reps': w[3], 'weight': w[4], 'date': w[5], 'notes': w[6]
             } for w in today_workouts],
             'duplicates_found': duplicates,
