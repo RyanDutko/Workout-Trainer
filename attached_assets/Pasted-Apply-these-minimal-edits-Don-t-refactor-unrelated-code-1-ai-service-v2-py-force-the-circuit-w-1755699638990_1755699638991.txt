@@ -1,0 +1,75 @@
+Apply these minimal edits. Don’t refactor unrelated code.
+
+1) ai_service_v2.py — force the circuit write path in commit_plan_update
+
+In the commit_plan_update handler (the one that reads a proposal_id), inside the action == "add_block" branch, replace the logic that chooses how to write with the following pattern. This guarantees we prefer the normalized_block produced by propose_plan_update and only fall back if it’s missing.
+
+# ... inside commit_plan_update, after loading `proposal` ...
+import json
+
+if action == "add_block":
+    nb = proposal.get("normalized_block") or {}
+    blk = proposal.get("block") or {}
+
+    block_type = (nb.get("block_type") or blk.get("block_type") or "single").lower()
+    label      = (nb.get("label") or blk.get("label") or blk.get("exercise") or "Block").strip()
+    order_idx  = nb.get("order_index") or blk.get("order_index") or 999
+    rounds     = int(nb.get("rounds") or blk.get("rounds") or 1)
+    members    = nb.get("members") or blk.get("members") or []
+    meta       = (nb.get("meta_json") or nb.get("meta") or blk.get("meta_json") or blk.get("meta") or {}).copy()
+
+    # Normalize synonyms (belt & suspenders – should already be circuit from propose)
+    if block_type == "complex":
+        block_type = "circuit"
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if block_type in ("circuit", "rounds"):
+        # Persist as a true complex block
+        meta["rounds"] = rounds
+        cursor.execute(
+            """
+            INSERT INTO weekly_plan
+                (day_of_week, exercise_name, target_sets, target_reps, target_weight,
+                 block_type, meta_json, members_json, exercise_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                day.lower(),           # from proposal["day"]
+                label,                 # exercise_name stores the block label for circuits
+                rounds,                # target_sets = rounds (template fallback)
+                "",                    # reps blank for circuit container
+                "",                    # weight blank for circuit container
+                block_type,            # "circuit" or "rounds"
+                json.dumps(meta),
+                json.dumps(members),
+                int(order_idx),
+            ),
+        )
+        conn.commit()
+        print(f"COMMIT_ADD branch=circuit label={label!r} rounds={rounds} members={len(members)}")
+
+        wrote = True
+
+        # Hydrate updated plan (reuse your existing helper if you have one)
+        updated_plan = get_weekly_plan(day)  # must include meta & members
+        conn.close()
+        return {
+            "status": "ok",
+            "block_id": cursor.lastrowid,
+            "wrote": wrote,
+            "updated_plan": updated_plan,
+        }
+
+    # ---- simple fallback ----
+    # Existing logic for plain single exercises (leave your current code here)
+    # Ensure this 'single' path is under an 'else', so it will NOT run after circuit insert.
+
+    # ... your existing single insert code ...
+    # return { "status": "ok", "block_id": new_id, "wrote": True, "updated_plan": get_weekly_plan(day) }
+
+
+Also add this one-line planner hint in your V2 system/tool instructions (where you describe tools), if not already present:
+
+“When proposing complex/rounds content, include rounds and members; use block_type: "circuit" (not "complex").”
