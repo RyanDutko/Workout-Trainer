@@ -4263,10 +4263,9 @@ def logging_template():
         # Get weekly plan for this day, including circuit blocks
         cursor.execute('''
             SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes,
-                   COALESCE(block_type, 'simple') as block_type,
+                   COALESCE(block_type, 'single') as block_type,
                    COALESCE(meta_json, '{}') as meta_json,
-                   COALESCE(members_json, '[]') as members_json,
-                   COALESCE(exercise_name, exercise_name) as label
+                   COALESCE(members_json, '[]') as members_json
             FROM weekly_plan 
             WHERE day_of_week = ? 
             ORDER BY exercise_order
@@ -4282,7 +4281,7 @@ def logging_template():
         }
 
         for exercise in plan_exercises:
-            exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json, label = exercise
+            exercise_id, exercise_name, target_sets, target_reps, target_weight, order, notes, block_type, meta_json, members_json = exercise
 
             try:
                 meta = json.loads(meta_json) if meta_json else {}
@@ -4293,35 +4292,52 @@ def logging_template():
 
             if block_type in ['circuit', 'rounds']:
                 # Circuit/rounds block
-                rounds = meta.get('rounds', target_sets or 1)
-
+                rounds_count = meta.get('rounds', target_sets or 1)
+                
                 block = {
                     "block_id": exercise_id,
-                    "type": "circuit",
-                    "title": label,
-                    "rounds": rounds,
-                    "members": []
+                    "type": "rounds",
+                    "title": exercise_name,
+                    "rounds": []
                 }
-
-                for member in members:
-                    block["members"].append({
-                        "name": member.get('exercise', member.get('name', 'Exercise')),
-                        "planned_reps": member.get('reps', ''),
-                        "planned_weight": member.get('weight', ''),
-                        "tempo": member.get('tempo', '')
-                    })
+                
+                # Generate rounds data
+                for round_idx in range(rounds_count):
+                    round_data = {
+                        "round_index": round_idx + 1,
+                        "members": []
+                    }
+                    
+                    for member in members:
+                        weight_str = str(member.get('weight', ''))
+                        weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
+                        
+                        round_data["members"].append({
+                            "name": member.get('exercise', ''),
+                            "input_id": f"{exercise_id}.{round_idx + 1}.{member.get('exercise', '')}",
+                            "planned_reps": member.get('reps', ''),
+                            "planned_weight": {"unit": "lb", "value": weight_value},
+                            "tempo": member.get('tempo', '')
+                        })
+                    
+                    block["rounds"].append(round_data)
 
                 template["blocks"].append(block)
             else:
-                # Simple exercise
+                # Simple exercise - format it to match the expected structure
+                weight_str = str(target_weight or '')
+                weight_value = weight_str.replace('lbs', '').replace('lb', '').strip()
+                
                 template["blocks"].append({
                     "block_id": exercise_id,
                     "type": "simple",
                     "title": exercise_name,
-                    "planned_sets": target_sets,
-                    "planned_reps": target_reps,
-                    "planned_weight": target_weight,
-                    "notes": notes
+                    "members": [{
+                        "name": exercise_name,
+                        "input_id": f"{exercise_id}.1",
+                        "planned_reps": target_reps,
+                        "planned_weight": {"unit": "lb", "value": weight_value}
+                    }]
                 })
 
         print(f"Generated template for {day_name} with {len(template['blocks'])} blocks")
