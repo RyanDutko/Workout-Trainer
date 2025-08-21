@@ -574,17 +574,31 @@ function submitCurrentExercise() {
         submitExerciseData(exerciseData);
 
     } else if (currentBlock.type === 'rounds') {
-        // For rounds/circuits, log as a summary
-        const exerciseData = {
-            exercise_name: currentBlock.title,
-            sets: currentBlock.rounds.length, // Number of rounds
-            reps: 'Circuit', // Indicate it's a circuit
-            weight: 'Mixed', // Indicate mixed weights
-            notes: exerciseNotes + ' [Circuit/Rounds Exercise]',
-            date: workoutTemplate.date
-        };
+        // For rounds/circuits, collect each exercise individually
+        const circuitExercises = [];
+        
+        currentBlock.rounds.forEach((round, roundIdx) => {
+            round.members.forEach((member, memberIdx) => {
+                const repsInput = document.querySelector(`[data-round="${round.round_index}"][data-exercise="${member.name}"][data-field="actual_reps"]`);
+                const weightInput = document.querySelector(`[data-round="${round.round_index}"][data-exercise="${member.name}"][data-field="actual_weight"]`);
+                
+                const actualReps = repsInput ? repsInput.value : member.planned_reps;
+                const actualWeight = weightInput ? weightInput.value : member.planned_weight.value;
+                
+                circuitExercises.push({
+                    exercise_name: `${member.name} (R${round.round_index})`,
+                    sets: 1, // Each round is 1 set
+                    reps: actualReps || member.planned_reps,
+                    weight: actualWeight ? `${actualWeight}lbs` : `${member.planned_weight.value}lbs`,
+                    notes: `${exerciseNotes} [${currentBlock.title} - Round ${round.round_index}]`,
+                    date: workoutTemplate.date,
+                    circuit_parent: currentBlock.title
+                });
+            });
+        });
 
-        submitExerciseData(exerciseData);
+        // Submit each circuit exercise individually
+        submitCircuitExercises(circuitExercises);
     }
 }
 
@@ -617,6 +631,42 @@ function submitExerciseData(exerciseData) {
     .catch(error => {
         console.error('Error:', error);
         alert('Error logging exercise. Please try again.');
+    });
+}
+
+function submitCircuitExercises(circuitExercises) {
+    // Submit all circuit exercises as a batch
+    Promise.all(circuitExercises.map(exercise => 
+        fetch('/save_workout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(exercise)
+        }).then(response => response.json())
+    ))
+    .then(results => {
+        const allSuccess = results.every(result => result.status === 'success');
+        
+        if (allSuccess) {
+            // Move to next exercise
+            completedExercises.push(...circuitExercises);
+            currentExerciseIndex++;
+
+            if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+                // Workout complete
+                renderWorkoutComplete();
+            } else {
+                // Show next exercise
+                renderCurrentExercise();
+            }
+        } else {
+            alert('Error logging some circuit exercises. Please check your workout log.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging circuit exercises. Please try again.');
     });
 }
 
