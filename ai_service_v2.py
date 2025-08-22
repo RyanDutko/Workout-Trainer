@@ -274,6 +274,15 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             tool_results_for_response = []
 
             for i in range(MAX_TOOL_CALLS):
+                # Debug: Log the full conversation being sent to GPT
+                print(f"🔍 FULL CONVERSATION SENT TO GPT (iteration {i+1}):")
+                for msg in messages:
+                    role = msg.get('role', 'unknown')
+                    content = str(msg.get('content', ''))[:500] + "..." if len(str(msg.get('content', ''))) > 500 else str(msg.get('content', ''))
+                    print(f"   [{role.upper()}]: {content}")
+                print(f"🔍 Total messages in conversation: {len(messages)}")
+                print("=" * 80)
+                
                 response = self.client.chat.completions.create(
                     model="gpt-4",
                     messages=messages,
