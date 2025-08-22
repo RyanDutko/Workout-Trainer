@@ -25,6 +25,59 @@ def resolve_date_or_day(date_str: str = None, day_str: str = None) -> tuple[str,
             pass  # fall through to day logic
 
     # 2) resolve weekday
+
+
+def classify_query_complexity(message: str) -> str:
+    """Classify query as simple or complex to choose appropriate model"""
+    message_lower = message.lower()
+    
+    # Simple queries - use mini
+    simple_indicators = [
+        # Basic greetings and status
+        len(message.split()) <= 5,
+        any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'what\'s up']),
+        
+        # Simple data retrieval
+        message_lower.startswith(('show me', 'what did i', 'get my', 'list my')),
+        'history' in message_lower and len(message.split()) <= 8,
+        
+        # Basic confirmations
+        message_lower.strip() in ['yes', 'no', 'ok', 'sure', 'confirm', 'cancel'],
+    ]
+    
+    # Complex queries - use GPT-4
+    complex_indicators = [
+        # Multi-step operations
+        'and' in message_lower and len(message.split()) > 8,
+        
+        # Plan modifications
+        any(phrase in message_lower for phrase in [
+            'add to my plan', 'modify my plan', 'change my workout',
+            'create a circuit', 'design a program'
+        ]),
+        
+        # Analysis and comparison
+        any(phrase in message_lower for phrase in [
+            'compare', 'analyze', 'suggest', 'recommend', 'progression',
+            'how should i', 'what would you'
+        ]),
+        
+        # Complex workout logging
+        'rounds' in message_lower or 'circuit' in message_lower,
+        
+        # Long queries (likely complex)
+        len(message.split()) > 15,
+    ]
+    
+    if any(complex_indicators):
+        return "gpt-4"
+    elif any(simple_indicators):
+        return "gpt-4o-mini"
+    else:
+        # Default to mini for unknown patterns
+        return "gpt-4o-mini"
+
+
     if day_str:
         day_l = day_str.strip().lower()
         weekdays = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"]
@@ -231,6 +284,10 @@ class AIServiceV2:
         MAX_TOOL_CALLS = 5
 
         try:
+            # Determine which model to use based on query complexity
+            selected_model = classify_query_complexity(message)
+            print(f"🤖 Selected model: {selected_model} for query: '{message[:50]}...'")
+
             # Get current date and time for context
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             current_year = datetime.now().year
@@ -284,7 +341,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 print("=" * 80)
                 
                 response = self.client.chat.completions.create(
-                    model="gpt-4",
+                    model=selected_model,
                     messages=messages,
                     tools=self.tools,
                     tool_choice="auto",
