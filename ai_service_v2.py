@@ -1214,8 +1214,8 @@ IMPORTANT CONVERSATION FLOW RULES:
             # Insert circuit into weekly plan
             cursor.execute('''
                 INSERT INTO weekly_plan
-                    (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
-                     block_type, meta_json, members_json, created_by, newly_added, date_added)
+                    (day_of_week, exercise_name, target_sets, target_reps, target_weight,
+                     block_type, meta_json, members_json, exercise_order, created_by, newly_added, date_added)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (day.lower(), label, rounds, f'{len(members)} exercises', 'circuit', next_order,
                   'circuit', json.dumps(meta_data), json.dumps(members), 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
