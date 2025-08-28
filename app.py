@@ -4069,6 +4069,40 @@ def mark_exercise_new():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/debug_monday_actual_values')
+def debug_monday_actual_values():
+    """Debug endpoint to see actual database values for Monday"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT id, exercise_name, target_sets, target_reps, target_weight, exercise_order
+            FROM weekly_plan 
+            WHERE day_of_week = 'monday'
+            ORDER BY exercise_order
+        ''')
+
+        exercises = []
+        for row in cursor.fetchall():
+            exercises.append({
+                'id': row[0],
+                'exercise': row[1],
+                'sets': row[2],
+                'reps': row[3],
+                'weight': row[4],
+                'order': row[5]
+            })
+
+        conn.close()
+        return jsonify({
+            'monday_exercises': exercises,
+            'total_count': len(exercises)
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
 @app.route('/fix_romanian_deadlift_weight', methods=['POST'])
 def fix_romanian_deadlift_weight():
     """Fix the Romanian deadlift weight to 35 lbs"""
