@@ -339,8 +339,13 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 print(f"🔍 FULL CONVERSATION SENT TO GPT (iteration {i+1}):")
                 for msg in messages:
                     role = msg.get('role', 'unknown')
-                    content = str(msg.get('content', ''))[:500] + "..." if len(str(msg.get('content', ''))) > 500 else str(msg.get('content', ''))
-                    print(f"   [{role.upper()}]: {content}")
+                    content = str(msg.get('content', ''))
+                    # Don't truncate system messages, truncate others at 200 chars
+                    if role == 'system':
+                        print(f"   [{role.upper()}]: {content}")
+                    else:
+                        content_display = content[:200] + "..." if len(content) > 200 else content
+                        print(f"   [{role.upper()}]: {content_display}")
                 print(f"🔍 Total messages in conversation: {len(messages)}")
                 print("=" * 80)
 
