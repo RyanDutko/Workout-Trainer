@@ -117,16 +117,9 @@ class ConversationStore:
         ''', (user_id, max_turns))
         
         turns = cursor.fetchall()
-        print(f"🔍 Found {len(turns)} turns in conversation_turns table")
-        for i, (user_text, assistant_text, created_at) in enumerate(turns):
-            user_display = user_text if len(user_text) <= 50 else user_text[:47] + "..."
-            assistant_display = assistant_text if len(assistant_text) <= 50 else assistant_text[:47] + "..."
-            print(f"🔍 Turn {i+1} ({created_at}): U='{user_display}' A='{assistant_display}'")
-        
         conn.close()
         
         if not turns:
-            print("🔍 No turns found, returning empty context")
             return ""
         
         # Format as compact recent context
@@ -135,11 +128,6 @@ class ConversationStore:
             # Truncate long messages to control token usage
             user_short = user_text if len(user_text) <= 200 else user_text[:197] + "..."
             assistant_short = assistant_text if len(assistant_text) <= 500 else assistant_text[:497] + "..."
-            
-            # Debug: Log what we're actually formatting
-            print(f"🔍 Formatting turn: U='{user_text}' A='{assistant_text}' (lengths: {len(user_text)}, {len(assistant_text)})")
-            print(f"🔍 After truncation: U_short='{user_short}' A_short='{assistant_short}'")
-            
             context += f"- U: {user_short}\n- A: {assistant_short}\n"
         
         return context
