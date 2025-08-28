@@ -134,7 +134,7 @@ class ConversationStore:
         for user_text, assistant_text, _ in reversed(turns):  # Chronological order
             # Truncate long messages to control token usage
             user_short = user_text[:200] + "..." if len(user_text) > 200 else user_text
-            assistant_short = assistant_text[:300] + "..." if len(assistant_text) > 300 else assistant_text
+            assistant_short = assistant_text[:500] + "..." if len(assistant_text) > 500 else assistant_text
             context += f"- U: {user_short}\n- A: {assistant_short}\n"
         
         return context
