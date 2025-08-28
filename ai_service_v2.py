@@ -310,6 +310,8 @@ If tools return no data, say so plainly. Do not invent.
 Prefer concise, actionable answers citing dates and exact numbers."""
 
             if recent_context:
+                print(f"🔍 Adding recent_context to system prompt: {len(recent_context)} chars")
+                print(f"🔍 Recent context content: {recent_context}")
                 system_content += f"\n\n{recent_context}"
 
             messages = [

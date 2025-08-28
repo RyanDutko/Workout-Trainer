@@ -135,6 +135,11 @@ class ConversationStore:
             # Truncate long messages to control token usage
             user_short = user_text if len(user_text) <= 200 else user_text[:197] + "..."
             assistant_short = assistant_text if len(assistant_text) <= 500 else assistant_text[:497] + "..."
+            
+            # Debug: Log what we're actually formatting
+            print(f"🔍 Formatting turn: U='{user_text}' A='{assistant_text}' (lengths: {len(user_text)}, {len(assistant_text)})")
+            print(f"🔍 After truncation: U_short='{user_short}' A_short='{assistant_short}'")
+            
             context += f"- U: {user_short}\n- A: {assistant_short}\n"
         
         return context
