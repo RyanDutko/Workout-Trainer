@@ -307,7 +307,17 @@ You have tools to fetch pinned facts, recent context, and older snippets. Use th
 Ground all factual answers in tool results. 
 For history/plan/comparison questions, call the appropriate tool(s) first.
 If tools return no data, say so plainly. Do not invent.
-Prefer concise, actionable answers citing dates and exact numbers."""
+Prefer concise, actionable answers citing dates and exact numbers.
+
+IMPORTANT CONVERSATION FLOW RULES:
+- Never auto-propose plan changes without explicit user request
+- When discussing exercise placement, ask clarifying questions first:
+  * Which day would they prefer?
+  * What weight/sets/reps are they thinking?
+  * Get their preferences before making suggestions
+- Only use propose_plan_update tool AFTER user explicitly says "add this" or "make this change"
+- Engage in natural conversation to gather details before proposing changes
+- Example: "Which day would you like to add Romanian deadlifts to? And based on your current workouts, what weight do you think would be appropriate to start with?"
 
             if recent_context:
                 system_content += f"\n\n{recent_context}"
@@ -404,7 +414,38 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         tool_result = self._execute_tool(function_name, function_args)
                         tool_results_for_response.append(tool_result)
 
-                        print(f"✅ Tool result: {json.dumps(tool_result, indent=2)}")  # Debug output
+                        # Summary logging instead of full JSON dump
+                        if function_name == "get_weekly_plan":
+                            if isinstance(tool_result, dict):
+                                total_exercises = sum(len(day_exercises) for day_exercises in tool_result.values()) if tool_result else 0
+                                print(f"✅ Tool result: Weekly plan loaded ({total_exercises} total exercises across all days)")
+                            elif isinstance(tool_result, list):
+                                print(f"✅ Tool result: Single day plan loaded ({len(tool_result)} exercises)")
+                        elif function_name == "get_workout_history":
+                            workout_count = len(tool_result.get('workouts', [])) if isinstance(tool_result, dict) else 0
+                            print(f"✅ Tool result: Workout history loaded ({workout_count} workouts)")
+                        elif function_name == "compare_workout_to_plan":
+                            plan_count = len(tool_result.get('plan', [])) if isinstance(tool_result, dict) else 0
+                            actual_count = len(tool_result.get('actual', [])) if isinstance(tool_result, dict) else 0
+                            print(f"✅ Tool result: Plan comparison ({plan_count} planned, {actual_count} actual exercises)")
+                        elif function_name == "propose_plan_update":
+                            status = "success" if 'proposal_id' in tool_result else "failed"
+                            action = tool_result.get('action', 'unknown')
+                            print(f"✅ Tool result: Plan proposal {status} ({action})")
+                        elif function_name == "commit_plan_update":
+                            wrote = tool_result.get('wrote', False)
+                            status = "committed" if wrote else "failed"
+                            print(f"✅ Tool result: Plan update {status}")
+                        else:
+                            # For other tools, show a basic summary
+                            if isinstance(tool_result, dict):
+                                if 'error' in tool_result:
+                                    print(f"✅ Tool result: {function_name} - Error: {tool_result['error']}")
+                                else:
+                                    key_count = len([k for k in tool_result.keys() if not k.startswith('_')])
+                                    print(f"✅ Tool result: {function_name} - {key_count} data fields returned")
+                            else:
+                                print(f"✅ Tool result: {function_name} - {type(tool_result).__name__} data returned")
 
                         # Add tool result to conversation
                         messages.append({
@@ -416,15 +457,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
 
                     continue  # Continue the loop to get final response
                 else:
-                    # Check for phantom writes before finalizing response
-                    response_content = (response_message.content or "").lower()
-                    if any(phrase in response_content for phrase in ['added to', 'created', 'updated your plan', 'wrote']) and not any('commit_plan_update' in str(result) for result in tool_results_for_response):
-                        # Phantom write detected - nudge the model to commit
-                        messages.append({
-                            "role": "system",
-                            "content": "Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}."
-                        })
-                        continue  # Go back to model for commit
+                    # Removed phantom write detection - let natural conversation flow handle proposals
 
                     # No more tools needed, save conversation turn and return final response
                     response_content = response_message.content or ""

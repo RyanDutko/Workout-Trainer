@@ -23,8 +23,8 @@ try:
 except ImportError:
     ai_service_v2 = None
 
-# Feature flag for legacy intent detection
-ENABLE_LEGACY_INTENT = False # Set to True to re-enable legacy intent analysis
+# Feature flag for legacy intent detection - DISABLED to use V2 conversational flow
+ENABLE_LEGACY_INTENT = False # V2 handles all conversation flow with better multi-turn context
 
 # Database initialization
 def get_db_connection():
@@ -1478,33 +1478,14 @@ def chat_stream():
             conn.close()
             print(f"Database queries completed successfully")  # Debug log
 
-            # Bypass legacy intent detection when flag is disabled
-            if ENABLE_LEGACY_INTENT:
-                # Legacy intent detection and context heuristics
-                query_intent = analyze_query_intent(message, None)
-                conversation_context = None
-                if conv_history and len(conv_history.strip()) > 0 and should_include_conversation_context(message, query_intent):
-                    messages = conv_history.strip().split('\n\n')
-                    recent_messages = messages[-6:]
-                    conversation_context = '\n\n'.join(recent_messages)
-                response = get_grok_response_with_context(message, user_background, conversation_context)
+            # Use V2 service for all conversations with natural flow
+            if ai_service_v2:
+                print("MAIN_CHAT: Using V2 conversational flow")
+                result = ai_service_v2.get_ai_response(message, [], user_force_advanced=force_advanced_mode)
+                response = result.get('response', 'No response from AI service')
             else:
-                # Skip legacy shaping; let V2 decide what tools to call
-                if ai_service_v2:
-                    # Use V2 service directly for tool-calling
-                    # Convert conversation history to the format V2 expects
-                    conversation_history_list = []
-                    if conv_history and len(conv_history.strip()) > 0:
-                        # Parse conversation history if needed
-                        # For now, pass the raw conversation context
-                        pass
-
-                    print("MAIN_CHAT: using V2 tool calling")
-                    result = ai_service_v2.get_ai_response(message, conversation_history_list, user_force_advanced=force_advanced_mode)
-                    response = result.get('response', 'No response from AI service')
-                else:
-                    response = "V2 AI service is not available. Please enable it or fix the import."
-                    print("Error: V2 AI service not available and ENABLE_LEGACY_INTENT is False.")
+                response = "V2 AI service is not available. Please check the import and initialization."
+                print("Error: V2 AI service not available.")
 
 
             print(f"AI response received: {len(response)} characters")  # Debug log
