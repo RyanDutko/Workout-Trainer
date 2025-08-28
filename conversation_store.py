@@ -109,7 +109,7 @@ class ConversationStore:
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT user_text, assistant_text
+            SELECT user_text, assistant_text, created_at
             FROM conversation_turns
             WHERE user_id = ?
             ORDER BY created_at DESC
@@ -117,14 +117,19 @@ class ConversationStore:
         ''', (user_id, max_turns))
         
         turns = cursor.fetchall()
+        print(f"🔍 Found {len(turns)} turns in conversation_turns table")
+        for i, (user_text, assistant_text, created_at) in enumerate(turns):
+            print(f"🔍 Turn {i+1} ({created_at}): U='{user_text[:50]}...' A='{assistant_text[:50]}...'")
+        
         conn.close()
         
         if not turns:
+            print("🔍 No turns found, returning empty context")
             return ""
         
         # Format as compact recent context
         context = "[RECENT TURNS]\n"
-        for user_text, assistant_text in reversed(turns):  # Chronological order
+        for user_text, assistant_text, _ in reversed(turns):  # Chronological order
             # Truncate long messages to control token usage
             user_short = user_text[:200] + "..." if len(user_text) > 200 else user_text
             assistant_short = assistant_text[:300] + "..." if len(assistant_text) > 300 else assistant_text
