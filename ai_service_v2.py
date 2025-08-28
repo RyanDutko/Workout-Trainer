@@ -318,9 +318,11 @@ IMPORTANT CONVERSATION FLOW RULES:
 - Only use propose_plan_update tool AFTER user explicitly says "add this" or "make this change"
 - Engage in natural conversation to gather details before proposing changes
 - Example: "Which day would you like to add Romanian deadlifts to? And based on your current workouts, what weight do you think would be appropriate to start with?"
+"""
 
             if recent_context:
                 system_content += f"\n\n{recent_context}"
+            """</old_str>
 
             messages = [
                 {
