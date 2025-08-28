@@ -379,22 +379,28 @@ function addStreamingMessage() {
 function appendToStreamingMessage(messageId, content) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.streaming-content');
-        const cursor = contentDiv.querySelector('.typing-cursor');
+        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
+        if (contentDiv) {
+            const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
 
-        // Insert content before cursor
-        const textNode = document.createTextNode(content);
-        contentDiv.insertBefore(textNode, cursor);
+            // Insert content before cursor
+            const textNode = document.createTextNode(content);
+            if (cursor) {
+                contentDiv.insertBefore(textNode, cursor);
+            } else {
+                contentDiv.appendChild(textNode);
+            }
 
-        // Auto-scroll to bottom
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+            // Auto-scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
     }
 }
 
 function updateStreamingMessage(messageId, fullContent) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.streaming-content');
+        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
         contentDiv.innerHTML = fullContent.replace(/\n/g, '<br>');
     }
 }
@@ -402,11 +408,12 @@ function updateStreamingMessage(messageId, fullContent) {
 function finalizeStreamingMessage(messageId) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const cursor = messageDiv.querySelector('.typing-cursor');
+        const cursor = messageDiv.querySelector('.typing-cursor') || messageDiv.querySelector('.typing-dots');
         if (cursor) {
             cursor.remove();
         }
         messageDiv.classList.remove('streaming-message');
+        messageDiv.classList.remove('typing-message');
 
         // Check if this message contains plan modification keywords
         const messageText = messageDiv.textContent.toLowerCase();
@@ -883,12 +890,19 @@ function addTypingIndicator(id) {
 function appendToStreamingMessage(messageId, content) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.typing-content'); // Changed selector
-        const cursor = contentDiv.querySelector('.typing-dots'); // Changed selector
+        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
+        if (contentDiv) {
+            const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
 
-        const textNode = document.createTextNode(content);
-        contentDiv.insertBefore(textNode, cursor);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+            // Insert content before cursor
+            const textNode = document.createTextNode(content);
+            if (cursor) {
+                contentDiv.insertBefore(textNode, cursor);
+            } else {
+                contentDiv.appendChild(textNode);
+            }
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
     }
 }
 
@@ -896,7 +910,7 @@ function appendToStreamingMessage(messageId, content) {
 function updateStreamingMessage(messageId, fullContent) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.typing-content'); // Changed selector
+        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
         contentDiv.innerHTML = fullContent.replace(/\n/g, '<br>');
     }
 }
@@ -905,12 +919,13 @@ function updateStreamingMessage(messageId, fullContent) {
 function finalizeStreamingMessage(messageId) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
-        const typingIndicator = messageDiv.querySelector('.typing-dots'); // Changed selector
+        const typingIndicator = messageDiv.querySelector('.typing-dots') || messageDiv.querySelector('.typing-cursor');
         if (typingIndicator) {
             typingIndicator.remove();
         }
-        messageDiv.classList.remove('typing-message'); // Changed class name
-        messageDiv.classList.add('final-message'); // Added class for final message
+        messageDiv.classList.remove('streaming-message');
+        messageDiv.classList.remove('typing-message');
+        messageDiv.classList.add('final-message');
 
         // Check if this message contains plan modification keywords
         const messageText = messageDiv.textContent.toLowerCase();
