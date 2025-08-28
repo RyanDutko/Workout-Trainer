@@ -399,7 +399,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     continue  # Continue the loop to get final response
                 else:
                     # Check for phantom writes before finalizing response
-                    response_content = response_message.content.lower()
+                    response_content = (response_message.content or "").lower()
                     if any(phrase in response_content for phrase in ['added to', 'created', 'updated your plan', 'wrote']) and not any('commit_plan_update' in str(result) for result in tool_results_for_response):
                         # Phantom write detected - nudge the model to commit
                         messages.append({
@@ -409,10 +409,11 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                         continue  # Go back to model for commit
 
                     # No more tools needed, save conversation turn and return final response
-                    self.conversation_store.append_turn(message, response_message.content)
+                    response_content = response_message.content or ""
+                    self.conversation_store.append_turn(message, response_content)
 
                     return {
-                        'response': response_message.content,
+                        'response': response_content,
                         'tools_used': [name for name, _ in seen],
                         'tool_results': tool_results_for_response,
                         'success': True
