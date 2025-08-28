@@ -366,12 +366,19 @@ function addStreamingMessage() {
     messageDiv.id = messageId;
     messageDiv.className = 'alert alert-success d-flex align-items-start streaming-message';
 
-    messageDiv.innerHTML = `
-        <i class="fas fa-robot me-2 mt-1"></i>
-        <div class="streaming-content">
-            <span class="typing-cursor">▊</span>
-        </div>
-    `;
+    const iconElement = document.createElement('i');
+    iconElement.className = 'fas fa-robot me-2 mt-1';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'streaming-content';
+    
+    const cursor = document.createElement('span');
+    cursor.className = 'typing-cursor';
+    cursor.textContent = '▊';
+    
+    contentDiv.appendChild(cursor);
+    messageDiv.appendChild(iconElement);
+    messageDiv.appendChild(contentDiv);
 
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -388,7 +395,12 @@ function appendToStreamingMessage(messageId, content) {
     const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
     if (!contentDiv) {
         console.error(`Content div not found in message ${messageId}`);
-        return;
+        // Try to create a content div if it doesn't exist
+        const newContentDiv = document.createElement('div');
+        newContentDiv.className = 'streaming-content';
+        newContentDiv.innerHTML = '<span class="typing-cursor">▊</span>';
+        messageDiv.appendChild(newContentDiv);
+        contentDiv = newContentDiv;
     }
     
     const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
