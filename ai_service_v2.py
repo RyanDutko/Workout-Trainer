@@ -46,27 +46,27 @@ def classify_query_complexity(message: str) -> str:
     # Simple queries - use mini
     simple_indicators = [
         # Basic greetings and status
-        len(message.split()) <= 5 and any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'what\'s up']),
+        len(message.split()) <= 5,
+        any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'what\'s up']),
+
+        # Simple data retrieval
+        message_lower.startswith(('show me', 'what did i', 'get my', 'list my')),
+        'history' in message_lower and len(message.split()) <= 8,
 
         # Basic confirmations
         message_lower.strip() in ['yes', 'no', 'ok', 'sure', 'confirm', 'cancel'],
     ]
 
-    # Complex queries - use GPT-4 (expanded to catch plan-related queries)
+    # Complex queries - use GPT-4
     complex_indicators = [
-        # Plan-related queries (need tool calling)
-        any(phrase in message_lower for phrase in [
-            'weekly plan', 'my plan', 'where would', 'fit into', 'add to',
-            'modify my plan', 'change my workout', 'workout plan'
-        ]),
-
-        # History queries (need tool calling)
-        any(phrase in message_lower for phrase in [
-            'what did i', 'show me what', 'my workout', 'history', 'last time'
-        ]),
-
         # Multi-step operations
         'and' in message_lower and len(message.split()) > 8,
+
+        # Plan modifications
+        any(phrase in message_lower for phrase in [
+            'add to my plan', 'modify my plan', 'change my workout',
+            'create a circuit', 'design a program'
+        ]),
 
         # Analysis and comparison
         any(phrase in message_lower for phrase in [
@@ -78,7 +78,7 @@ def classify_query_complexity(message: str) -> str:
         'rounds' in message_lower or 'circuit' in message_lower,
 
         # Long queries (likely complex)
-        len(message.split()) > 12,
+        len(message.split()) > 15,
     ]
 
     if any(complex_indicators):
@@ -86,8 +86,8 @@ def classify_query_complexity(message: str) -> str:
     elif any(simple_indicators):
         return "gpt-4o-mini"
     else:
-        # Default to GPT-4 for tool calling capability
-        return "gpt-4"
+        # Default to mini for unknown patterns
+        return "gpt-4o-mini"
 
 
 class AIServiceV2:
@@ -302,22 +302,12 @@ class AIServiceV2:
 CURRENT DATE/TIME: {current_datetime}
 CURRENT YEAR: {current_year}
 
-CRITICAL TOOL USAGE RULES:
-- ALWAYS call get_weekly_plan when user asks about their plan, exercises, or where to add something
-- ALWAYS call get_workout_history when user asks about past workouts
-- NEVER make suggestions about plan changes without first fetching current plan data
-- Ground ALL answers in actual tool results - do NOT guess or assume
+You have tools to fetch pinned facts, recent context, and older snippets. Use them when unsure; don't guess.
 
-STRICT CONVERSATION FLOW:
-- When user mentions adding exercises: ASK questions, DON'T suggest
-- When user asks "where would X fit?": Call get_weekly_plan FIRST, then ask clarifying questions
-- NEVER auto-propose plan changes - only gather information and ask questions
-- Only use propose_plan_update tool AFTER explicit commands like "add this" or "make this change"
-
-Example proper response to "where would Romanian deadlifts fit?":
-1. Call get_weekly_plan tool first
-2. Then say: "Let me look at your current plan... Based on your plan, I can see a few options. Which day were you thinking? And what weight/reps did you have in mind?"
-"""
+Ground all factual answers in tool results. 
+For history/plan/comparison questions, call the appropriate tool(s) first.
+If tools return no data, say so plainly. Do not invent.
+Prefer concise, actionable answers citing dates and exact numbers."""
 
             if recent_context:
                 system_content += f"\n\n{recent_context}"
@@ -414,38 +404,7 @@ Example proper response to "where would Romanian deadlifts fit?":
                         tool_result = self._execute_tool(function_name, function_args)
                         tool_results_for_response.append(tool_result)
 
-                        # Summary logging instead of full JSON dump
-                        if function_name == "get_weekly_plan":
-                            if isinstance(tool_result, dict):
-                                total_exercises = sum(len(day_exercises) for day_exercises in tool_result.values()) if tool_result else 0
-                                print(f"✅ Tool result: Weekly plan loaded ({total_exercises} total exercises across all days)")
-                            elif isinstance(tool_result, list):
-                                print(f"✅ Tool result: Single day plan loaded ({len(tool_result)} exercises)")
-                        elif function_name == "get_workout_history":
-                            workout_count = len(tool_result.get('workouts', [])) if isinstance(tool_result, dict) else 0
-                            print(f"✅ Tool result: Workout history loaded ({workout_count} workouts)")
-                        elif function_name == "compare_workout_to_plan":
-                            plan_count = len(tool_result.get('plan', [])) if isinstance(tool_result, dict) else 0
-                            actual_count = len(tool_result.get('actual', [])) if isinstance(tool_result, dict) else 0
-                            print(f"✅ Tool result: Plan comparison ({plan_count} planned, {actual_count} actual exercises)")
-                        elif function_name == "propose_plan_update":
-                            status = "success" if 'proposal_id' in tool_result else "failed"
-                            action = tool_result.get('action', 'unknown')
-                            print(f"✅ Tool result: Plan proposal {status} ({action})")
-                        elif function_name == "commit_plan_update":
-                            wrote = tool_result.get('wrote', False)
-                            status = "committed" if wrote else "failed"
-                            print(f"✅ Tool result: Plan update {status}")
-                        else:
-                            # For other tools, show a basic summary
-                            if isinstance(tool_result, dict):
-                                if 'error' in tool_result:
-                                    print(f"✅ Tool result: {function_name} - Error: {tool_result['error']}")
-                                else:
-                                    key_count = len([k for k in tool_result.keys() if not k.startswith('_')])
-                                    print(f"✅ Tool result: {function_name} - {key_count} data fields returned")
-                            else:
-                                print(f"✅ Tool result: {function_name} - {type(tool_result).__name__} data returned")
+                        print(f"✅ Tool result: {json.dumps(tool_result, indent=2)}")  # Debug output
 
                         # Add tool result to conversation
                         messages.append({
@@ -457,7 +416,15 @@ Example proper response to "where would Romanian deadlifts fit?":
 
                     continue  # Continue the loop to get final response
                 else:
-                    # Removed phantom write detection - let natural conversation flow handle proposals
+                    # Check for phantom writes before finalizing response
+                    response_content = (response_message.content or "").lower()
+                    if any(phrase in response_content for phrase in ['added to', 'created', 'updated your plan', 'wrote']) and not any('commit_plan_update' in str(result) for result in tool_results_for_response):
+                        # Phantom write detected - nudge the model to commit
+                        messages.append({
+                            "role": "system",
+                            "content": "Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}."
+                        })
+                        continue  # Go back to model for commit
 
                     # No more tools needed, save conversation turn and return final response
                     response_content = response_message.content or ""
@@ -1214,8 +1181,8 @@ Example proper response to "where would Romanian deadlifts fit?":
             # Insert circuit into weekly plan
             cursor.execute('''
                 INSERT INTO weekly_plan
-                    (day_of_week, exercise_name, target_sets, target_reps, target_weight,
-                     block_type, meta_json, members_json, exercise_order, created_by, newly_added, date_added)
+                    (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order,
+                     block_type, meta_json, members_json, created_by, newly_added, date_added)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (day.lower(), label, rounds, f'{len(members)} exercises', 'circuit', next_order,
                   'circuit', json.dumps(meta_data), json.dumps(members), 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
@@ -1529,7 +1496,7 @@ Example proper response to "where would Romanian deadlifts fit?":
                             "ai_v2",
                             True,
                             datetime.now().strftime("%Y-%m-%d"),
-                        )
+                        ),
                     )
                     conn.commit()
                     block_id = cursor.lastrowid
