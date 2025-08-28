@@ -119,7 +119,9 @@ class ConversationStore:
         turns = cursor.fetchall()
         print(f"🔍 Found {len(turns)} turns in conversation_turns table")
         for i, (user_text, assistant_text, created_at) in enumerate(turns):
-            print(f"🔍 Turn {i+1} ({created_at}): U='{user_text[:50]}...' A='{assistant_text[:50]}...'")
+            user_display = user_text if len(user_text) <= 50 else user_text[:47] + "..."
+            assistant_display = assistant_text if len(assistant_text) <= 50 else assistant_text[:47] + "..."
+            print(f"🔍 Turn {i+1} ({created_at}): U='{user_display}' A='{assistant_display}'")
         
         conn.close()
         
