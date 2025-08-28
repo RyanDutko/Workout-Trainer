@@ -1,0 +1,37 @@
+Chat request received: hello (Advanced Mode: False)
+Database queries completed successfully
+MAIN_CHAT: using V2 tool calling
+🤖 Auto-selected model: gpt-4o-mini for query: 'hello...'
+🔍 Found 6 turns in conversation_turns table
+🔍 Turn 1 (2025-08-28 14:49:39): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Turn 2 (2025-08-28 14:45:46): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Turn 3 (2025-08-28 14:42:05): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Turn 4 (2025-08-28 14:38:48): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Turn 5 (2025-08-28 14:36:49): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Turn 6 (2025-08-28 14:34:35): U='hello' A='Hello! How can I assist you with your fitness j...'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Formatting turn: U='hello' A='Hello! How can I assist you with your fitness journey today?' (lengths: 5, 60)
+🔍 After truncation: U_short='hello' A_short='Hello! How can I assist you with your fitness journey today?'
+🔍 Adding recent_context to system prompt: 477 chars
+🔍 Recent context content: [RECENT TURNS]
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
+- U: hello
+- A: Hello! How can I assist you with your fitness journey today?
