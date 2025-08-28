@@ -359,7 +359,20 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     print(f"🤖 AI planned {len(tool_calls)} tool calls: {[tc.function.name for tc in tool_calls]}")
 
                     # Add the AI's response with tool calls to the conversation
-                    messages.append(response_message)
+                    messages.append({
+                        "role": "assistant",
+                        "content": response_message.content,
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": tc.type,
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments
+                                }
+                            } for tc in tool_calls
+                        ]
+                    })
 
                     # Execute each tool call
                     for tool_call in tool_calls:
