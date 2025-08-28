@@ -4069,6 +4069,30 @@ def mark_exercise_new():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/fix_romanian_deadlift_weight', methods=['POST'])
+def fix_romanian_deadlift_weight():
+    """Fix the Romanian deadlift weight to 35 lbs"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            UPDATE weekly_plan
+            SET target_weight = '35 lbs'
+            WHERE day_of_week = 'monday' AND LOWER(exercise_name) = LOWER('Romanian Deadlifts')
+        ''')
+
+        if cursor.rowcount > 0:
+            conn.commit()
+            conn.close()
+            return jsonify({'success': True, 'message': 'Fixed Romanian deadlift weight to 35 lbs'})
+        else:
+            conn.close()
+            return jsonify({'success': False, 'error': 'Romanian deadlifts not found on Monday'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/analyze_day_progression', methods=['POST'])
 def analyze_day_progression_api():
     """API endpoint to trigger day progression analysis"""

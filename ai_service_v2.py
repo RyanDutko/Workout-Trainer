@@ -1525,12 +1525,23 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
                     order_idx = cursor.fetchone()[0]
 
+                # Extract weight from members if available
+                target_weight = 'bodyweight'
+                target_sets = 3
+                target_reps = '8-12'
+                
+                if members:
+                    member = members[0]
+                    target_weight = member.get('weight', 'bodyweight')
+                    target_sets = member.get('sets', 3)
+                    target_reps = str(member.get('reps', '8-12'))
+
                 # Insert simple block
                 cursor.execute('''
                     INSERT INTO weekly_plan
                     (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, created_by, newly_added, date_added)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (day, label, 3, '8-12', 'bodyweight', order_idx, 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
+                ''', (day, label, target_sets, target_reps, target_weight, order_idx, 'ai_v2', True, datetime.now().strftime('%Y-%m-%d')))
 
                 block_id = cursor.lastrowid
 
