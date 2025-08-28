@@ -1515,7 +1515,7 @@ IMPORTANT CONVERSATION FLOW RULES:
                             (day_of_week, exercise_name, target_sets, target_reps, target_weight,
                              block_type, meta_json, members_json, exercise_order, created_by, newly_added, date_added)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """
+                        """,
                         (
                             day.lower(),
                             label,                     # store block label in exercise_name
