@@ -1529,7 +1529,7 @@ IMPORTANT CONVERSATION FLOW RULES:
                             "ai_v2",
                             True,
                             datetime.now().strftime("%Y-%m-%d"),
-                        ),
+                        )
                     )
                     conn.commit()
                     block_id = cursor.lastrowid
