@@ -368,14 +368,14 @@ function addStreamingMessage() {
 
     const iconElement = document.createElement('i');
     iconElement.className = 'fas fa-robot me-2 mt-1';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.className = 'streaming-content';
-    
+
     const cursor = document.createElement('span');
     cursor.className = 'typing-cursor';
     cursor.textContent = '▊';
-    
+
     contentDiv.appendChild(cursor);
     messageDiv.appendChild(iconElement);
     messageDiv.appendChild(contentDiv);
@@ -391,7 +391,7 @@ function appendToStreamingMessage(messageId, content) {
         console.error(`Message div with ID ${messageId} not found`);
         return;
     }
-    
+
     const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
     if (!contentDiv) {
         console.error(`Content div not found in message ${messageId}`);
@@ -402,7 +402,7 @@ function appendToStreamingMessage(messageId, content) {
         messageDiv.appendChild(newContentDiv);
         contentDiv = newContentDiv;
     }
-    
+
     const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
 
     // Insert content before cursor
