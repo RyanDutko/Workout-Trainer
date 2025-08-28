@@ -3252,8 +3252,17 @@ def get_exercise_performance(exercise):
         # Process actual logged data with improved reps parsing
         for date, sets, reps, weight in performance_data:
             try:
-                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').strip()
-                if weight_str and weight_str != 'bodyweight':
+                weight_str = str(weight).lower().replace('lbs', '').replace('kg', '').replace('lb', '').strip()
+                
+                # Handle assisted exercises (extract assist weight)
+                if 'of assist' in weight_str:
+                    weight_str = weight_str.replace('of assist', '').strip()
+                
+                # Handle multiple weights (take first one)
+                if '/' in weight_str:
+                    weight_str = weight_str.split('/')[0].strip()
+                
+                if weight_str and weight_str != 'bodyweight' and weight_str != 'mixed':
                     weight_num = float(weight_str)
 
                     # Improved reps parsing to handle different formats
