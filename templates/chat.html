@@ -380,23 +380,29 @@ function addStreamingMessage() {
 
 function appendToStreamingMessage(messageId, content) {
     const messageDiv = document.getElementById(messageId);
-    if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
-        if (contentDiv) {
-            const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
-
-            // Insert content before cursor
-            const textNode = document.createTextNode(content);
-            if (cursor) {
-                contentDiv.insertBefore(textNode, cursor);
-            } else {
-                contentDiv.appendChild(textNode);
-            }
-
-            // Auto-scroll to bottom
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
+    if (!messageDiv) {
+        console.error(`Message div with ID ${messageId} not found`);
+        return;
     }
+    
+    const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
+    if (!contentDiv) {
+        console.error(`Content div not found in message ${messageId}`);
+        return;
+    }
+    
+    const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
+
+    // Insert content before cursor
+    const textNode = document.createTextNode(content);
+    if (cursor) {
+        contentDiv.insertBefore(textNode, cursor);
+    } else {
+        contentDiv.appendChild(textNode);
+    }
+
+    // Auto-scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function updateStreamingMessage(messageId, fullContent) {
@@ -871,49 +877,14 @@ function getConversationHistory() {
     return conversationHistory;
 }
 
-// Helper to add typing indicator
-function addTypingIndicator(id) {
-    const messageDiv = document.createElement('div');
-    messageDiv.id = id;
-    messageDiv.className = 'alert alert-success d-flex align-items-start typing-message'; // Changed class name
-    messageDiv.innerHTML = `
-        <i class="fas fa-robot me-2 mt-1"></i>
-        <div class="typing-content">
-            <span class="typing-dots">
-                <span></span><span></span><span></span>
-            </span>
-        </div>
-    `;
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Helper to append content to typing indicator
-function appendToStreamingMessage(messageId, content) {
-    const messageDiv = document.getElementById(messageId);
-    if (messageDiv) {
-        const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
-        if (contentDiv) {
-            const cursor = contentDiv.querySelector('.typing-cursor') || contentDiv.querySelector('.typing-dots');
-
-            // Insert content before cursor
-            const textNode = document.createTextNode(content);
-            if (cursor) {
-                contentDiv.insertBefore(textNode, cursor);
-            } else {
-                contentDiv.appendChild(textNode);
-            }
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-    }
-}
-
 // Helper to update the entire message content
 function updateStreamingMessage(messageId, fullContent) {
     const messageDiv = document.getElementById(messageId);
     if (messageDiv) {
         const contentDiv = messageDiv.querySelector('.streaming-content') || messageDiv.querySelector('.typing-content');
-        contentDiv.innerHTML = fullContent.replace(/\n/g, '<br>');
+        if (contentDiv) {
+            contentDiv.innerHTML = fullContent.replace(/\n/g, '<br>');
+        }
     }
 }
 
