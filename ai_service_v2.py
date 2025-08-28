@@ -46,27 +46,27 @@ def classify_query_complexity(message: str) -> str:
     # Simple queries - use mini
     simple_indicators = [
         # Basic greetings and status
-        len(message.split()) <= 5,
-        any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'what\'s up']),
-
-        # Simple data retrieval
-        message_lower.startswith(('show me', 'what did i', 'get my', 'list my')),
-        'history' in message_lower and len(message.split()) <= 8,
+        len(message.split()) <= 5 and any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'what\'s up']),
 
         # Basic confirmations
         message_lower.strip() in ['yes', 'no', 'ok', 'sure', 'confirm', 'cancel'],
     ]
 
-    # Complex queries - use GPT-4
+    # Complex queries - use GPT-4 (expanded to catch plan-related queries)
     complex_indicators = [
+        # Plan-related queries (need tool calling)
+        any(phrase in message_lower for phrase in [
+            'weekly plan', 'my plan', 'where would', 'fit into', 'add to',
+            'modify my plan', 'change my workout', 'workout plan'
+        ]),
+
+        # History queries (need tool calling)
+        any(phrase in message_lower for phrase in [
+            'what did i', 'show me what', 'my workout', 'history', 'last time'
+        ]),
+
         # Multi-step operations
         'and' in message_lower and len(message.split()) > 8,
-
-        # Plan modifications
-        any(phrase in message_lower for phrase in [
-            'add to my plan', 'modify my plan', 'change my workout',
-            'create a circuit', 'design a program'
-        ]),
 
         # Analysis and comparison
         any(phrase in message_lower for phrase in [
@@ -78,7 +78,7 @@ def classify_query_complexity(message: str) -> str:
         'rounds' in message_lower or 'circuit' in message_lower,
 
         # Long queries (likely complex)
-        len(message.split()) > 15,
+        len(message.split()) > 12,
     ]
 
     if any(complex_indicators):
@@ -86,8 +86,8 @@ def classify_query_complexity(message: str) -> str:
     elif any(simple_indicators):
         return "gpt-4o-mini"
     else:
-        # Default to mini for unknown patterns
-        return "gpt-4o-mini"
+        # Default to GPT-4 for tool calling capability
+        return "gpt-4"
 
 
 class AIServiceV2:
@@ -302,22 +302,21 @@ class AIServiceV2:
 CURRENT DATE/TIME: {current_datetime}
 CURRENT YEAR: {current_year}
 
-You have tools to fetch pinned facts, recent context, and older snippets. Use them when unsure; don't guess.
+CRITICAL TOOL USAGE RULES:
+- ALWAYS call get_weekly_plan when user asks about their plan, exercises, or where to add something
+- ALWAYS call get_workout_history when user asks about past workouts
+- NEVER make suggestions about plan changes without first fetching current plan data
+- Ground ALL answers in actual tool results - do NOT guess or assume
 
-Ground all factual answers in tool results. 
-For history/plan/comparison questions, call the appropriate tool(s) first.
-If tools return no data, say so plainly. Do not invent.
-Prefer concise, actionable answers citing dates and exact numbers.
+STRICT CONVERSATION FLOW:
+- When user mentions adding exercises: ASK questions, DON'T suggest
+- When user asks "where would X fit?": Call get_weekly_plan FIRST, then ask clarifying questions
+- NEVER auto-propose plan changes - only gather information and ask questions
+- Only use propose_plan_update tool AFTER explicit commands like "add this" or "make this change"
 
-IMPORTANT CONVERSATION FLOW RULES:
-- Never auto-propose plan changes without explicit user request
-- When discussing exercise placement, ask clarifying questions first:
-  * Which day would they prefer?
-  * What weight/sets/reps are they thinking?
-  * Get their preferences before making suggestions
-- Only use propose_plan_update tool AFTER user explicitly says "add this" or "make this change"
-- Engage in natural conversation to gather details before proposing changes
-- Example: "Which day would you like to add Romanian deadlifts to? And based on your current workouts, what weight do you think would be appropriate to start with?"
+Example proper response to "where would Romanian deadlifts fit?":
+1. Call get_weekly_plan tool first
+2. Then say: "Let me look at your current plan... Based on your plan, I can see a few options. Which day were you thinking? And what weight/reps did you have in mind?"
 """
 
             if recent_context:
