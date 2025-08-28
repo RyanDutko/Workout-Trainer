@@ -11,7 +11,21 @@
     <div class="col-12">
         <div class="card" style="height: 80vh;">
             <div class="card-header bg-primary text-white">
-                <h6 class="mb-0"><i class="fas fa-robot me-2"></i>Personal Trainer AI</h6>
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-comments me-2"></i>AI Training Assistant
+                    </h5>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="advancedModeToggle">
+                        <label class="form-check-label text-white small" for="advancedModeToggle">
+                            <i class="fas fa-brain me-1"></i>Advanced Mode
+                        </label>
+                    </div>
+                </div>
+                <div class="small mt-1" id="modeIndicator">
+                    <i class="fas fa-circle text-success me-1"></i>
+                    <span id="modeText">Standard Mode (Fast & Efficient)</span>
+                </div>
             </div>
             <div class="card-body d-flex flex-column">
                 <div id="chatMessages" class="flex-grow-1 overflow-auto mb-3" style="max-height: calc(80vh - 200px);">
@@ -23,10 +37,10 @@
                 </div>
 
                 <form id="chatForm" class="d-flex gap-2 align-items-end">
-                    <textarea id="messageInput" class="form-control auto-expand" 
-                              placeholder="Ask about workouts, progression, nutrition..." 
-                              rows="1" 
-                              style="resize: none; min-height: 38px; max-height: 120px;" 
+                    <textarea id="messageInput" class="form-control auto-expand"
+                              placeholder="Ask about workouts, progression, nutrition..."
+                              rows="1"
+                              style="resize: none; min-height: 38px; max-height: 120px;"
                               required></textarea>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-paper-plane"></i>
@@ -87,7 +101,7 @@ function autoExpandTextarea(textarea) {
     const scrollHeight = textarea.scrollHeight;
     const maxHeight = 120; // max-height from CSS
     const minHeight = 38;  // min-height from CSS
-    
+
     if (scrollHeight > maxHeight) {
         textarea.style.height = maxHeight + 'px';
         textarea.style.overflowY = 'auto';
@@ -100,10 +114,10 @@ function autoExpandTextarea(textarea) {
 // Add event listeners for textarea auto-expansion
 messageInput.addEventListener('input', function() {
     autoExpandTextarea(this);
-    
+
     // Existing auto-save functionality
     const existing = localStorage.getItem('aiChatConversation');
-    
+
     if (existing) {
         try {
             const data = JSON.parse(existing);
@@ -162,17 +176,17 @@ function loadConversationFromStorage() {
     if (saved) {
         try {
             const conversationData = JSON.parse(saved);
-            
+
             // Check if conversation is less than 2 hours old
             const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
             if (conversationData.timestamp > twoHoursAgo) {
                 chatMessages.innerHTML = conversationData.messages;
                 conversationHistory = conversationData.history || '';
                 messageInput.value = conversationData.currentInput || '';
-                
+
                 // Scroll to bottom
                 chatMessages.scrollTop = chatMessages.scrollHeight;
-                
+
                 // Show restore notice
                 const restoreNotice = document.createElement('div');
                 restoreNotice.className = 'alert alert-info alert-dismissible fade show';
@@ -210,14 +224,14 @@ function clearConversation() {
 function getSmartContext(currentMessage) {
     const daySpecificTerms = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday', 'show me what i did', 'my workout'];
     const isDaySpecific = daySpecificTerms.some(term => currentMessage.toLowerCase().includes(term));
-    
+
     if (isDaySpecific) {
         // For day-specific queries, only use last 2 exchanges to avoid confusion
         const messages = conversationHistory.split('\n\n');
         const recentMessages = messages.slice(-4).join('\n\n'); // Last 2 user-AI exchanges
         return recentMessages;
     }
-    
+
     // For other queries, limit to last 1000 chars to prevent overwhelming context
     return conversationHistory.slice(-1000);
 }
@@ -235,7 +249,7 @@ chatForm.addEventListener('submit', function(e) {
 
     // Update conversation history
     conversationHistory += `User: ${message}\n\n`;
-    
+
     // Save to localStorage
     saveConversationToStorage();
 
@@ -244,7 +258,7 @@ chatForm.addEventListener('submit', function(e) {
 
     // Use smart context management for better day-specific queries
     const smartContext = getSmartContext(message);
-    
+
     // Send to AI with streaming
     fetch('/chat_stream', {
         method: 'POST',
@@ -265,7 +279,7 @@ chatForm.addEventListener('submit', function(e) {
                     // Add AI response to conversation history
                     conversationHistory += `Grok: ${aiResponse}\n\n`;
                     finalizeStreamingMessage(aiMessageId);
-                    
+
                     // Save conversation to localStorage
                     saveConversationToStorage();
                     return;
@@ -322,7 +336,7 @@ chatForm.addEventListener('submit', function(e) {
 function addMessage(message, type) {
     const messageDiv = document.createElement('div');
     let alertClass, icon;
-    
+
     if (type === 'user') {
         alertClass = 'alert-primary';
         icon = 'fas fa-user';
@@ -333,7 +347,7 @@ function addMessage(message, type) {
         alertClass = 'alert-success';
         icon = 'fas fa-robot';
     }
-    
+
     messageDiv.className = `alert ${alertClass} d-flex align-items-start`;
     messageDiv.innerHTML = `
         <i class="${icon} me-2 mt-1"></i>
@@ -393,11 +407,11 @@ function finalizeStreamingMessage(messageId) {
             cursor.remove();
         }
         messageDiv.classList.remove('streaming-message');
-        
+
         // Check if this message contains plan modification keywords
         const messageText = messageDiv.textContent.toLowerCase();
-        if ((messageText.includes('add') || messageText.includes('great choice') || messageText.includes('update') || messageText.includes('bump up')) && 
-            (messageText.includes('plan') || messageText.includes('monday') || messageText.includes('friday') || messageText.includes('weight')) && 
+        if ((messageText.includes('add') || messageText.includes('great choice') || messageText.includes('update') || messageText.includes('bump up')) &&
+            (messageText.includes('plan') || messageText.includes('monday') || messageText.includes('friday') || messageText.includes('weight')) &&
             !messageText.includes('done!')) {
             // This looks like a plan modification response - add confirmation UI
             setTimeout(() => addPlanModificationConfirmation(messageDiv), 500);
@@ -407,17 +421,17 @@ function finalizeStreamingMessage(messageId) {
 
 function addPlanModificationConfirmation(messageDiv) {
     const messageText = messageDiv.textContent;
-    
+
     // Parse what the AI actually suggested instead of using keyword detection
     const proposalData = parseAIProposal(messageText);
-    
+
     if (proposalData) {
         const confirmationDiv = document.createElement('div');
         confirmationDiv.className = 'alert alert-warning mt-2 p-3';
-        
+
         let actionButton = '';
         let description = '';
-        
+
         if (proposalData.type === 'rename') {
             description = `Rename "${proposalData.currentName}" to "${proposalData.newName}"`;
             actionButton = `
@@ -440,7 +454,7 @@ function addPlanModificationConfirmation(messageDiv) {
                 </button>
             `;
         }
-        
+
         if (description && actionButton) {
             confirmationDiv.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center">
@@ -456,7 +470,7 @@ function addPlanModificationConfirmation(messageDiv) {
                     </div>
                 </div>
             `;
-            
+
             messageDiv.appendChild(confirmationDiv);
         }
     }
@@ -464,12 +478,12 @@ function addPlanModificationConfirmation(messageDiv) {
 
 function parseAIProposal(messageText) {
     const text = messageText.toLowerCase();
-    
+
     // Check for rename proposals
     if (text.includes('rename') || text.includes('call it') || text.includes('change the name')) {
         const renameMatch = text.match(/rename.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row)).*?to.*?"([^"]+)"/i) ||
                            text.match(/call.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row)).*?"([^"]+)"/i);
-        
+
         if (renameMatch) {
             const dayMatch = text.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
             return {
@@ -480,13 +494,13 @@ function parseAIProposal(messageText) {
             };
         }
     }
-    
+
     // Check for weight updates
     if (text.includes('update') && text.includes('weight') || text.includes('bump up') || text.includes('increase')) {
         const exerciseMatch = text.match(/([a-zA-Z\s]+(?:drive|press|curl|extension|row))/);
         const weightMatch = text.match(/(\d+)\s*(?:lbs?|pounds?)/);
         const dayMatch = text.match(/(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/);
-        
+
         if (exerciseMatch && weightMatch && dayMatch) {
             return {
                 type: 'weight_update',
@@ -496,7 +510,7 @@ function parseAIProposal(messageText) {
             };
         }
     }
-    
+
     // Check for exercise additions
     if (text.includes('add') || text.includes('include')) {
         const exerciseMatch = text.match(/add.*?([a-zA-Z\s]+(?:drive|press|curl|extension|row))/);
@@ -504,7 +518,7 @@ function parseAIProposal(messageText) {
         const setsMatch = text.match(/(\d+)\s*(?:sets?|x)/);
         const repsMatch = text.match(/(\d+(?:-\d+)?)\s*reps?/);
         const weightMatch = text.match(/(\d+)\s*(?:lbs?|pounds?)/);
-        
+
         if (exerciseMatch && dayMatch) {
             return {
                 type: 'add_exercise',
@@ -516,7 +530,7 @@ function parseAIProposal(messageText) {
             };
         }
     }
-    
+
     return null;
 }
 
@@ -559,7 +573,7 @@ function confirmExerciseRename(currentName, newName, day, buttonElement) {
     const originalButton = buttonElement.innerHTML;
     buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Renaming...';
     buttonElement.disabled = true;
-    
+
     // Make the rename via direct API call
     fetch('/rename_exercise', {
         method: 'POST',
@@ -587,7 +601,7 @@ function confirmExerciseRename(currentName, newName, day, buttonElement) {
                     </div>
                 </div>
             `;
-            
+
             // Auto-remove success message after 5 seconds
             setTimeout(() => {
                 if (confirmationDiv && confirmationDiv.parentNode) {
@@ -613,13 +627,13 @@ function confirmWeightUpdate(exercise, day, weight, buttonElement) {
     const originalButton = buttonElement.innerHTML;
     buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Updating...';
     buttonElement.disabled = true;
-    
+
     // Send confirmation message to trigger the weight update logic
     const confirmationMessage = "yes";
-    
+
     // Add the confirmation to chat history and trigger the backend logic
     addMessage(confirmationMessage, 'user');
-    
+
     // Send to AI to trigger the weight update logic
     fetch('/chat_stream', {
         method: 'POST',
@@ -641,7 +655,7 @@ function confirmWeightUpdate(exercise, day, weight, buttonElement) {
                 </div>
             </div>
         `;
-        
+
         // Auto-remove success message after 5 seconds
         setTimeout(() => {
             if (confirmationDiv && confirmationDiv.parentNode) {
@@ -662,7 +676,7 @@ function confirmPlanChangeWithFeedback(exercise, day, sets, reps, weight, button
     const originalButton = buttonElement.innerHTML;
     buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Adding...';
     buttonElement.disabled = true;
-    
+
     // Create the plan change
     fetch('/modify_plan', {
         method: 'POST',
@@ -694,7 +708,7 @@ function confirmPlanChangeWithFeedback(exercise, day, sets, reps, weight, button
                     </div>
                 </div>
             `;
-            
+
             // Auto-remove success message after 5 seconds
             setTimeout(() => {
                 if (confirmationDiv && confirmationDiv.parentNode) {
@@ -725,7 +739,7 @@ function askDaySpecificQuestion(question) {
     // Clear old conversation context for day-specific queries to avoid confusion
     conversationHistory = '';
     addMessage('🔄 Cleared conversation context for accurate day-specific query', 'system');
-    
+
     messageInput.value = question;
     chatForm.dispatchEvent(new Event('submit'));
 }
@@ -735,6 +749,177 @@ function requestFullPlanReview() {
 
     messageInput.value = reviewPrompt;
     chatForm.dispatchEvent(new Event('submit'));
+}
+
+// Handle advanced mode toggle
+document.addEventListener('DOMContentLoaded', function() {
+    // ... existing loadConversationHistory() call ...
+    loadConversationFromStorage();
+
+    const advancedToggle = document.getElementById('advancedModeToggle');
+    const modeIndicator = document.getElementById('modeIndicator');
+    const modeText = document.getElementById('modeText');
+
+    advancedToggle.addEventListener('change', function() {
+        updateModeIndicator();
+    });
+
+    function updateModeIndicator() {
+        if (advancedToggle.checked) {
+            modeIndicator.innerHTML = '<i class="fas fa-circle text-warning me-1"></i><span id="modeText">Advanced Mode (Complex Analysis)</span>';
+        } else {
+            modeIndicator.innerHTML = '<i class="fas fa-circle text-success me-1"></i><span id="modeText">Standard Mode (Fast & Efficient)</span>';
+        }
+    }
+});
+
+
+// Modified sendMessage function to include the advanced mode toggle
+function sendMessage() {
+    const messageInput = document.getElementById('messageInput');
+    const message = messageInput.value.trim();
+
+    if (!message) return;
+
+    // Add user message to chat
+    addMessage(message, 'user');
+    messageInput.value = '';
+
+    // Show typing indicator
+    const typingId = 'typing-' + Date.now();
+    addTypingIndicator(typingId);
+
+    // Send to server
+    const formData = new FormData();
+    formData.append('message', message);
+    formData.append('conversation_history', getConversationHistory());
+    formData.append('force_advanced_mode', document.getElementById('advancedModeToggle').checked);
+
+    fetch('/chat_stream', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let aiResponse = '';
+
+        function readStream() {
+            reader.read().then(({ done, value }) => {
+                if (done) {
+                    conversationHistory += `Grok: ${aiResponse}\n\n`;
+                    finalizeStreamingMessage(typingId); // Use typingId instead of aiMessageId
+                    saveConversationToStorage();
+                    return;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.trim() && line.startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.slice(6).trim();
+                            if (jsonStr && jsonStr !== '') {
+                                const data = JSON.parse(jsonStr);
+                                if (data.content) {
+                                    aiResponse += data.content;
+                                    appendToStreamingMessage(typingId, data.content); // Use typingId
+                                } else if (data.error) {
+                                    updateStreamingMessage(typingId, 'Sorry, I encountered an error. Please try again.'); // Use typingId
+                                    finalizeStreamingMessage(typingId); // Use typingId
+                                    return;
+                                } else if (data.done) {
+                                    finalizeStreamingMessage(typingId); // Use typingId
+                                    return;
+                                }
+                            }
+                        } catch (e) {
+                            console.log('Skipping malformed chunk:', line, 'Error:', e.message);
+                        }
+                    }
+                }
+                readStream();
+            }).catch(error => {
+                console.error('Stream reading error:', error);
+                updateStreamingMessage(typingId, 'Connection error occurred.'); // Use typingId
+                finalizeStreamingMessage(typingId); // Use typingId
+            });
+        }
+        readStream();
+    })
+    .catch(error => {
+        updateStreamingMessage(typingId, 'Sorry, I encountered an error. Please try again.'); // Use typingId
+        finalizeStreamingMessage(typingId); // Use typingId
+        console.error('Error:', error);
+    });
+}
+
+// Helper to get conversation history for the API call
+function getConversationHistory() {
+    return conversationHistory;
+}
+
+// Helper to add typing indicator
+function addTypingIndicator(id) {
+    const messageDiv = document.createElement('div');
+    messageDiv.id = id;
+    messageDiv.className = 'alert alert-success d-flex align-items-start typing-message'; // Changed class name
+    messageDiv.innerHTML = `
+        <i class="fas fa-robot me-2 mt-1"></i>
+        <div class="typing-content">
+            <span class="typing-dots">
+                <span></span><span></span><span></span>
+            </span>
+        </div>
+    `;
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Helper to append content to typing indicator
+function appendToStreamingMessage(messageId, content) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        const contentDiv = messageDiv.querySelector('.typing-content'); // Changed selector
+        const cursor = contentDiv.querySelector('.typing-dots'); // Changed selector
+
+        const textNode = document.createTextNode(content);
+        contentDiv.insertBefore(textNode, cursor);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+// Helper to update the entire message content
+function updateStreamingMessage(messageId, fullContent) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        const contentDiv = messageDiv.querySelector('.typing-content'); // Changed selector
+        contentDiv.innerHTML = fullContent.replace(/\n/g, '<br>');
+    }
+}
+
+// Helper to finalize the streaming message (remove typing indicator)
+function finalizeStreamingMessage(messageId) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        const typingIndicator = messageDiv.querySelector('.typing-dots'); // Changed selector
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
+        messageDiv.classList.remove('typing-message'); // Changed class name
+        messageDiv.classList.add('final-message'); // Added class for final message
+
+        // Check if this message contains plan modification keywords
+        const messageText = messageDiv.textContent.toLowerCase();
+        if ((messageText.includes('add') || messageText.includes('great choice') || messageText.includes('update') || messageText.includes('bump up')) &&
+            (messageText.includes('plan') || messageText.includes('monday') || messageText.includes('friday') || messageText.includes('weight')) &&
+            !messageText.includes('done!')) {
+            setTimeout(() => addPlanModificationConfirmation(messageDiv), 500);
+        }
+    }
 }
 </script>
 {% endblock %}

@@ -1453,9 +1453,10 @@ def chat_stream():
     # Capture ALL form data immediately at route entry to avoid Flask context issues
     user_message = request.form.get('message', '')
     conversation_history = request.form.get('conversation_history', '')
-    print(f"Chat request received: {user_message}")  # Debug log
+    force_advanced_mode = request.form.get('force_advanced_mode', 'false').lower() == 'true'
+    print(f"Chat request received: {user_message} (Advanced Mode: {force_advanced_mode})")  # Debug log
 
-    def generate(message, conv_history):
+    def generate(message, conv_history, force_advanced):
         try:
             # Get user background for context
             conn = sqlite3.connect('workout_logs.db')
@@ -1499,7 +1500,7 @@ def chat_stream():
                         pass
 
                     print("MAIN_CHAT: using V2 tool calling")
-                    result = ai_service_v2.get_ai_response(message, conversation_history_list)
+                    result = ai_service_v2.get_ai_response(message, conversation_history_list, user_force_advanced=force_advanced_mode)
                     response = result.get('response', 'No response from AI service')
                 else:
                     response = "V2 AI service is not available. Please enable it or fix the import."
@@ -1836,7 +1837,7 @@ def chat_stream():
             print(f"Chat stream error: {str(e)}")  # Debug log
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-    return Response(generate(user_message, conversation_history), mimetype='text/plain')
+    return Response(generate(user_message, conversation_history, force_advanced_mode), mimetype='text/plain')
 
 @app.route('/log_workout')
 def log_workout():
