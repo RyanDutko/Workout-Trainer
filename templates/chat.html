@@ -15,11 +15,17 @@
                     <h5 class="mb-0">
                         <i class="fas fa-comments me-2"></i>AI Training Assistant
                     </h5>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="advancedModeToggle">
-                        <label class="form-check-label text-white small" for="advancedModeToggle">
-                            <i class="fas fa-brain me-1"></i>Advanced Mode
-                        </label>
+                    <div class="d-flex align-items-center gap-3">
+                        <div class="text-white small" id="tokenUsage">
+                            <i class="fas fa-chart-line me-1"></i>
+                            <span id="tokenCount">--</span> tokens
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="advancedModeToggle">
+                            <label class="form-check-label text-white small" for="advancedModeToggle">
+                                <i class="fas fa-brain me-1"></i>Advanced Mode
+                            </label>
+                        </div>
                     </div>
                 </div>
                 <div class="small mt-1" id="modeIndicator">
@@ -274,6 +280,7 @@ chatForm.addEventListener('submit', function(e) {
         const decoder = new TextDecoder();
         let buffer = '';
         let aiResponse = '';
+        let tokenUsage = null;
 
         function readStream() {
             reader.read().then(({ done, value }) => {
@@ -281,6 +288,11 @@ chatForm.addEventListener('submit', function(e) {
                     // Add AI response to conversation history
                     conversationHistory += `Grok: ${aiResponse}\n\n`;
                     finalizeStreamingMessage(aiMessageId);
+
+                    // Update token usage display if available
+                    if (tokenUsage) {
+                        updateTokenUsage(tokenUsage);
+                    }
 
                     // Save conversation to localStorage
                     saveConversationToStorage();
@@ -303,6 +315,9 @@ chatForm.addEventListener('submit', function(e) {
                                 if (data.content) {
                                     aiResponse += data.content;
                                     appendToStreamingMessage(aiMessageId, data.content);
+                                } else if (data.token_usage) {
+                                    // Capture token usage data
+                                    tokenUsage = data.token_usage;
                                 } else if (data.error) {
                                     updateStreamingMessage(aiMessageId, 'Sorry, I encountered an error. Please try again.');
                                     finalizeStreamingMessage(aiMessageId);
@@ -334,6 +349,26 @@ chatForm.addEventListener('submit', function(e) {
         console.error('Error:', error);
     });
 });
+
+function updateTokenUsage(tokenUsage) {
+    const tokenCount = document.getElementById('tokenCount');
+    if (tokenUsage && tokenCount) {
+        const total = tokenUsage.total_tokens || 0;
+        const model = tokenUsage.model || 'unknown';
+        tokenCount.textContent = `${total} (${model})`;
+        
+        // Add color coding based on token count
+        const tokenUsageDiv = document.getElementById('tokenUsage');
+        if (tokenUsageDiv) {
+            tokenUsageDiv.className = 'text-white small';
+            if (total > 2000) {
+                tokenUsageDiv.classList.add('text-warning');
+            } else if (total > 1000) {
+                tokenUsageDiv.classList.add('text-info');
+            }
+        }
+    }
+}
 
 function addMessage(message, type) {
     const messageDiv = document.createElement('div');

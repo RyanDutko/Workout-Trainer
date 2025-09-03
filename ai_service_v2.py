@@ -7,6 +7,10 @@ from models import Database, User, TrainingPlan, Workout
 from conversation_store import ConversationStore
 from datetime import datetime, timedelta
 import zoneinfo
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Detroit timezone for consistent date resolution
 DETROIT_TZ = zoneinfo.ZoneInfo("America/Detroit")
@@ -93,7 +97,7 @@ def classify_query_complexity(message: str) -> str:
 class AIServiceV2:
     def __init__(self, db: Database):
         self.db = db
-        self.client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.user = User(db)
         self.training_plan = TrainingPlan(db)
         self.workout = Workout(db)
@@ -104,6 +108,31 @@ class AIServiceV2:
         self.pending_proposals = {}
 
         self.tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_exercise_weight",
+                    "description": "Update the weight for a specific exercise on a specific day. This is a direct update - no proposal needed.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "day": {
+                                "type": "string",
+                                "description": "Day of week: monday, tuesday, wednesday, thursday, friday, saturday, sunday"
+                            },
+                            "exercise_name": {
+                                "type": "string",
+                                "description": "Name of the exercise to update"
+                            },
+                            "new_weight": {
+                                "type": "string",
+                                "description": "New weight (e.g., '35lbs', '40kg')"
+                            }
+                        },
+                        "required": ["day", "exercise_name", "new_weight"]
+                    }
+                }
+            },
             {
                 "type": "function",
                 "function": {
@@ -294,13 +323,19 @@ class AIServiceV2:
             current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             current_year = datetime.now().year
 
-            # Get recent conversation window
-            recent_context = self.conversation_store.get_recent_window(max_turns=6)
+            # TODO: Recent context temporarily disabled to reduce token usage
+            # recent_context = self.conversation_store.get_recent_window(max_turns=6)
 
             system_content = f"""You are a coaching assistant inside a fitness app.
 
 CURRENT DATE/TIME: {current_datetime}
 CURRENT YEAR: {current_year}
+
+CRITICAL: For plan modifications, you MUST use the two-step process:
+1. Call propose_plan_update() to create a proposal
+2. Call commit_plan_update() with the returned proposal_id to actually save changes
+
+NEVER claim success until commit_plan_update() returns {{status:'ok', wrote: true}}.
 
 You have tools to fetch pinned facts, recent context, and older snippets. Use them when unsure; don't guess.
 
@@ -309,8 +344,9 @@ For history/plan/comparison questions, call the appropriate tool(s) first.
 If tools return no data, say so plainly. Do not invent.
 Prefer concise, actionable answers citing dates and exact numbers."""
 
-            if recent_context:
-                system_content += f"\n\n{recent_context}"
+            # TODO: Recent context temporarily disabled to reduce token usage
+            # if recent_context:
+            #     system_content += f"\n\n{recent_context}"
 
             messages = [
                 {
@@ -355,6 +391,12 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     temperature=0.7,
                     max_tokens=1000
                 )
+
+                # Log token usage
+                if hasattr(response, 'usage') and response.usage:
+                    print(f"💰 Token usage: {response.usage.prompt_tokens} prompt + {response.usage.completion_tokens} completion = {response.usage.total_tokens} total")
+                else:
+                    print("💰 Token usage: Not available")
 
                 response_message = response.choices[0].message
                 tool_calls = response_message.tool_calls
@@ -418,11 +460,18 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 else:
                     # Check for phantom writes before finalizing response
                     response_content = (response_message.content or "").lower()
-                    if any(phrase in response_content for phrase in ['added to', 'created', 'updated your plan', 'wrote']) and not any('commit_plan_update' in str(result) for result in tool_results_for_response):
+                    phantom_indicators = ['added to', 'created', 'updated your plan', 'wrote', 'successfully updated', 'changed', 'modified']
+                    has_phantom_write = any(phrase in response_content for phrase in phantom_indicators)
+                    has_commit = any('commit_plan_update' in str(result) for result in tool_results_for_response)
+                    has_direct_update = any('update_exercise_weight' in str(result) for result in tool_results_for_response)
+                    
+                    if has_phantom_write and not (has_commit or has_direct_update):
                         # Phantom write detected - nudge the model to commit
+                        print(f"🚨 PHANTOM WRITE DETECTED! AI claimed: '{response_content[:100]}...'")
+                        print(f"🚨 Tool results: {[name for name, _ in seen]}")
                         messages.append({
                             "role": "system",
-                            "content": "Reminder: you must call commit_plan_update to perform writes. Do not claim success before commit returns {status:'ok'}."
+                            "content": "ERROR: You claimed to make changes but didn't actually commit them. You MUST call commit_plan_update() after propose_plan_update() OR use update_exercise_weight() for simple weight changes. Do not claim success until you get {status:'ok', wrote: true}."
                         })
                         continue  # Go back to model for commit
 
@@ -430,10 +479,21 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                     response_content = response_message.content or ""
                     self.conversation_store.append_turn(message, response_content)
 
+                    # Get token usage from the last response
+                    token_usage = {}
+                    if hasattr(response, 'usage') and response.usage:
+                        token_usage = {
+                            'prompt_tokens': response.usage.prompt_tokens,
+                            'completion_tokens': response.usage.completion_tokens,
+                            'total_tokens': response.usage.total_tokens,
+                            'model': selected_model
+                        }
+
                     return {
                         'response': response_content,
                         'tools_used': [name for name, _ in seen],
                         'tool_results': tool_results_for_response,
+                        'token_usage': token_usage,
                         'success': True
                     }
 
@@ -442,6 +502,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 'response': "I tried multiple times to gather data. Here's what I have so far... Please ask a more specific question if you need additional details.",
                 'tools_used': [name for name, _ in seen],
                 'tool_results': tool_results_for_response,
+                'token_usage': {},
                 'success': True,
                 'warning': 'Hit max tool call limit'
             }
@@ -452,6 +513,7 @@ Prefer concise, actionable answers citing dates and exact numbers."""
                 'response': f"I'm having trouble processing that right now. Please try again. Error: {str(e)}",
                 'tools_used': [],
                 'tool_results': [],
+                'token_usage': {},
                 'success': False,
                 'error': str(e)
             }
@@ -523,6 +585,13 @@ Prefer concise, actionable answers citing dates and exact numbers."""
             elif function_name == "get_session":
                 return self._get_session(
                     date=args.get('date')
+                )
+
+            elif function_name == "update_exercise_weight":
+                return self._update_exercise_weight(
+                    day=args.get('day'),
+                    exercise_name=args.get('exercise_name'),
+                    new_weight=args.get('new_weight')
                 )
 
             elif function_name == "get_workout_history":
@@ -1131,6 +1200,95 @@ Prefer concise, actionable answers citing dates and exact numbers."""
         except Exception as e:
             conn.close()
             return {"success": False, "error": f"Failed to remove exercise: {str(e)}"}
+
+    def _update_exercise_weight(self, day: str, exercise_name: str, new_weight: str) -> Dict[str, Any]:
+        """Update the weight for a specific exercise on a specific day"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # First try exact match
+            cursor.execute('''
+                SELECT exercise_name, target_weight FROM weekly_plan
+                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
+            ''', (day.lower(), exercise_name))
+
+            result = cursor.fetchone()
+            
+            # If no exact match, try fuzzy matching
+            if not result:
+                # Get all exercises for this day
+                cursor.execute('''
+                    SELECT exercise_name, target_weight FROM weekly_plan
+                    WHERE day_of_week = ?
+                    ORDER BY exercise_order
+                ''', (day.lower(),))
+                
+                all_exercises = cursor.fetchall()
+                
+                # Try to find the best match
+                best_match = None
+                best_score = 0
+                
+                for db_exercise_name, db_weight in all_exercises:
+                    # Normalize both names for comparison
+                    search_name = exercise_name.lower().replace(' ', '').replace('-', '').replace('_', '')
+                    db_name = db_exercise_name.lower().replace(' ', '').replace('-', '').replace('_', '')
+                    
+                    # Remove common suffixes for better matching
+                    search_clean = search_name.replace('s', '').replace('ing', '').replace('ed', '')
+                    db_clean = db_name.replace('s', '').replace('ing', '').replace('ed', '')
+                    
+                    # Check for exact substring match
+                    if search_name in db_name or db_name in search_name:
+                        score = len(set(search_name) & set(db_name)) / len(set(search_name) | set(db_name))
+                        if score > best_score:
+                            best_score = score
+                            best_match = (db_exercise_name, db_weight)
+                    
+                    # Also check cleaned versions
+                    if search_clean in db_clean or db_clean in search_clean:
+                        score = len(set(search_clean) & set(db_clean)) / len(set(search_clean) | set(db_clean))
+                        if score > best_score:
+                            best_score = score
+                            best_match = (db_exercise_name, db_weight)
+                
+                # Use best match if score is reasonable (above 0.3)
+                if best_match and best_score > 0.3:
+                    result = best_match
+                    print(f"FUZZY_MATCH: '{exercise_name}' → '{best_match[0]}' (score: {best_score:.2f})")
+                else:
+                    conn.close()
+                    return {"success": False, "error": f"Exercise '{exercise_name}' not found on {day.title()}. Available exercises: {[ex[0] for ex in all_exercises]}"}
+
+            exercise_name_found, old_weight = result
+            
+            # Update the weight using the found exercise name
+            cursor.execute('''
+                UPDATE weekly_plan
+                SET target_weight = ?
+                WHERE day_of_week = ? AND exercise_name = ?
+            ''', (new_weight, day.lower(), exercise_name_found))
+
+            conn.commit()
+            conn.close()
+
+            print(f"WEIGHT_UPDATE: {day} {exercise_name_found} {old_weight} → {new_weight}")
+
+            return {
+                "success": True,
+                "message": f"Updated {exercise_name_found} on {day.title()}: {old_weight} → {new_weight}",
+                "exercise_updated": {
+                    "day": day.lower(),
+                    "exercise": exercise_name_found,
+                    "old_weight": old_weight,
+                    "new_weight": new_weight
+                }
+            }
+
+        except Exception as e:
+            conn.close()
+            return {"success": False, "error": f"Failed to update exercise weight: {str(e)}"}
 
     def _get_pinned_facts(self) -> Dict[str, Any]:
         """Get pinned user facts"""

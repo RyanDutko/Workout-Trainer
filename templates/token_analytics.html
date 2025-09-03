@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Token Usage Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-chart-line me-2"></i>Token Usage Analytics</h1>
+    <div>
+        <button class="btn btn-primary btn-sm" onclick="runQuickTest()">
+            <i class="fas fa-play me-1"></i>Run Quick Test
+        </button>
+        <button class="btn btn-outline-primary btn-sm" onclick="runFullTest()">
+            <i class="fas fa-cogs me-1"></i>Full Analysis
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-chart-pie me-2"></i>Model Distribution</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="modelChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-chart-bar me-2"></i>Token Usage by Category</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6><i class="fas fa-table me-2"></i>Recent Test Results</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Query</th>
+                                <th>Model</th>
+                                <th>Tokens</th>
+                                <th>Duration</th>
+                                <th>Tools Used</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="testResults">
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">
+                                    No test results yet. Run a test to see data.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Progress Modal -->
+<div class="modal fade" id="testProgressModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Running Token Usage Test</h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div class="progress-bar" id="testProgress" role="progressbar" style="width: 0%"></div>
+                </div>
+                <div id="testStatus">Initializing...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let modelChart, categoryChart;
+let testResults = [];
+
+// Initialize charts
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+});
+
+function initializeCharts() {
+    // Model distribution chart
+    const modelCtx = document.getElementById('modelChart').getContext('2d');
+    modelChart = new Chart(modelCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['GPT-4', 'GPT-4o-mini', 'Unknown'],
+            datasets: [{
+                data: [0, 0, 0],
+                backgroundColor: ['#ff6384', '#36a2eb', '#ffcd56']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // Category chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    categoryChart = new Chart(categoryCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Simple', 'Moderate', 'Complex', 'Plan Mod'],
+            datasets: [{
+                label: 'Average Tokens',
+                data: [0, 0, 0, 0],
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function runQuickTest() {
+    showTestModal();
+    
+    fetch('/run_token_test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            test_type: 'quick'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            testResults = data.results;
+            updateCharts();
+            updateResultsTable();
+        } else {
+            alert('Test failed: ' + data.error);
+        }
+        hideTestModal();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error running test');
+        hideTestModal();
+    });
+}
+
+function runFullTest() {
+    if (!confirm('Full test will take several minutes and use significant API tokens. Continue?')) {
+        return;
+    }
+    
+    showTestModal();
+    
+    fetch('/run_token_test', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            test_type: 'full'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            testResults = data.results;
+            updateCharts();
+            updateResultsTable();
+        } else {
+            alert('Test failed: ' + data.error);
+        }
+        hideTestModal();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error running test');
+        hideTestModal();
+    });
+}
+
+function updateCharts() {
+    // Update model distribution
+    const modelCounts = {
+        'gpt-4': 0,
+        'gpt-4o-mini': 0,
+        'unknown': 0
+    };
+    
+    const categoryTokens = {
+        'simple': [],
+        'moderate': [],
+        'complex': [],
+        'plan_modification': []
+    };
+    
+    testResults.forEach(result => {
+        const model = result.model_used || 'unknown';
+        modelCounts[model]++;
+        
+        // Categorize by query type
+        const query = result.query.toLowerCase();
+        if (query.includes('hello') || query.includes('yes') || query.includes('no')) {
+            categoryTokens.simple.push(result.token_usage.total_tokens || 0);
+        } else if (query.includes('add') || query.includes('change') || query.includes('remove')) {
+            categoryTokens.plan_modification.push(result.token_usage.total_tokens || 0);
+        } else if (query.length > 100) {
+            categoryTokens.complex.push(result.token_usage.total_tokens || 0);
+        } else {
+            categoryTokens.moderate.push(result.token_usage.total_tokens || 0);
+        }
+    });
+    
+    // Update model chart
+    modelChart.data.datasets[0].data = [
+        modelCounts['gpt-4'],
+        modelCounts['gpt-4o-mini'],
+        modelCounts['unknown']
+    ];
+    modelChart.update();
+    
+    // Update category chart
+    const avgTokens = [
+        average(categoryTokens.simple),
+        average(categoryTokens.moderate),
+        average(categoryTokens.complex),
+        average(categoryTokens.plan_modification)
+    ];
+    
+    categoryChart.data.datasets[0].data = avgTokens;
+    categoryChart.update();
+}
+
+function updateResultsTable() {
+    const tbody = document.getElementById('testResults');
+    
+    if (testResults.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No test results yet.</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = testResults.map(result => `
+        <tr>
+            <td>${result.query.substring(0, 50)}${result.query.length > 50 ? '...' : ''}</td>
+            <td><span class="badge bg-${result.model_used === 'gpt-4' ? 'warning' : 'info'}">${result.model_used}</span></td>
+            <td>${result.token_usage.total_tokens || 0}</td>
+            <td>${result.duration.toFixed(2)}s</td>
+            <td>${result.tools_used.join(', ') || 'None'}</td>
+            <td><span class="badge bg-${result.success ? 'success' : 'danger'}">${result.success ? 'Success' : 'Failed'}</span></td>
+        </tr>
+    `).join('');
+}
+
+function showTestModal() {
+    const modal = new bootstrap.Modal(document.getElementById('testProgressModal'));
+    modal.show();
+}
+
+function hideTestModal() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('testProgressModal'));
+    if (modal) {
+        modal.hide();
+    }
+}
+
+function average(arr) {
+    return arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+}
+</script>
+{% endblock %}
+

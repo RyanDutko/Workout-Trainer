@@ -2,3 +2,5 @@ python-dateutil
 requests
 openai
 flask
+python-dotenv
+tzdata

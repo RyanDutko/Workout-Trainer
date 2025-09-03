@@ -42,6 +42,18 @@
             font-weight: bold;
             color: white !important;
         }
+        
+        /* Chart container fixes to prevent resizing issues */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        canvas {
+            max-height: 100% !important;
+            max-width: 100% !important;
+        }
     </style>
 </head>
 <body>
@@ -110,6 +122,11 @@
                         <li class="nav-item">
                             <a class="nav-link text-white" href="{{ url_for('test_v2') }}">
                                 <i class="fas fa-flask me-2"></i>Test V2
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-white" href="{{ url_for('token_analytics') }}">
+                                <i class="fas fa-chart-line me-2"></i>Token Analytics
                             </a>
                         </li>
 

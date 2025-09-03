@@ -8,6 +8,10 @@ from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 import time
 import uuid
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -905,8 +909,8 @@ def build_smart_context(prompt, query_intent, user_background=None):
 def get_grok_response_with_context(prompt, user_background=None, conversation_context=None):
     """Context-aware Grok response with smart context selection"""
     try:
-        # client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        # client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1") # Grok API call
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
         # Get user AI preferences for personalized responses
         ai_preferences = get_user_ai_preferences()
@@ -1502,9 +1506,11 @@ def chat_stream():
                     print("MAIN_CHAT: using V2 tool calling")
                     result = ai_service_v2.get_ai_response(message, conversation_history_list, user_force_advanced=force_advanced_mode)
                     response = result.get('response', 'No response from AI service')
+                    token_usage = result.get('token_usage', {})
                 else:
                     response = "V2 AI service is not available. Please enable it or fix the import."
                     print("Error: V2 AI service not available and ENABLE_LEGACY_INTENT is False.")
+                    token_usage = {}
 
 
             print(f"AI response received: {len(response)} characters")  # Debug log
@@ -1513,6 +1519,10 @@ def chat_stream():
             for char in response:
                 yield f"data: {json.dumps({'content': char})}\n\n"
                 time.sleep(0.01)  # Small delay for streaming effect
+
+            # Send token usage data at the end
+            if token_usage:
+                yield f"data: {json.dumps({'token_usage': token_usage})}\n\n"
 
             yield f"data: {json.dumps({'done': True})}\n\n"
 
@@ -2005,6 +2015,54 @@ def analyze_plan():
 @app.route('/test_v2')
 def test_v2():
     return render_template('test_v2.html')
+
+@app.route('/token_analytics')
+def token_analytics():
+    return render_template('token_analytics.html')
+
+@app.route('/run_token_test', methods=['POST'])
+def run_token_test():
+    """Run token usage tests via web interface"""
+    try:
+        data = request.json
+        test_type = data.get('test_type', 'quick')
+        
+        # Import the test script directly instead of using subprocess
+        import sys
+        import io
+        from contextlib import redirect_stdout
+        
+        # Capture output from the test script
+        output_capture = io.StringIO()
+        
+        try:
+            with redirect_stdout(output_capture):
+                if test_type == 'quick':
+                    # Import and run the quick test
+                    from test_token_usage import run_quick_test
+                    results = run_quick_test()
+                else:
+                    # Import and run the full test
+                    from test_token_usage import run_comprehensive_test
+                    results = run_comprehensive_test()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Test completed successfully',
+                'results': results
+            })
+            
+        except Exception as test_error:
+            return jsonify({
+                'success': False,
+                'error': f'Test execution failed: {str(test_error)}'
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 @app.route('/get_stored_context')
 def get_stored_context():
@@ -2665,61 +2723,6 @@ def log_from_template():
     except Exception as e:
         print(f"Error logging from template: {e}")
         return jsonify({'status': 'error', 'message': str(e)})
-        modification_type = data.get('type')  # 'update', 'add', 'remove'
-        day = data.get('day', '').lower()
-        exercise_name = data.get('exercise_name', '')
-        sets = data.get('sets')
-        reps = data.get('reps')
-        weight = data.get('weight')
-        reasoning = data.get('reasoning', '')
-
-        conn = sqlite3.connect('workout_logs.db')
-        cursor = conn.cursor()
-
-        if modification_type == 'update':
-            # Update existing exercise
-            cursor.execute('''
-                UPDATE weekly_plan
-                SET target_sets = ?, target_reps = ?, target_weight = ?, notes = ?
-                WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)
-            ''', (sets, reps, weight, reasoning, day, exercise_name))
-
-            message = f"Updated {exercise_name} on {day}: {sets}x{reps}@{weight}"
-
-        elif modification_type == 'add':
-            # Get next order for the day
-            cursor.execute('SELECT COALESCE(MAX(exercise_order), 0) + 1 FROM weekly_plan WHERE day_of_week = ?', (day,))
-            next_order = cursor.fetchone()[0]
-
-            cursor.execute('''
-                INSERT INTO weekly_plan
-                (day_of_week, exercise_name, target_sets, target_reps, target_weight, exercise_order, notes, created_by, newly_added, date_added)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'grok_ai', TRUE, ?)
-            ''', (day, exercise_name, sets, reps, weight, next_order, reasoning, datetime.now().strftime('%Y-%m-%d')))
-
-            message = f"Added {exercise_name} to {day}: {sets}x{reps}@{weight}"
-
-        elif modification_type == 'remove':
-            cursor.execute('DELETE FROM weekly_plan WHERE day_of_week = ? AND LOWER(exercise_name) = LOWER(?)', (day, exercise_name))
-            message = f"Removed {exercise_name} from {day}"
-
-        conn.commit()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'message': message,
-            'change_made': {
-                'type': modification_type,
-                'day': day,
-                'exercise': exercise_name,
-                'details': f"{sets}x{reps}@{weight}" if sets else None,
-                'reasoning': reasoning
-            }
-        })
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/propose_plan_change', methods=['POST'])
 def propose_plan_change():

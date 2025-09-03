@@ -5,6 +5,10 @@ import re
 from dateutil import parser as date_parser
 from openai import OpenAI
 from difflib import SequenceMatcher
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize SQLite database
 DB_PATH = "workout_logs.db"
@@ -600,7 +604,7 @@ Be flexible with natural language but always return valid JSON.
 """
 
     try:
-        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
         response = client.chat.completions.create(
             model="grok-4-0709",
             messages=[
@@ -1003,7 +1007,7 @@ def show_logs(user_input):
 def get_grok_response_fast(prompt):
     """Fast Grok response with minimal context for chat"""
     try:
-        client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
         response = client.chat.completions.create(
             model="grok-4-0709",
@@ -1022,7 +1026,7 @@ def get_grok_response_fast(prompt):
 
 # Get response from Grok API with context - Flask-safe version
 def get_grok_response(prompt, include_context=True):
-    client = OpenAI(api_key=os.environ.get("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+    client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
 
     if include_context:
         # Use Flask-safe database connections

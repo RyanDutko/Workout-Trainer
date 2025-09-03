@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-home me-2"></i>Sean</h1>
+    <h1 class="h2"><i class="fas fa-home me-2"></i>Dashboard</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <div class="btn-group me-2">
             <a href="{{ url_for('log_workout') }}" class="btn btn-sm btn-outline-primary">
@@ -219,7 +219,9 @@
                 <h6><i class="fas fa-weight me-2"></i>Body Weight Progress</h6>
             </div>
             <div class="card-body">
-                <canvas id="weightChart" width="400" height="200"></canvas>
+                <div class="chart-container">
+                    <canvas id="weightChart" width="400" height="200"></canvas>
+                </div>
                 <div class="mt-3">
                     <form id="weightLogForm" class="row g-2">
                         <div class="col-md-5">
@@ -244,7 +246,9 @@
                 <h6><i class="fas fa-chart-line me-2"></i>Weekly Volume Progress</h6>
             </div>
             <div class="card-body">
-                <canvas id="volumeChart" width="400" height="200"></canvas>
+                <div class="chart-container">
+                    <canvas id="volumeChart" width="400" height="200"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -268,7 +272,9 @@
                         <button id="analyzeBtn" class="btn btn-primary btn-sm">Analyze</button>
                     </div>
                 </div>
-                <canvas id="exerciseChart" width="400" height="200"></canvas>
+                <div class="chart-container">
+                    <canvas id="exerciseChart" width="400" height="200"></canvas>
+                </div>
                 <div id="exerciseStats" class="mt-3"></div>
             </div>
         </div>
@@ -387,9 +393,20 @@ function initializeCharts() {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
             scales: {
                 y: {
-                    beginAtZero: false
+                    beginAtZero: false,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
                 }
             }
         }
@@ -411,9 +428,20 @@ function initializeCharts() {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
                 }
             }
         }
@@ -429,9 +457,20 @@ function initializeCharts() {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true
+                }
+            },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString();
+                        }
+                    }
                 }
             }
         }
@@ -445,9 +484,11 @@ function loadWeightData() {
     fetch('/get_weight_history')
         .then(response => response.json())
         .then(data => {
-            weightChart.data.labels = data.dates;
-            weightChart.data.datasets[0].data = data.weights;
-            weightChart.update();
+            if (weightChart && data.dates && data.weights) {
+                weightChart.data.labels = data.dates;
+                weightChart.data.datasets[0].data = data.weights;
+                weightChart.update('none'); // Use 'none' mode to prevent animation loops
+            }
         })
         .catch(error => console.error('Error loading weight data:', error));
 }
@@ -456,9 +497,11 @@ function loadVolumeData() {
     fetch('/get_volume_history')
         .then(response => response.json())
         .then(data => {
-            volumeChart.data.labels = data.weeks;
-            volumeChart.data.datasets[0].data = data.volumes;
-            volumeChart.update();
+            if (volumeChart && data.weeks && data.volumes) {
+                volumeChart.data.labels = data.weeks;
+                volumeChart.data.datasets[0].data = data.volumes;
+                volumeChart.update('none'); // Use 'none' mode to prevent animation loops
+            }
         })
         .catch(error => console.error('Error loading volume data:', error));
 }
