@@ -1,0 +1,1181 @@
+{% extends "base.html" %}
+
+{% block title %}Log Workout{% endblock %}
+
+{% block content %}
+<style>
+.live-workout-container {
+    max-width: 100%;
+    margin: 0 auto;
+}
+
+.rest-timer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.set-input-section, .circuit-input-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+    .live-workout-container .row {
+        margin: 0 -5px;
+    }
+    
+    .live-workout-container .col-md-4 {
+        padding: 0 5px;
+        margin-bottom: 10px;
+    }
+    
+    .live-workout-container .card {
+        margin-bottom: 10px;
+    }
+    
+    .set-input-section, .circuit-input-section {
+        padding: 15px;
+        margin-top: 15px;
+    }
+    
+    .btn-lg {
+        padding: 12px 20px;
+        font-size: 16px;
+    }
+}
+</style>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-dumbbell text-primary"></i>
+                        Log Workout
+                    </h4>
+                    <div class="d-flex align-items-center">
+                        <!-- Live Mode Toggle -->
+                        <div class="form-check form-switch me-3">
+                            <input class="form-check-input" type="checkbox" id="liveModeToggle">
+                            <label class="form-check-label text-muted small" for="liveModeToggle">
+                                <i class="fas fa-play-circle"></i> Live Mode
+                            </label>
+                        </div>
+                        <label for="workoutDate" class="form-label me-2 mb-0 text-muted">Date:</label>
+                        <input type="date" id="workoutDate" class="form-control form-control-sm" style="width: 150px;">
+                    </div>
+                </div>
+
+                <div class="card-body">
+                    <!-- Dynamic Logging Form -->
+                    <form id="workoutForm" class="needs-validation" novalidate>
+                        <div id="dynamicLoggingContainer">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="sr-only">Loading...</span>
+                                </div>
+                                <p class="mt-2 mb-0">Loading your workout template...</p>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <button type="submit" class="btn btn-success btn-lg w-100" id="submitBtn" disabled>
+                                    <i class="fas fa-arrow-right"></i> <span id="submitBtnText">Log & Continue</span>
+                                </button>
+                            </div>
+                            <div class="col-md-6">
+                                <a href="/dashboard" class="btn btn-secondary btn-lg w-100">
+                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+let workoutTemplate = null;
+let currentExerciseIndex = 0;
+let completedExercises = [];
+
+}
+
+// Live Workout Mode Variables
+let isLiveMode = false;
+let restTimer = null;
+let restTimeLeft = 60;
+let currentSetIndex = 0;
+let currentExercise = null;
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    const workoutDateInput = document.getElementById('workoutDate');
+    const liveModeToggle = document.getElementById('liveModeToggle');
+    const today = new Date();
+    workoutDateInput.valueAsDate = today; // Set default to today
+
+    // Add event listener to load template when date changes
+    workoutDateInput.addEventListener('change', function() {
+        loadWorkoutTemplate(); // Load template for the selected date
+    });
+
+    // Add live mode toggle listener
+    liveModeToggle.addEventListener('change', function() {
+        isLiveMode = this.checked;
+        if (isLiveMode && workoutTemplate) {
+            startLiveWorkout();
+        } else {
+            stopLiveWorkout();
+        }
+    });
+
+    // Show initial message
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="text-center py-5">
+            <i class="fas fa-calendar-plus fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Select a date above to load your workout template</h5>
+            <p class="text-muted small">Toggle "Live Mode" for real-time workout tracking with rest timer</p>
+        </div>
+    `;
+});
+
+function loadWorkoutTemplate() {
+    const workoutDateInput = document.getElementById('workoutDate');
+    const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
+
+    console.log('🔄 Loading workout template for date:', selectedDate);
+
+    fetch(`/logging_template?date=${selectedDate}`)
+        .then(response => {
+            console.log('📡 Response status:', response.status);
+            console.log('📡 Response headers:', response.headers.get('content-type'));
+            console.log('📡 Response URL:', response.url);
+            
+            // Get the raw response text first to see what we're actually getting
+            return response.text().then(text => {
+                console.log('📡 Raw response text (first 500 chars):', text.substring(0, 500));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}. Response: ${text.substring(0, 200)}`);
+                }
+                
+                // Check if response is actually JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error(`Expected JSON response, got ${contentType}. Response: ${text.substring(0, 200)}`);
+                }
+                
+                try {
+                    return JSON.parse(text);
+                } catch (parseError) {
+                    console.error('❌ JSON Parse Error:', parseError);
+                    throw new Error(`Failed to parse JSON: ${parseError.message}. Response: ${text.substring(0, 200)}`);
+                }
+            });
+        })
+        .then(data => {
+            console.log('✅ Template data received:', data);
+            console.log('📊 Blocks count:', data.blocks ? data.blocks.length : 'No blocks');
+            
+            workoutTemplate = data;
+            currentExerciseIndex = 0;
+            completedExercises = [];
+            
+            // Check if live mode is enabled and start live workout
+            const liveModeToggle = document.getElementById('liveModeToggle');
+            if (liveModeToggle && liveModeToggle.checked) {
+                startLiveWorkout();
+            } else {
+                renderCurrentExercise();
+            }
+            
+            document.getElementById('submitBtn').disabled = false;
+        })
+        .catch(error => {
+            console.error('❌ Error loading template:', error);
+            const container = document.getElementById('dynamicLoggingContainer');
+            container.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle"></i> Template Loading Failed</h6>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Date:</strong> ${selectedDate}</p>
+                    <p><strong>URL:</strong> /logging_template?date=${selectedDate}</p>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary btn-sm me-2" onclick="loadWorkoutTemplate()">
+                            <i class="fas fa-refresh"></i> Retry
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm me-2" onclick="debugEndpoint()">
+                            <i class="fas fa-bug"></i> Debug Endpoint
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" onclick="renderFallbackUI()">
+                            <i class="fas fa-edit"></i> Manual Entry
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+}
+
+function renderCurrentExercise() {
+    const container = document.getElementById('dynamicLoggingContainer');
+
+    if (!workoutTemplate || !workoutTemplate.blocks || workoutTemplate.blocks.length === 0) {
+        container.innerHTML = '<p class="text-muted text-center">No exercises planned for this date or template not found.</p>';
+        document.getElementById('submitBtn').disabled = true;
+        return;
+    }
+
+    if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+        renderWorkoutComplete();
+        return;
+    }
+
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+    const exerciseNumber = currentExerciseIndex + 1;
+    const totalExercises = workoutTemplate.blocks.length;
+
+    let html = `
+        <div class="progress mb-4">
+            <div class="progress-bar" role="progressbar" style="width: ${(exerciseNumber / totalExercises) * 100}%"
+                 aria-valuenow="${exerciseNumber}" aria-valuemin="0" aria-valuemax="${totalExercises}">
+                Exercise ${exerciseNumber} of ${totalExercises}
+            </div>
+        </div>
+    `;
+
+    if (currentBlock.type === 'simple') {
+        html += renderSingleSimpleBlock(currentBlock);
+    } else if (currentBlock.type === 'rounds') {
+        html += renderSingleRoundsBlock(currentBlock);
+    }
+
+    container.innerHTML = html;
+    updateSubmitButton();
+}
+
+function renderSingleSimpleBlock(block) {
+    let html = `
+        <div class="card shadow-sm" data-block-type="simple">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-1">${block.title}</h4>
+                <small>Planned: ${block.planned_sets} sets × ${block.planned_reps} reps @ ${block.planned_weight}</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+    `;
+
+    // Create input fields for each set - simplified layout
+    block.sets.forEach((set, setIdx) => {
+        html += `
+            <div class="col-md-4 mb-3">
+                <div class="card bg-light">
+                    <div class="card-body text-center py-3">
+                        <h6 class="card-title">Set ${set.set_number}</h6>
+                        <div class="mb-2">
+                            <label class="form-label">Reps</label>
+                            <input type="number" class="form-control text-center"
+                                   placeholder="${set.planned_reps}"
+                                   data-set-number="${set.set_number}"
+                                   data-field="actual_reps">
+                        </div>
+                        <div>
+                            <label class="form-label">Weight</label>
+                            <input type="text" class="form-control text-center"
+                                   placeholder="${set.planned_weight.value}"
+                                   data-set-number="${set.set_number}"
+                                   data-field="actual_weight">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `
+                </div>
+
+                <!-- Quick Actions Bar -->
+                <div class="mt-3 mb-4">
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4" onclick="fillAsPlanned('simple')">
+                            <i class="fas fa-magic"></i> As Planned
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="form-label">Exercise Notes</label>
+                    <textarea class="form-control" rows="2" id="exerciseNotes"
+                              placeholder="Any notes about this exercise (form, difficulty, substitutions, etc.)"></textarea>
+                </div>
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+function renderSingleRoundsBlock(block) {
+    let html = `
+        <div class="card shadow-sm" data-block-type="rounds">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-1">
+                    <i class="fas fa-repeat"></i> ${block.title}
+                </h4>
+                <small>Complete all rounds, logging each exercise</small>
+            </div>
+            <div class="card-body">
+    `;
+
+    block.rounds.forEach((round, roundIdx) => {
+        html += `
+            <div class="mb-4">
+                <h5 class="text-primary border-bottom pb-2">Round ${round.round_index}</h5>
+                <div class="row">
+        `;
+
+        round.members.forEach((member, memberIdx) => {
+            html += `
+                <div class="col-md-6 mb-3">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                ${member.name}
+                                ${member.tempo ? `<span class="badge bg-secondary ms-2">${member.tempo}</span>` : ''}
+                            </h6>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label class="form-label">Reps</label>
+                                    <input type="number" class="form-control"
+                                           placeholder="${member.planned_reps}"
+                                           data-round="${round.round_index}"
+                                           data-exercise="${member.name}"
+                                           data-field="actual_reps">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Weight</label>
+                                    <input type="text" class="form-control"
+                                           placeholder="${member.planned_weight.value}"
+                                           data-round="${round.round_index}"
+                                           data-exercise="${member.name}"
+                                           data-field="actual_weight">
+                                </div>
+                            </div>
+                            <small class="text-muted">
+                                Planned: ${member.planned_reps} @ ${member.planned_weight.value}${member.planned_weight.unit}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div></div>';
+    });
+
+    html += `
+                <!-- Quick Actions Bar -->
+                <div class="mt-3 mb-4">
+                    <div class="d-flex justify-content-center">
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4" onclick="fillAsPlanned('rounds')">
+                            <i class="fas fa-magic"></i> As Planned
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="form-label">Exercise Notes</label>
+                    <textarea class="form-control" rows="2" id="exerciseNotes"
+                              placeholder="Any notes about this circuit/rounds exercise"></textarea>
+                </div>
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+function renderWorkoutComplete() {
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="card shadow-sm border-success">
+            <div class="card-header bg-success text-white text-center">
+                <h4 class="mb-0">
+                    <i class="fas fa-check-circle"></i> Workout Complete!
+                </h4>
+            </div>
+            <div class="card-body text-center">
+                <h5>Great job!</h5>
+                <p class="mb-4">You've logged all ${workoutTemplate.blocks.length} exercises.</p>
+                <a href="/dashboard" class="btn btn-primary btn-lg">
+                    <i class="fas fa-home"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    `;
+    document.getElementById('submitBtn').style.display = 'none';
+}
+
+function updateSubmitButton() {
+    const isLastExercise = currentExerciseIndex === workoutTemplate.blocks.length - 1;
+    const submitBtnText = document.getElementById('submitBtnText');
+
+    if (isLastExercise) {
+        submitBtnText.innerHTML = '<i class="fas fa-save"></i> Finish Workout';
+    } else {
+        submitBtnText.innerHTML = '<i class="fas fa-arrow-right"></i> Log & Continue';
+    }
+}
+
+function fillAsPlanned(blockType) {
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+
+    if (blockType === 'simple') {
+        // Fill simple exercise fields with planned values
+        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
+
+        repsInputs.forEach((input, idx) => {
+            const plannedReps = currentBlock.sets[idx]?.planned_reps || currentBlock.planned_reps;
+            if (plannedReps) {
+                input.value = plannedReps;
+            }
+        });
+
+        weightInputs.forEach((input, idx) => {
+            const plannedWeight = currentBlock.sets[idx]?.planned_weight?.value || currentBlock.planned_weight;
+            if (plannedWeight) {
+                input.value = plannedWeight;
+            }
+        });
+    } else if (blockType === 'rounds') {
+        // Fill rounds/circuit fields with planned values
+        const repsInputs = document.querySelectorAll('[data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('[data-field="actual_weight"]');
+
+        repsInputs.forEach(input => {
+            const plannedReps = input.getAttribute('placeholder');
+            if (plannedReps) {
+                input.value = plannedReps;
+            }
+        });
+
+        weightInputs.forEach(input => {
+            const plannedWeight = input.getAttribute('placeholder');
+            if (plannedWeight) {
+                input.value = plannedWeight;
+            }
+        });
+    }
+
+    // Add visual feedback
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i> Applied!';
+    button.classList.remove('btn-outline-primary');
+    button.classList.add('btn-success');
+
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.classList.remove('btn-success');
+        button.classList.add('btn-outline-primary');
+    }, 1500);
+}
+
+function debugEndpoint() {
+    const workoutDateInput = document.getElementById('workoutDate');
+    const selectedDate = workoutDateInput.value || new Date().toISOString().split('T')[0];
+    
+    console.log('🐛 Debug: Testing endpoint directly');
+    console.log('🐛 Debug: Selected date:', selectedDate);
+    console.log('🐛 Debug: Full URL:', window.location.origin + `/logging_template?date=${selectedDate}`);
+    
+    // Test if the route exists at all
+    fetch('/logging_template?date=2025-08-20')
+        .then(response => {
+            console.log('🐛 Debug: Test response status:', response.status);
+            return response.text();
+        })
+        .then(text => {
+            console.log('🐛 Debug: Test response text:', text);
+            
+            const container = document.getElementById('dynamicLoggingContainer');
+            container.innerHTML = `
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-bug"></i> Debug Information</h6>
+                    <p><strong>Endpoint URL:</strong> /logging_template?date=${selectedDate}</p>
+                    <p><strong>Test Response:</strong></p>
+                    <pre style="background: #f8f9fa; padding: 10px; border-radius: 5px; max-height: 200px; overflow-y: auto;">${text}</pre>
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="loadWorkoutTemplate()">
+                            <i class="fas fa-refresh"></i> Try Again
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" onclick="renderFallbackUI()">
+                            <i class="fas fa-edit"></i> Manual Entry
+                        </button>
+                    </div>
+                </div>
+            `;
+        })
+        .catch(error => {
+            console.error('🐛 Debug: Test failed:', error);
+        });
+}
+
+function renderFallbackUI() {
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="alert alert-info">
+            <h6>Manual Logging</h6>
+            <p>Template loading failed. You can still log exercises manually.</p>
+            <button type="button" class="btn btn-primary btn-sm" onclick="addManualExercise()">
+                <i class="fas fa-plus"></i> Add Exercise
+            </button>
+        </div>
+        <div id="manualEntries"></div>
+    `;
+    document.getElementById('submitBtn').disabled = false; // Enable submit for manual logging
+}
+
+function addManualExercise() {
+    const entriesContainer = document.getElementById('manualEntries');
+    const entryId = `manual-${Date.now()}`;
+
+    const html = `
+        <div class="card mb-3" id="${entryId}">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label class="form-label">Exercise</label>
+                        <input type="text" class="form-control" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Sets</label>
+                        <input type="number" class="form-control" min="1" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Reps</label>
+                        <input type="text" class="form-control" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Weight</label>
+                        <input type="text" class="form-control" required>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-outline-danger w-100" onclick="removeManualExercise('${entryId}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    entriesContainer.insertAdjacentHTML('beforeend', html);
+}
+
+function removeManualExercise(entryId) {
+    document.getElementById(entryId).remove();
+}
+
+// Form submission handler
+document.getElementById('workoutForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    if (workoutTemplate && currentExerciseIndex < workoutTemplate.blocks.length) {
+        submitCurrentExercise();
+    } else if (!workoutTemplate) { // Handle manual logging when template failed to load
+        submitManualWorkout();
+    } else { // Workout complete or no template
+        // This case should ideally be handled by renderWorkoutComplete()
+        // or if no template was loaded, submitManualWorkout() would be called.
+        // If workoutTemplate exists but currentExerciseIndex is out of bounds,
+        // it means renderWorkoutComplete should have been called.
+        // For robustness, we can redirect or show a message.
+        console.log("No active exercise or template to submit.");
+        // Optionally redirect or show a message
+        // window.location.href = '/dashboard';
+    }
+});
+
+function submitCurrentExercise() {
+    const currentBlock = workoutTemplate.blocks[currentExerciseIndex];
+    const exerciseNotesElement = document.getElementById('exerciseNotes');
+    const exerciseNotes = exerciseNotesElement ? exerciseNotesElement.value : '';
+
+
+    if (currentBlock.type === 'simple') {
+        // Collect set data
+        const repsInputs = document.querySelectorAll('#dynamicLoggingContainer [data-field="actual_reps"]');
+        const weightInputs = document.querySelectorAll('#dynamicLoggingContainer [data-field="actual_weight"]');
+
+        const setsData = [];
+
+        repsInputs.forEach((input, idx) => {
+            const setNumber = parseInt(input.getAttribute('data-set-number'));
+            const reps = input.value || currentBlock.sets[idx]?.planned_reps || '';
+            const weightInput = weightInputs[idx];
+            const weight = weightInput.value || currentBlock.sets[idx]?.planned_weight?.value || '';
+            const weightUnit = currentBlock.sets[idx]?.planned_weight?.unit || 'lbs'; // Default to lbs
+
+            setsData.push({
+                set_number: setNumber,
+                actual_reps: reps,
+                actual_weight: weight,
+                weight_unit: weightUnit
+            });
+        });
+
+        // Format for legacy single exercise logging
+        const exerciseData = {
+            exercise_name: currentBlock.title,
+            sets: setsData.length, // Number of sets logged
+            // For simplicity, we'll just take the first set's weight as the primary weight logged
+            weight: setsData.length > 0 ? `${setsData[0].actual_weight}${setsData[0].weight_unit}` : '',
+            // Reps for a simple exercise might be logged per set, or a summary.
+            // For this integration, let's assume we can provide a summary or just the first set's reps.
+            // A better approach would be to modify the backend to accept array of sets.
+            // For now, let's make it flexible by sending a summary if possible or first set.
+            reps: setsData.length > 0 ? `${setsData[0].actual_reps}` : '',
+            notes: exerciseNotes,
+            date: workoutTemplate.date
+        };
+
+        submitExerciseData(exerciseData);
+
+    } else if (currentBlock.type === 'rounds') {
+        // For rounds/circuits, collect each exercise individually
+        const circuitExercises = [];
+        
+        currentBlock.rounds.forEach((round, roundIdx) => {
+            round.members.forEach((member, memberIdx) => {
+                const repsInput = document.querySelector(`[data-round="${round.round_index}"][data-exercise="${member.name}"][data-field="actual_reps"]`);
+                const weightInput = document.querySelector(`[data-round="${round.round_index}"][data-exercise="${member.name}"][data-field="actual_weight"]`);
+                
+                const actualReps = repsInput ? repsInput.value : member.planned_reps;
+                const actualWeight = weightInput ? weightInput.value : member.planned_weight.value;
+                
+                circuitExercises.push({
+                    exercise_name: `${member.name} (R${round.round_index})`,
+                    sets: 1, // Each round is 1 set
+                    reps: actualReps || member.planned_reps,
+                    weight: actualWeight ? `${actualWeight}lbs` : `${member.planned_weight.value}lbs`,
+                    notes: `${exerciseNotes} [${currentBlock.title} - Round ${round.round_index}]`,
+                    date: workoutTemplate.date,
+                    circuit_parent: currentBlock.title
+                });
+            });
+        });
+
+        // Submit each circuit exercise individually
+        submitCircuitExercises(circuitExercises);
+    }
+}
+
+function submitExerciseData(exerciseData) {
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(exerciseData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Move to next exercise
+            completedExercises.push(exerciseData);
+            currentExerciseIndex++;
+
+            if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+                // Workout complete
+                renderWorkoutComplete();
+            } else {
+                // Show next exercise
+                renderCurrentExercise();
+            }
+        } else {
+            alert('Error logging exercise: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging exercise. Please try again.');
+    });
+}
+
+function submitCircuitExercises(circuitExercises) {
+    // Submit all circuit exercises as a batch
+    Promise.all(circuitExercises.map(exercise => 
+        fetch('/save_workout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(exercise)
+        }).then(response => response.json())
+    ))
+    .then(results => {
+        const allSuccess = results.every(result => result.status === 'success');
+        
+        if (allSuccess) {
+            // Move to next exercise
+            completedExercises.push(...circuitExercises);
+            currentExerciseIndex++;
+
+            if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+                // Workout complete
+                renderWorkoutComplete();
+            } else {
+                // Show next exercise
+                renderCurrentExercise();
+            }
+        } else {
+            alert('Error logging some circuit exercises. Please check your workout log.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging circuit exercises. Please try again.');
+    });
+}
+
+function submitManualWorkout() {
+    const exercises = [];
+    const manualEntries = document.querySelectorAll('#manualEntries .card');
+    const workoutDateInput = document.getElementById('workoutDate');
+
+    manualEntries.forEach(entry => {
+        const inputs = entry.querySelectorAll('input');
+        if (inputs.length >= 4 && inputs[0].value.trim()) {
+            exercises.push({
+                exercise: inputs[0].value.trim(),
+                sets: parseInt(inputs[1].value) || 1,
+                reps: inputs[2].value.trim(),
+                weight: inputs[3].value.trim()
+            });
+        }
+    });
+
+    if (exercises.length === 0) {
+        alert('Please add at least one exercise');
+        return;
+    }
+
+    const submitData = {
+        exercises: exercises,
+        date: workoutDateInput.value || new Date().toISOString().split('T')[0]
+    };
+
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(submitData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`✅ Workout saved successfully!\n\n${data.message}`);
+            window.location.href = '/dashboard';
+        } else {
+            alert('Error saving workout: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving workout. Please try again.');
+    });
+}
+
+// Live Workout Functions
+function startLiveWorkout() {
+    if (!workoutTemplate || workoutTemplate.blocks.length === 0) {
+        alert('No workout template loaded. Please select a date first.');
+        document.getElementById('liveModeToggle').checked = false;
+        return;
+    }
+    
+    currentExerciseIndex = 0;
+    currentSetIndex = 0;
+    completedExercises = [];
+    
+    renderLiveExercise();
+}
+
+function stopLiveWorkout() {
+    if (restTimer) {
+        clearInterval(restTimer);
+        restTimer = null;
+    }
+    
+    // Switch back to normal mode
+    if (workoutTemplate) {
+        renderCurrentExercise();
+    }
+}
+
+function renderLiveExercise() {
+    if (currentExerciseIndex >= workoutTemplate.blocks.length) {
+        renderWorkoutComplete();
+        return;
+    }
+    
+    currentExercise = workoutTemplate.blocks[currentExerciseIndex];
+    currentSetIndex = 0;
+    
+    const container = document.getElementById('dynamicLoggingContainer');
+    
+    if (currentExercise.type === 'simple') {
+        renderLiveSimpleExercise();
+    } else if (currentExercise.type === 'rounds') {
+        renderLiveCircuitExercise();
+    }
+}
+
+function renderLiveSimpleExercise() {
+    const container = document.getElementById('dynamicLoggingContainer');
+    const exercise = currentExercise;
+    
+    container.innerHTML = `
+        <div class="live-workout-container">
+            <div class="text-center mb-4">
+                <h3 class="text-primary mb-2">${exercise.title}</h3>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Planned</h5>
+                                <p class="mb-1"><strong>${exercise.planned_sets} sets</strong></p>
+                                <p class="mb-1">${exercise.planned_reps} reps</p>
+                                <p class="mb-0">${exercise.planned_weight}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Current Set</h5>
+                                <h2 class="mb-0">${currentSetIndex + 1}</h2>
+                                <p class="mb-0">of ${exercise.planned_sets}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Rest Timer</h5>
+                                <h2 class="mb-0" id="restTimer">--</h2>
+                                <p class="mb-0">seconds</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="set-input-section">
+                <h5 class="text-center mb-3">Set ${currentSetIndex + 1} - Log Your Performance</h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label">Actual Reps</label>
+                        <input type="number" class="form-control" id="actualReps" placeholder="e.g., 8">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Actual Weight</label>
+                        <input type="text" class="form-control" id="actualWeight" placeholder="e.g., 185lbs">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Notes (optional)</label>
+                        <input type="text" class="form-control" id="setNotes" placeholder="e.g., felt heavy">
+                    </div>
+                </div>
+                
+                <div class="text-center mt-4">
+                    <button class="btn btn-success btn-lg me-2" onclick="completeSet()">
+                        <i class="fas fa-check"></i> Complete Set
+                    </button>
+                    <button class="btn btn-secondary btn-lg" onclick="skipSet()">
+                        <i class="fas fa-forward"></i> Skip Set
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderLiveCircuitExercise() {
+    const container = document.getElementById('dynamicLoggingContainer');
+    const exercise = currentExercise;
+    
+    container.innerHTML = `
+        <div class="live-workout-container">
+            <div class="text-center mb-4">
+                <h3 class="text-primary mb-2">${exercise.title}</h3>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Round</h5>
+                                <h2 class="mb-0">${currentSetIndex + 1}</h2>
+                                <p class="mb-0">of ${exercise.rounds.length}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Exercises</h5>
+                                <p class="mb-0">${exercise.rounds[0].members.length} exercises</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">Rest Timer</h5>
+                                <h2 class="mb-0" id="restTimer">--</h2>
+                                <p class="mb-0">seconds</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="circuit-input-section">
+                <h5 class="text-center mb-3">Round ${currentSetIndex + 1} - Log Each Exercise</h5>
+                <div id="circuitInputs">
+                    ${exercise.rounds[currentSetIndex].members.map((member, index) => `
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">${member.name}</h6>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Actual Reps</label>
+                                        <input type="number" class="form-control" id="circuitReps${index}" placeholder="e.g., 8">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Actual Weight</label>
+                                        <input type="text" class="form-control" id="circuitWeight${index}" placeholder="e.g., 185lbs">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Notes</label>
+                                        <input type="text" class="form-control" id="circuitNotes${index}" placeholder="optional">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="text-center mt-4">
+                    <button class="btn btn-success btn-lg me-2" onclick="completeCircuitRound()">
+                        <i class="fas fa-check"></i> Complete Round
+                    </button>
+                    <button class="btn btn-secondary btn-lg" onclick="skipCircuitRound()">
+                        <i class="fas fa-forward"></i> Skip Round
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function completeSet() {
+    const actualReps = document.getElementById('actualReps').value;
+    const actualWeight = document.getElementById('actualWeight').value;
+    const setNotes = document.getElementById('setNotes').value;
+    
+    if (!actualReps) {
+        alert('Please enter the reps you completed');
+        return;
+    }
+    
+    // Log the set
+    const setData = {
+        exercise: currentExercise.title,
+        sets: 1,
+        reps: actualReps,
+        weight: actualWeight,
+        notes: setNotes,
+        date: document.getElementById('workoutDate').value
+    };
+    
+    fetch('/save_workout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(setData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            currentSetIndex++;
+            
+            if (currentSetIndex >= currentExercise.planned_sets) {
+                // Exercise complete, move to next
+                currentExerciseIndex++;
+                startRestTimer(() => renderLiveExercise());
+            } else {
+                // More sets to go
+                startRestTimer(() => renderLiveExercise());
+            }
+        } else {
+            alert('Error logging set: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging set. Please try again.');
+    });
+}
+
+function completeCircuitRound() {
+    const round = currentExercise.rounds[currentSetIndex];
+    const exercises = [];
+    
+    round.members.forEach((member, index) => {
+        const reps = document.getElementById(`circuitReps${index}`).value;
+        const weight = document.getElementById(`circuitWeight${index}`).value;
+        const notes = document.getElementById(`circuitNotes${index}`).value;
+        
+        if (reps) {
+            exercises.push({
+                exercise: member.name,
+                sets: 1,
+                reps: reps,
+                weight: weight,
+                notes: notes,
+                date: document.getElementById('workoutDate').value
+            });
+        }
+    });
+    
+    if (exercises.length === 0) {
+        alert('Please enter reps for at least one exercise');
+        return;
+    }
+    
+    // Log all exercises in the circuit
+    Promise.all(exercises.map(exercise => 
+        fetch('/save_workout', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(exercise)
+        }).then(response => response.json())
+    ))
+    .then(results => {
+        const allSuccess = results.every(result => result.status === 'success');
+        
+        if (allSuccess) {
+            currentSetIndex++;
+            
+            if (currentSetIndex >= currentExercise.rounds.length) {
+                // Circuit complete, move to next
+                currentExerciseIndex++;
+                startRestTimer(() => renderLiveExercise());
+            } else {
+                // More rounds to go
+                startRestTimer(() => renderLiveExercise());
+            }
+        } else {
+            alert('Error logging some exercises. Please check your workout log.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error logging circuit. Please try again.');
+    });
+}
+
+function skipSet() {
+    currentSetIndex++;
+    
+    if (currentSetIndex >= currentExercise.planned_sets) {
+        // Exercise complete, move to next
+        currentExerciseIndex++;
+        renderLiveExercise();
+    } else {
+        // More sets to go
+        renderLiveExercise();
+    }
+}
+
+function skipCircuitRound() {
+    currentSetIndex++;
+    
+    if (currentSetIndex >= currentExercise.rounds.length) {
+        // Circuit complete, move to next
+        currentExerciseIndex++;
+        renderLiveExercise();
+    } else {
+        // More rounds to go
+        renderLiveExercise();
+    }
+}
+
+function startRestTimer(callback) {
+    restTimeLeft = 60;
+    const timerElement = document.getElementById('restTimer');
+    
+    // Show rest timer overlay
+    const container = document.getElementById('dynamicLoggingContainer');
+    container.innerHTML = `
+        <div class="rest-timer-overlay text-center py-5">
+            <div class="card bg-warning text-white mx-auto" style="max-width: 400px;">
+                <div class="card-body">
+                    <h3 class="mb-3">Rest Time</h3>
+                    <h1 class="display-1 mb-3" id="restTimer">60</h1>
+                    <p class="mb-3">Next set coming up...</p>
+                    <button class="btn btn-light btn-lg" onclick="skipRestTimer()">
+                        <i class="fas fa-forward"></i> Skip Rest
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    restTimer = setInterval(() => {
+        restTimeLeft--;
+        const timerElement = document.getElementById('restTimer');
+        if (timerElement) {
+            timerElement.textContent = restTimeLeft;
+        }
+        
+        if (restTimeLeft <= 0) {
+            clearInterval(restTimer);
+            restTimer = null;
+            if (callback) callback();
+        }
+    }, 1000);
+}
+
+function skipRestTimer() {
+    if (restTimer) {
+        clearInterval(restTimer);
+        restTimer = null;
+    }
+    renderLiveExercise();
+}
+</script>
+{% endblock %}
